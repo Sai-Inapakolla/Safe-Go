@@ -39,3 +39,7 @@ backend/app/rag/vector_db/
 # Local databases
 mongodb_data/
 
+# Vite temporary files
+vite.config.ts.timestamp*
+
+

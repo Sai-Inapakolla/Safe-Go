@@ -9,7 +9,7 @@ import { SafetyScoreBar } from "@/components/SafetyScoreBar";
 import {
   ArrowLeft, Star, MessageCircle, Shield, Loader2, CheckCircle2,
   MapPin, Navigation, Car, AlertCircle, Locate, Send, X, Users, Zap, Activity,
-  ShieldAlert, Phone, Siren, Radio, Copy, ShieldCheck, Lock
+  ShieldAlert, Phone, Siren, Radio, Copy, ShieldCheck, Lock, Search, Target
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 
@@ -65,10 +65,37 @@ const generateNearbyCabs = (lat: number, lng: number, mode: string = "normal", d
 // ─── Leaflet Map Panel (no API key) ─────────────────────────────────────────
 declare global { interface Window { L: any } }
 
-const MapPanel = ({ accent, mode, centerLoc, triggerRoute, routePolyline, onRouteExtracted, onCabSelect, simulatingTravel, onTravelComplete, estimatedFare = 0, activeDrivers = [] }: { accent: string, mode: string, centerLoc: { lat: number, lng: number } | null, triggerRoute: { from: string, to: string } | null, routePolyline?: string | null, onRouteExtracted?: (dist: number, cabs: any) => void, onCabSelect?: (cab: any) => void, simulatingTravel?: boolean, onTravelComplete?: () => void, estimatedFare?: number, activeDrivers?: any[] }) => {
+const MapPanel = ({
+  accent,
+  mode,
+  centerLoc,
+  triggerRoute,
+  routePolyline,
+  onRouteExtracted,
+  onCabSelect,
+  simulatingTravel,
+  onTravelComplete,
+  estimatedFare = 0,
+  activeDrivers = [],
+  onSelectMapDestination
+}: {
+  accent: string,
+  mode: string,
+  centerLoc: { lat: number, lng: number } | null,
+  triggerRoute: { from: string, to: string } | null,
+  routePolyline?: string | null,
+  onRouteExtracted?: (dist: number, cabs: any) => void,
+  onCabSelect?: (cab: any) => void,
+  simulatingTravel?: boolean,
+  onTravelComplete?: () => void,
+  estimatedFare?: number,
+  activeDrivers?: any[],
+  onSelectMapDestination?: (coords: { lat: number, lng: number }, address: string) => void
+}) => {
   const { t } = useTranslation();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
+  const destMarkerRef = useRef<any>(null);
   const [cabs, setCabs] = useState<any[]>([]);
   const [locating, setLocating] = useState(true);
   const [locError, setLocError] = useState(false);
@@ -76,6 +103,16 @@ const MapPanel = ({ accent, mode, centerLoc, triggerRoute, routePolyline, onRout
   const [mapReady, setMapReady] = useState(false);
   const carMarkerRef = useRef<any>(null);
   const simulationIntervalRef = useRef<any>(null);
+
+  // Pinpoint on map & On-Map search states
+  const [isPinpointMode, setIsPinpointMode] = useState(false);
+  const [mapSearchQuery, setMapSearchQuery] = useState("");
+  const [mapSearchSuggestions, setMapSearchSuggestions] = useState<any[]>([]);
+  const [isSearchingMap, setIsSearchingMap] = useState(false);
+  const [showMapSearchDropdown, setShowMapSearchDropdown] = useState(false);
+  const mapSearchTimeoutRef = useRef<any>(null);
+
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
   useEffect(() => {
     // Load Leaflet CSS
@@ -102,9 +139,19 @@ const MapPanel = ({ accent, mode, centerLoc, triggerRoute, routePolyline, onRout
 
       L.control.zoom({ position: "bottomright" }).addTo(map);
 
+      // Base High-Resolution Esri Satellite Imagery
       L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-        attribution: "Tiles &copy; Esri",
-        maxZoom: 18,
+        attribution: "Tiles &copy; Esri Satellite",
+        maxZoom: 19,
+      }).addTo(map);
+
+      // Hybrid Boundaries, Places & Street Labels Overlay
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19,
+      }).addTo(map);
+
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19,
       }).addTo(map);
 
       const pulseHtml = `
@@ -365,14 +412,207 @@ const MapPanel = ({ accent, mode, centerLoc, triggerRoute, routePolyline, onRout
     }
   }, [centerLoc, accent, mode, mapReady, activeDrivers]);
 
+  // Handle Map Click in Pinpoint Mode
+  useEffect(() => {
+    if (!mapInstanceRef.current || !mapReady) return;
+    const map = mapInstanceRef.current;
+
+    const handleMapClick = async (e: any) => {
+      if (!isPinpointMode) return;
+      const { lat, lng } = e.latlng;
+
+      let address = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.display_name) {
+            address = data.display_name;
+          }
+        }
+      } catch (err) {}
+
+      const L = window.L;
+      if (L) {
+        if (destMarkerRef.current) {
+          destMarkerRef.current.setLatLng([lat, lng]);
+        } else {
+          const destIcon = L.divIcon({
+            html: `<div style="background:#ef4444;width:16px;height:16px;border:3px solid white;border-radius:4px;box-shadow:0 0 12px rgba(239,68,68,0.9);animation:bouncePin 0.6s infinite alternate;"></div><style>@keyframes bouncePin { 0% { transform: translateY(0); } 100% { transform: translateY(-8px); } }</style>`,
+            className: "", iconSize: [16, 16], iconAnchor: [8, 8]
+          });
+          destMarkerRef.current = L.marker([lat, lng], { icon: destIcon }).addTo(map);
+        }
+        destMarkerRef.current.bindPopup(`<b>📍 Exact Destination</b><br>${address}`).openPopup();
+      }
+
+      if (onSelectMapDestination) {
+        onSelectMapDestination({ lat, lng }, address);
+      }
+    };
+
+    map.on("click", handleMapClick);
+    return () => {
+      map.off("click", handleMapClick);
+    };
+  }, [isPinpointMode, mapReady, onSelectMapDestination]);
+
+  const handleMapSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setMapSearchQuery(val);
+    if (!val.trim()) {
+      setMapSearchSuggestions([]);
+      setShowMapSearchDropdown(false);
+      return;
+    }
+    setShowMapSearchDropdown(true);
+    setIsSearchingMap(true);
+
+    if (mapSearchTimeoutRef.current) clearTimeout(mapSearchTimeoutRef.current);
+    mapSearchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const localRes = await fetch(`${API_URL}/api/map/locations?q=${encodeURIComponent(val)}`);
+        if (localRes.ok) {
+          const localData = await localRes.json();
+          if (Array.isArray(localData) && localData.length > 0) {
+            const mapped = localData.map((loc: any) => ({
+              display_name: loc.display_name,
+              lat: loc.lat.toString(),
+              lon: loc.lng.toString()
+            }));
+            setMapSearchSuggestions(mapped);
+            setIsSearchingMap(false);
+            return;
+          }
+        }
+      } catch (e) {}
+
+      try {
+        const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(val + ", India")}&limit=6&lang=en`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.features && data.features.length > 0) {
+            const mapped = data.features.map((f: any) => {
+              const props = f.properties;
+              const coords = f.geometry.coordinates;
+              const parts = [props.name, props.district, props.city || props.town, props.state, "India"].filter(Boolean);
+              return {
+                display_name: parts.join(", "),
+                lat: coords[1].toString(),
+                lon: coords[0].toString()
+              };
+            });
+            setMapSearchSuggestions(mapped);
+          }
+        }
+      } catch (e) {} finally {
+        setIsSearchingMap(false);
+      }
+    }, 150);
+  };
+
+  const handleSelectMapSearchResult = (place: any) => {
+    const lat = parseFloat(place.lat);
+    const lng = parseFloat(place.lon);
+    setMapSearchQuery(place.display_name);
+    setShowMapSearchDropdown(false);
+
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.flyTo([lat, lng], 16, { duration: 1.5 });
+    }
+
+    if (onSelectMapDestination) {
+      onSelectMapDestination({ lat, lng }, place.display_name);
+    }
+  };
+
   const cabsWithPrices = cabs.map((cab, i) => ({
     ...cab,
     price: estimatedFare > 0 ? Math.round(estimatedFare * (0.98 + (i % 3) * 0.02)) : 0
   }));
 
   return (
-    <div className="relative h-full w-full bg-secondary">
+    <div className={`relative h-full w-full bg-secondary ${isPinpointMode ? 'cursor-crosshair' : ''}`}>
       <div ref={mapContainerRef} className="absolute inset-0 z-10" />
+
+      {/* ─── ON-MAP SEARCH & PINPOINT CONTROLS OVERLAY ─── */}
+      {!locating && (
+        <div className="absolute top-4 left-4 right-4 z-30 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pointer-events-none">
+          {/* Map Search Bar */}
+          <div className="relative flex-1 max-w-sm pointer-events-auto">
+            <div className="relative flex items-center rounded-2xl bg-card/90 backdrop-blur-md border border-border/60 shadow-xl px-3.5 py-2.5">
+              <Search size={16} className="text-muted-foreground mr-2 shrink-0" />
+              <input
+                type="text"
+                value={mapSearchQuery}
+                onChange={handleMapSearchChange}
+                placeholder="Search location on map..."
+                className="w-full bg-transparent text-xs font-medium text-foreground placeholder:text-muted-foreground outline-none"
+              />
+              {mapSearchQuery && (
+                <button
+                  onClick={() => {
+                    setMapSearchQuery("");
+                    setMapSearchSuggestions([]);
+                    setShowMapSearchDropdown(false);
+                  }}
+                  className="p-1 rounded-full hover:bg-secondary text-muted-foreground"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
+            {/* Search Dropdown */}
+            {showMapSearchDropdown && (
+              <div className="absolute top-full left-0 right-0 mt-2 rounded-2xl bg-card/95 backdrop-blur-md border border-border/60 shadow-2xl p-2 z-50 max-h-60 overflow-y-auto space-y-1">
+                {isSearchingMap ? (
+                  <div className="p-3 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                    <Loader2 size={14} className="animate-spin text-primary" /> Searching map locations...
+                  </div>
+                ) : mapSearchSuggestions.length > 0 ? (
+                  mapSearchSuggestions.map((place, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => handleSelectMapSearchResult(place)}
+                      className="p-2.5 rounded-xl hover:bg-secondary/80 cursor-pointer flex items-center gap-2.5 transition-colors"
+                    >
+                      <MapPin size={14} className="text-primary shrink-0" />
+                      <span className="text-xs font-medium text-foreground truncate">{place.display_name}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-3 text-center text-xs text-muted-foreground">No matching locations found</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Pinpoint Mode Toggle Button */}
+          <div className="flex items-center gap-2 pointer-events-auto">
+            <button
+              onClick={() => setIsPinpointMode(!isPinpointMode)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-xl backdrop-blur-md border ${
+                isPinpointMode
+                  ? "bg-red-500 text-white border-red-400 ring-4 ring-red-500/20 animate-pulse"
+                  : "bg-card/90 text-foreground border-border/60 hover:bg-secondary"
+              }`}
+            >
+              <Target size={15} className={isPinpointMode ? "animate-spin" : ""} />
+              {isPinpointMode ? "Cancel Pinpoint" : "📍 Select Destination on Map"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Banner when Pinpoint Mode is Active */}
+      {isPinpointMode && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-5 py-2.5 rounded-full bg-red-500 text-white shadow-2xl text-xs font-bold tracking-wide animate-bounce pointer-events-none">
+          <MapPin size={15} />
+          <span>Click anywhere on the map to set exact Destination</span>
+        </div>
+      )}
+
       {locating && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-secondary/95 z-20">
           <Locate size={32} className="text-primary animate-pulse" />
@@ -381,7 +621,7 @@ const MapPanel = ({ accent, mode, centerLoc, triggerRoute, routePolyline, onRout
         </div>
       )}
       {locError && !locating && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-xl bg-amber-500/95 backdrop-blur px-4 py-2 shadow-lg text-white text-xs font-semibold whitespace-nowrap">
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-xl bg-amber-500/95 backdrop-blur px-4 py-2 shadow-lg text-white text-xs font-semibold whitespace-nowrap">
           <AlertCircle size={13} />
           {t('booking.gps_warning', 'Using default location · Enable GPS for best results')}
         </div>
@@ -1026,6 +1266,13 @@ const BookingPage = () => {
     setRideDetails(prev => ({ ...prev, distance: `${km.toFixed(1)} km`, distanceNum: km }));
   };
 
+  const handleSelectMapDestination = (coords: { lat: number, lng: number }, address: string) => {
+    setDestination(address);
+    setDestinationCoords(coords);
+    setRouteFound(true);
+    setTriggerRoute({ from: pickup || "Vns HOSTEL, Vagodhia Taluka, Vadodara", to: address });
+  };
+
   const handleAskDriver = () => {
     setAskStatus("asking");
     setChatOpen(false);
@@ -1074,11 +1321,27 @@ const BookingPage = () => {
         "makati": { lat: 14.5547, lng: 121.0244 },
       };
 
-      const resolveLocalCoords = (query: string): { lat: number, lng: number } | null => {
+      const isValidIndiaCoords = (lat: number, lng: number) => {
+        return lat >= 6.0 && lat <= 38.0 && lng >= 68.0 && lng <= 98.0;
+      };
+
+      const resolveLocalCoords = async (query: string): Promise<{ lat: number, lng: number } | null> => {
+        if (!query) return null;
         const q = query.toLowerCase();
         for (const [key, coords] of Object.entries(LOCAL_GEOCODE_MAP)) {
           if (q.includes(key)) return coords;
         }
+
+        try {
+          const res = await fetch(`${API_URL}/api/map/locations?q=${encodeURIComponent(query)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) {
+              return { lat: data[0].lat, lng: data[0].lng };
+            }
+          }
+        } catch (e) {}
+
         return null;
       };
 
@@ -1087,19 +1350,21 @@ const BookingPage = () => {
 
       // Automatically resolve coordinates if user typed and hit Enter without selecting
       if (!finalPickupCoords) {
-        finalPickupCoords = resolveLocalCoords(pickup);
+        finalPickupCoords = await resolveLocalCoords(pickup);
         
         if (!finalPickupCoords) {
           try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2500);
-            const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(pickup)}&limit=1&lang=en`, { signal: controller.signal });
+            const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(pickup + ", India")}&limit=1&lang=en`, { signal: controller.signal });
             clearTimeout(timeoutId);
             if (res.ok) {
               const data = await res.json();
               if (data && data.features && data.features.length > 0) {
                 const coords = data.features[0].geometry.coordinates;
-                finalPickupCoords = { lat: coords[1], lng: coords[0] };
+                if (isValidIndiaCoords(coords[1], coords[0])) {
+                  finalPickupCoords = { lat: coords[1], lng: coords[0] };
+                }
               }
             }
           } catch (e) {
@@ -1111,10 +1376,16 @@ const BookingPage = () => {
           try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2500);
-            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(pickup)}&limit=1`, { signal: controller.signal });
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(pickup + ", India")}&limit=1`, { signal: controller.signal });
             clearTimeout(timeoutId);
             const data = await res.json();
-            if (data && data.length > 0) finalPickupCoords = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+            if (data && data.length > 0) {
+              const lat = parseFloat(data[0].lat);
+              const lon = parseFloat(data[0].lon);
+              if (isValidIndiaCoords(lat, lon)) {
+                finalPickupCoords = { lat, lng: lon };
+              }
+            }
           } catch (e) {
             console.error("Nominatim lookup failed:", e);
           }
@@ -1126,19 +1397,21 @@ const BookingPage = () => {
       }
       
       // Resolve Destination Coordinates
-      finalDestCoords = resolveLocalCoords(destination);
+      finalDestCoords = await resolveLocalCoords(destination);
 
       if (!finalDestCoords) {
         try {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 2500);
-          const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(destination)}&limit=1&lang=en`, { signal: controller.signal });
+          const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(destination + ", India")}&limit=1&lang=en`, { signal: controller.signal });
           clearTimeout(timeoutId);
           if (res.ok) {
             const data = await res.json();
             if (data && data.features && data.features.length > 0) {
               const coords = data.features[0].geometry.coordinates;
-              finalDestCoords = { lat: coords[1], lng: coords[0] };
+              if (isValidIndiaCoords(coords[1], coords[0])) {
+                finalDestCoords = { lat: coords[1], lng: coords[0] };
+              }
             }
           }
         } catch (e) {
@@ -1150,10 +1423,16 @@ const BookingPage = () => {
         try {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 2500);
-          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(destination)}&limit=1`, { signal: controller.signal });
+          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(destination + ", India")}&limit=1`, { signal: controller.signal });
           clearTimeout(timeoutId);
           const data = await res.json();
-          if (data && data.length > 0) finalDestCoords = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+          if (data && data.length > 0) {
+            const lat = parseFloat(data[0].lat);
+            const lon = parseFloat(data[0].lon);
+            if (isValidIndiaCoords(lat, lon)) {
+              finalDestCoords = { lat, lng: lon };
+            }
+          }
         } catch (e) {
           console.error("Nominatim lookup failed:", e);
         }
@@ -1280,6 +1559,12 @@ const BookingPage = () => {
       const rideData = await res.json();
       setCurrentRideId(rideData._id);
       localStorage.setItem('safego_current_ride_id', rideData._id);
+      if (rideData.otp) {
+        setRideOtp(rideData.otp);
+      }
+
+      setAskStatus("accepted");
+      setFlowState("confirmed");
 
       // Emit new booking event for local storage observers (Admin and Driver panels)
       localStorage.setItem('safego_new_booking', JSON.stringify({
@@ -1292,8 +1577,6 @@ const BookingPage = () => {
       // Invalidate dashboard passenger rides cache to force fresh reload
       localStorage.removeItem("safego_passenger_rides");
 
-      // We no longer trigger simulation immediately. 
-      // The useEffect polling will detect when the driver accepts the ride!
       leftRef.current?.scrollTo({ top: 0, behavior: "smooth" });
 
     } catch (err) {
@@ -2353,50 +2636,27 @@ const BookingPage = () => {
           </div>
         </div>
 
-        {/* ════ RIGHT PANEL — Live Map ════ */}
+        {/* ════ RIGHT PANEL — Live Satellite Map ════ */}
         {flowState === "booking" && (
-          <div className="hidden lg:block lg:w-1/2 relative animate-in fade-in slide-in-from-right duration-500">
-            {destination.trim() && routeFound ? (
-              <MapPanel
-                accent={mode.accent}
-                mode={mode.id}
-                centerLoc={mapCenter}
-                triggerRoute={triggerRoute}
-                routePolyline={routePolyline}
-                onRouteExtracted={handleRouteExtracted}
-                onCabSelect={setSelectedDriver}
-                simulatingTravel={isSimulatingTravel}
-                onTravelComplete={() => {
-                  setAskStatus("accepted");
-                  setFlowState("confirmed");
-                  setIsSimulatingTravel(false);
-                }}
-                estimatedFare={rideDetails.fare}
-                activeDrivers={activeDrivers}
-              />
-            ) : (
-              <div className="h-full min-h-[600px] w-full rounded-[2.5rem] border-2 border-dashed border-primary/30 bg-card/60 backdrop-blur-md p-12 flex flex-col items-center justify-center text-center space-y-6 shadow-2xl relative overflow-hidden group">
-                <div 
-                  className="absolute -right-20 -top-20 w-80 h-80 rounded-full blur-[100px] opacity-20 pointer-events-none transition-all"
-                  style={{ backgroundColor: mode.accent }}
-                />
-                
-                <div className="w-24 h-24 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-xl group-hover:scale-110 transition-transform duration-500">
-                  <MapPin size={48} style={{ color: mode.accent }} className="animate-bounce" />
-                </div>
-                
-                <div className="max-w-md space-y-3 z-10">
-                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-[11px] font-black uppercase tracking-widest text-primary shadow-sm">
-                    <Navigation size={13} />
-                    GPS Navigation Lock Required
-                  </div>
-                  <h3 className="text-2xl font-black text-foreground tracking-tight">Interactive Navigation Map</h3>
-                  <p className="text-xs text-muted-foreground font-semibold leading-relaxed">
-                    Please enter your complete destination address on the left to reveal live map navigation, predictive safety scores, and nearby fleet drivers.
-                  </p>
-                </div>
-              </div>
-            )}
+          <div className="hidden lg:block lg:w-1/2 relative animate-in fade-in slide-in-from-right duration-500 min-h-[600px] rounded-[2.5rem] overflow-hidden border border-border/40 shadow-2xl">
+            <MapPanel
+              accent={mode.accent}
+              mode={mode.id}
+              centerLoc={mapCenter}
+              triggerRoute={triggerRoute}
+              routePolyline={routePolyline}
+              onRouteExtracted={handleRouteExtracted}
+              onCabSelect={setSelectedDriver}
+              simulatingTravel={isSimulatingTravel}
+              onTravelComplete={() => {
+                setAskStatus("accepted");
+                setFlowState("confirmed");
+                setIsSimulatingTravel(false);
+              }}
+              estimatedFare={rideDetails.fare}
+              activeDrivers={activeDrivers}
+              onSelectMapDestination={handleSelectMapDestination}
+            />
           </div>
         )}
       </div>
