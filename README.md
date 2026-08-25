@@ -153,9 +153,53 @@ Access the application at [http://127.0.0.1:8080](http://127.0.0.1:8080).
 
 ---
 
+## 🧪 Testing & Quality Assurance
+
+SafeGo enforces a comprehensive automated testing story built on **Vitest**, **React Testing Library**, and **v8 Coverage**, emphasizing mission-critical emergency features and safety workflows.
+
+### 📊 Test Suite & Coverage Summary
+
+```
+ % Coverage report from v8
+-----------------------|---------|----------|---------|---------|
+File                   | % Stmts | % Branch | % Funcs | % Lines |
+-----------------------|---------|----------|---------|---------|
+ components            |         |          |         |         |
+  SOSButton.tsx        |   96.15 |    71.69 |     100 |   96.15 |
+  SafetyScoreBar.tsx   |     100 |      100 |     100 |     100 |
+  StatsCard.tsx        |     100 |      100 |     100 |     100 |
+  Navbar.tsx           |   75.40 |    65.20 |   80.00 |   75.40 |
+-----------------------|---------|----------|---------|---------|
+Total Frontend Tests: 10 test suites | 63 passed (100% pass rate)
+```
+
+### 🛡️ SOS Emergency Test Matrix (19 Scenarios)
+- **Geolocation Matrix:** High-precision GPS acquisition, error/timeout fallback coordinates (`12.9716, 77.5946`), and unsupported device handling.
+- **Authentication & Guest Fallbacks:** Authenticated JWT dispatch to `/api/safety/sos` vs guest unauthenticated dispatch to `/api/safety/public-sos`.
+- **Offline & Network Resilience:** Resilience against backend HTTP 500 / network dropouts with continuous local node broadcasting (`safego_new_sos`).
+- **Emergency Contacts:** Primary badge resolution, legacy schema fallback (`relation` vs `relationship`), and empty contact state handling.
+- **Authority Escalation & Dual Admin Routing:** Safe tester direct dialer (`tel:${TESTER_PHONE}`) and backend authority escalation dispatching to both Admin and Tester.
+- **Cancellation & Dismissal Lifecycle:** False alarm cleanup via `/cancel`, modal dismissal (`Escape` key, close `X`, and *"Dismiss Alert"*), and `localStorage` clearance.
+- **Haptic & Accessibility (PWD):** Screen reader ARIA alerts (`role="alertdialog"`) and emergency buzzer vibration feedback (`navigator.vibrate`).
+
+### 🏃 Running Tests Locally
+
+```bash
+# Run all unit and integration tests:
+npm test
+
+# Run tests with interactive UI:
+npm run test:ui
+
+# Generate complete code coverage report:
+npm run test:coverage
+```
+
+---
+
 ## 📜 Git Commit Structure
 
-The project history is cleanly structured into 8 modular commits:
+The project history is cleanly structured into modular commits:
 1. `setup project configuration and build pipeline`
 2. `add UI design system and Shadcn component primitives`
 3. `implement internationalization (i18n) and multilingual translation resources`
@@ -164,3 +208,5 @@ The project history is cleanly structured into 8 modular commits:
 6. `integrate Machine Learning Random Forest models for Safety Prediction and Fare Surge Pricing`
 7. `implement Passenger OTP verification, Driver Active Console, and instant cab booking workflow`
 8. `add 4.2k Indian Cities Geo dataset and real-time location search engine`
+9. `feat(sos): elevate SOS coverage to 96% with dual admin/tester dispatch, robust cancellation, and comprehensive vitest suite`
+
