@@ -15,8 +15,6 @@ export const Footer = () => {
             <div className="mt-3 flex flex-col gap-2">
               <Link to="/home" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Home</Link>
               <Link to="/book/normal" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Book a Ride</Link>
-              <Link to="/safety" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Safety Features</Link>
-              <Link to="/home" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pricing</Link>
             </div>
           </div>
           <div>
@@ -25,7 +23,6 @@ export const Footer = () => {
               <Link to="/about" className="text-sm text-muted-foreground hover:text-foreground transition-colors">About</Link>
               <Link to="/drive-with-us" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Careers</Link>
               <Link to="/home" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Blog</Link>
-              <Link to="/home" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Press</Link>
             </div>
           </div>
           <div>

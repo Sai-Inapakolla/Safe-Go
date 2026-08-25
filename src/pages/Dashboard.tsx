@@ -6,11 +6,11 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { auth } from "@/lib/firebase";
-import { signOut, deleteUser } from "firebase/auth";
+import { signOut, deleteUser, updatePassword } from "firebase/auth";
 import {
   LayoutDashboard, Car, Shield, Users, Settings,
   Star, TrendingUp, ArrowRight, User, Lock, Bell, Moon, MapPin,
-  Accessibility, Mic, Check, Trash2, Loader2, Plus, X
+  Accessibility, Mic, Check, Trash2, Loader2, Plus, X, Eye, EyeOff
 } from "lucide-react";
 import { useVoiceAssistant } from "@/contexts/VoiceAssistantContext";
 
@@ -68,10 +68,14 @@ const Dashboard = () => {
   const [showContactForm, setShowContactForm] = useState(false);
   const [newContact, setNewContact] = useState({ name: "", relation: "", phone: "", isEmergency: false });
   const [editIndex, setEditIndex] = useState<number | null>(null);
-  const [profile, setProfile] = useState({
-    name: "",
-    phone: "",
-    email: ""
+  const [profile, setProfile] = useState(() => {
+    const rawStoredPhone = localStorage.getItem("safego_user_phone");
+    const cleanStoredPhone = (rawStoredPhone && !rawStoredPhone.startsWith("fb-")) ? rawStoredPhone : "";
+    return {
+      name: localStorage.getItem("safego_user_name") || "",
+      phone: cleanStoredPhone,
+      email: localStorage.getItem("safego_user_email") || ""
+    };
   });
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [selectedRides, setSelectedRides] = useState<Set<string>>(new Set());
@@ -79,24 +83,115 @@ const Dashboard = () => {
   const [loadingNotifications, setLoadingNotifications] = useState(true);
   const [selectedReport, setSelectedReport] = useState<any | null>(null);
 
+  // Change Password state
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordSuccessMessage, setPasswordSuccessMessage] = useState("");
+
+  // Ride Preference state
+  const [defaultRideMode, setDefaultRideMode] = useState<string>(() => {
+    return localStorage.getItem("safego_default_ride_mode") || "normal";
+  });
+  const [pinkDriverPref, setPinkDriverPref] = useState<string>(() => {
+    return localStorage.getItem("safego_pink_driver_pref") || "Female Driver Required";
+  });
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters long");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        toast.error("Please login to update your password");
+        return;
+      }
+
+      const res = await fetch(`${API_URL}/api/auth/set-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          password: newPassword,
+          confirm_password: confirmPassword
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || "Failed to update password");
+      }
+
+      // Sync with Firebase if user is logged into Firebase
+      try {
+        if (auth.currentUser) {
+          await updatePassword(auth.currentUser, newPassword);
+        }
+      } catch (fbErr) {
+        console.warn("Firebase password sync note:", fbErr);
+      }
+
+      toast.success("Password updated successfully!");
+      setNewPassword("");
+      setConfirmPassword("");
+      setIsChangingPassword(false);
+      setPasswordSuccessMessage("Updated just now");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update password");
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
   const fetchProfile = async () => {
     try {
       const token = localStorage.getItem("token");
-      if (!token) return;
+      const savedName = localStorage.getItem("safego_user_name") || "";
+      const rawSavedPhone = localStorage.getItem("safego_user_phone") || "";
+      const savedPhone = (rawSavedPhone && !rawSavedPhone.startsWith("fb-")) ? rawSavedPhone : "";
+      const savedEmail = localStorage.getItem("safego_user_email") || "";
+
+      if (!token) {
+        setProfile({ name: savedName, phone: savedPhone, email: savedEmail });
+        return;
+      }
 
       const res = await fetch(`${API_URL}/api/users/me`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
-        setProfile({
-          name: data.full_name,
-          phone: data.phone,
-          email: data.email
-        });
+        const finalName = data.full_name || savedName;
+        const rawPhone = data.phone || savedPhone;
+        const finalPhone = (rawPhone && !rawPhone.startsWith("fb-")) ? rawPhone : "";
+        const finalEmail = data.email || savedEmail;
+        setProfile({ name: finalName, phone: finalPhone, email: finalEmail });
+        localStorage.setItem("safego_user_name", finalName);
+        localStorage.setItem("safego_user_phone", finalPhone);
+        localStorage.setItem("safego_user_email", finalEmail);
+      } else {
+        setProfile({ name: savedName, phone: savedPhone, email: savedEmail });
       }
     } catch (err) {
       console.error("Failed to fetch profile", err);
+      const savedName = localStorage.getItem("safego_user_name") || "";
+      const rawSavedPhone = localStorage.getItem("safego_user_phone") || "";
+      const savedPhone = (rawSavedPhone && !rawSavedPhone.startsWith("fb-")) ? rawSavedPhone : "";
+      const savedEmail = localStorage.getItem("safego_user_email") || "";
+      setProfile({ name: savedName, phone: savedPhone, email: savedEmail });
     }
   };
 
@@ -327,27 +422,32 @@ const Dashboard = () => {
 
   const handleSaveProfile = async () => {
     setIsSavingProfile(true);
+    localStorage.setItem("safego_user_name", profile.name);
+    localStorage.setItem("safego_user_phone", profile.phone);
+    localStorage.setItem("safego_user_email", profile.email);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/api/users/me`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          full_name: profile.name,
-          phone: profile.phone
-        })
-      });
-      if (res.ok) {
-        toast.success("Profile updated successfully!");
-        fetchProfile();
-      } else {
-        toast.error("Failed to update profile");
+      if (token) {
+        const res = await fetch(`${API_URL}/api/users/me`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            full_name: profile.name,
+            phone: profile.phone
+          })
+        });
+        if (res.ok) {
+          toast.success("Profile updated successfully!");
+          fetchProfile();
+          return;
+        }
       }
+      toast.success("Profile updated!");
     } catch (err) {
-      toast.error("An error occurred");
+      toast.success("Profile updated locally");
     } finally {
       setIsSavingProfile(false);
     }
@@ -600,17 +700,6 @@ const Dashboard = () => {
                 )}
               </div>
             </div>
-
-            <button
-              onClick={handleTriggerSOS}
-              className="flex items-center gap-3 rounded-2xl bg-[#ef4444] hover:bg-[#dc2626] px-6 py-3 text-sm font-black text-white transition-all shadow-[0_8px_16px_rgba(239,68,68,0.25)] hover:shadow-[0_12px_24px_rgba(239,68,68,0.4)] active:scale-95 group"
-            >
-              <div className="relative">
-                <div className="absolute inset-0 rounded-full bg-white animate-ping opacity-20"></div>
-                <Shield size={18} className="relative z-10" />
-              </div>
-              <span className="tracking-widest">TRIGGER SOS</span>
-            </button>
           </div>
         </div>
 
@@ -698,27 +787,11 @@ const Dashboard = () => {
             <div className="mt-8">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-display text-lg font-bold text-foreground">Recent Rides</h3>
-                {selectedRides.size > 0 && activeTab === "Dashboard" && (
-                  <button
-                    onClick={handleDeleteSelected}
-                    className="flex items-center gap-2 rounded-xl bg-destructive px-4 py-2 text-xs font-bold text-destructive-foreground hover:brightness-110 shadow-sm transition-all animate-in fade-in zoom-in-95"
-                  >
-                    <Trash2 size={14} /> Delete Selected ({selectedRides.size})
-                  </button>
-                )}
               </div>
               <div className="mt-4 overflow-x-auto rounded-2xl border border-border bg-background shadow-sm">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                      <th className="px-4 py-3 w-10">
-                        <input
-                          type="checkbox"
-                          checked={selectedRides.size === myRides.length && myRides.length > 0}
-                          onChange={toggleAllRides}
-                          className="h-4 w-4 rounded border-border text-primary focus:ring-primary accent-primary cursor-pointer"
-                        />
-                      </th>
                       <th className="px-4 py-3">#</th>
                       <th className="px-4 py-3">Mode</th>
                       <th className="px-4 py-3">Route</th>
@@ -730,15 +803,7 @@ const Dashboard = () => {
                   </thead>
                   <tbody>
                     {myRides.map((r, i) => (
-                      <tr key={i} className={`border-b border-border last:border-0 ${i % 2 === 1 ? "bg-secondary" : ""} ${selectedRides.has(r._id) ? "bg-primary/5" : ""} hover:bg-primary/5 transition-colors`}>
-                        <td className="px-4 py-3">
-                          <input
-                            type="checkbox"
-                            checked={selectedRides.has(r._id)}
-                            onChange={() => toggleRideSelection(r._id)}
-                            className="h-4 w-4 rounded border-border text-primary focus:ring-primary accent-primary cursor-pointer"
-                          />
-                        </td>
+                      <tr key={i} className={`border-b border-border last:border-0 ${i % 2 === 1 ? "bg-secondary" : ""} hover:bg-primary/5 transition-colors`}>
                         <td className="px-4 py-3 text-muted-foreground">{myRides.length - i}</td>
                         <td className="px-4 py-3">
                           <span className="rounded-full px-2.5 py-1 text-xs font-medium bg-secondary text-foreground">{r.mode}</span>
@@ -766,37 +831,11 @@ const Dashboard = () => {
           <div className="mt-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-display text-lg font-bold text-foreground">Ride History</h3>
-              <div className="flex items-center gap-3">
-                {selectedRides.size > 0 && (
-                  <button
-                    onClick={handleDeleteSelected}
-                    className="flex items-center gap-2 rounded-xl bg-destructive px-4 py-2 text-xs font-bold text-destructive-foreground hover:brightness-110 shadow-sm transition-all animate-in fade-in zoom-in-95"
-                  >
-                    <Trash2 size={14} /> Delete Selected ({selectedRides.size})
-                  </button>
-                )}
-                {myRides.length > 0 && (
-                  <button
-                    onClick={handleClearHistory}
-                    className="flex items-center gap-2 rounded-xl bg-destructive/10 px-4 py-2 text-xs font-bold text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all"
-                  >
-                    <Trash2 size={14} /> Clear All History
-                  </button>
-                )}
-              </div>
             </div>
             <div className="overflow-x-auto rounded-2xl border border-border bg-background shadow-sm">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                    <th className="px-4 py-3 w-10">
-                      <input
-                        type="checkbox"
-                        checked={selectedRides.size === myRides.length && myRides.length > 0}
-                        onChange={toggleAllRides}
-                        className="h-4 w-4 rounded border-border text-primary focus:ring-primary accent-primary cursor-pointer"
-                      />
-                    </th>
                     <th className="px-4 py-3">#</th>
                     <th className="px-4 py-3">Mode</th>
                     <th className="px-4 py-3">Route</th>
@@ -824,15 +863,7 @@ const Dashboard = () => {
                     </tr>
                   ) : (
                     myRides.map((r, i) => (
-                      <tr key={i} className={`border-b border-border last:border-0 ${i % 2 === 1 ? "bg-secondary" : ""} ${selectedRides.has(r._id) ? "bg-primary/5" : ""} hover:bg-primary/5 transition-colors`}>
-                        <td className="px-4 py-3">
-                          <input
-                            type="checkbox"
-                            checked={selectedRides.has(r._id)}
-                            onChange={() => toggleRideSelection(r._id)}
-                            className="h-4 w-4 rounded border-border text-primary focus:ring-primary accent-primary cursor-pointer"
-                          />
-                        </td>
+                      <tr key={i} className={`border-b border-border last:border-0 ${i % 2 === 1 ? "bg-secondary" : ""} hover:bg-primary/5 transition-colors`}>
                         <td className="px-4 py-3 text-muted-foreground">{myRides.length - i}</td>
                         <td className="px-4 py-3">
                           <span className="rounded-full px-2.5 py-1 text-xs font-medium bg-secondary text-foreground capitalize">{r.mode}</span>
@@ -1040,8 +1071,13 @@ const Dashboard = () => {
                   <input
                     required
                     type="tel"
+                    inputMode="tel"
                     value={newContact.phone}
-                    onChange={e => setNewContact({ ...newContact, phone: e.target.value })}
+                    onChange={e => {
+                      const val = e.target.value;
+                      const sanitized = val.replace(/[^\d+ ]/g, '').replace(/(?!^)\+/g, '');
+                      setNewContact({ ...newContact, phone: sanitized });
+                    }}
                     placeholder="Phone Number"
                     className="rounded-xl border border-border bg-secondary px-4 py-2.5 text-sm outline-none focus:border-primary transition-colors"
                   />
@@ -1145,10 +1181,16 @@ const Dashboard = () => {
                     <div>
                       <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 block">Phone Number</label>
                       <input
+                        type="tel"
+                        inputMode="tel"
                         value={profile.phone}
-                        onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const sanitized = val.replace(/[^\d+ ]/g, '').replace(/(?!^)\+/g, '');
+                          setProfile({ ...profile, phone: sanitized });
+                        }}
                         className="w-full rounded-xl border border-border bg-secondary px-4 py-2.5 text-sm outline-none focus:border-primary transition-colors"
-                        placeholder="+63 912 345 6789"
+                        placeholder="+91 91234 56789"
                       />
                     </div>
                     <div className="sm:col-span-2">
@@ -1170,12 +1212,104 @@ const Dashboard = () => {
                   <Lock size={20} className="text-primary" /> Password & Security
                 </h4>
                 <div className="rounded-2xl border border-border bg-background shadow-sm overflow-hidden divide-y divide-border">
-                  <div className="p-5 flex justify-between items-center hover:bg-secondary/50 transition-colors">
-                    <div>
-                      <h5 className="font-semibold text-foreground">Change Password</h5>
-                      <p className="text-sm text-muted-foreground">Last changed 3 months ago</p>
+                  <div className="p-5 hover:bg-secondary/50 transition-colors">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h5 className="font-semibold text-foreground">Change Password</h5>
+                        <p className="text-sm text-muted-foreground">
+                          {passwordSuccessMessage || "Last changed 3 months ago"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsChangingPassword(!isChangingPassword);
+                          setNewPassword("");
+                          setConfirmPassword("");
+                        }}
+                        className="text-sm font-semibold text-primary hover:underline"
+                      >
+                        {isChangingPassword ? "Cancel" : "Update"}
+                      </button>
                     </div>
-                    <button className="text-sm font-semibold text-primary hover:underline">Update</button>
+
+                    {isChangingPassword && (
+                      <form onSubmit={handleUpdatePassword} className="mt-4 pt-4 border-t border-border space-y-4">
+                        <div className="grid sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
+                              New Password
+                            </label>
+                            <div className="relative">
+                              <input
+                                type={showNewPassword ? "text" : "password"}
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                placeholder="Min 6 characters"
+                                required
+                                minLength={6}
+                                className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none pr-10"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowNewPassword(!showNewPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                              >
+                                {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
+                              Confirm Password
+                            </label>
+                            <input
+                              type={showNewPassword ? "text" : "password"}
+                              value={confirmPassword}
+                              onChange={(e) => setConfirmPassword(e.target.value)}
+                              placeholder="Confirm new password"
+                              required
+                              minLength={6}
+                              className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        {newPassword && confirmPassword && newPassword !== confirmPassword && (
+                          <p className="text-xs font-medium text-destructive">Passwords do not match</p>
+                        )}
+
+                        <div className="flex items-center gap-3 pt-1">
+                          <button
+                            type="submit"
+                            disabled={passwordLoading || newPassword.length < 6 || newPassword !== confirmPassword}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {passwordLoading ? (
+                              <>
+                                <Loader2 size={16} className="animate-spin" /> Saving...
+                              </>
+                            ) : (
+                              <>
+                                <Check size={16} /> Save New Password
+                              </>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsChangingPassword(false);
+                              setNewPassword("");
+                              setConfirmPassword("");
+                            }}
+                            className="rounded-xl border border-border bg-secondary/50 px-4 py-2 text-sm font-semibold text-foreground hover:bg-secondary transition-all"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    )}
                   </div>
                   <div className="p-5 flex flex-col sm:flex-row gap-4 sm:justify-between sm:items-center hover:bg-secondary/50 transition-colors">
                     <div>
@@ -1186,13 +1320,6 @@ const Dashboard = () => {
                       <input type="checkbox" className="sr-only peer" />
                       <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                     </label>
-                  </div>
-                  <div className="p-5 flex justify-between items-center hover:bg-secondary/50 transition-colors cursor-pointer">
-                    <div>
-                      <h5 className="font-semibold text-foreground">Login Activity</h5>
-                      <p className="text-sm text-muted-foreground">Review devices signed into this account</p>
-                    </div>
-                    <ArrowRight size={16} className="text-muted-foreground" />
                   </div>
                 </div>
               </section>
@@ -1228,23 +1355,45 @@ const Dashboard = () => {
                   <Car size={20} className="text-primary" /> Default Ride Preferences
                 </h4>
                 <div className="rounded-2xl border border-border bg-background p-6 shadow-sm">
-                  <div className="grid gap-6 sm:grid-cols-2">
+                  <div className={`grid gap-6 ${defaultRideMode === "pink" ? "sm:grid-cols-2" : "grid-cols-1"}`}>
                     <div>
                       <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">Default Ride Mode</label>
-                      <select className="w-full rounded-xl border border-border bg-secondary px-4 py-2.5 text-sm outline-none focus:border-primary">
+                      <select
+                        value={defaultRideMode}
+                        onChange={(e) => {
+                          const mode = e.target.value;
+                          setDefaultRideMode(mode);
+                          localStorage.setItem("safego_default_ride_mode", mode);
+                          toast.success(`Default ride mode set to ${mode.toUpperCase()}`);
+                        }}
+                        className="w-full rounded-xl border border-border bg-secondary px-4 py-2.5 text-sm outline-none focus:border-primary text-foreground"
+                      >
                         <option value="normal">Normal Mode</option>
                         <option value="pink">Pink Mode</option>
                         <option value="pwd">PWD Mode</option>
                         <option value="elderly">Elderly Mode</option>
                       </select>
                     </div>
-                    <div>
-                      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">Driver Preference (Pink Mode)</label>
-                      <select className="w-full rounded-xl border border-border bg-secondary px-4 py-2.5 text-sm outline-none focus:border-primary">
-                        <option>Female Driver Required</option>
-                        <option>Female Driver Preferred</option>
-                      </select>
-                    </div>
+
+                    {defaultRideMode === "pink" && (
+                      <div className="animate-in fade-in zoom-in-95 duration-200">
+                        <label className="text-xs font-semibold text-rose-500 dark:text-rose-400 uppercase tracking-wider mb-2 block font-bold">
+                          Driver Preference (Pink Mode)
+                        </label>
+                        <select
+                          value={pinkDriverPref}
+                          onChange={(e) => {
+                            const pref = e.target.value;
+                            setPinkDriverPref(pref);
+                            localStorage.setItem("safego_pink_driver_pref", pref);
+                          }}
+                          className="w-full rounded-xl border border-rose-200 dark:border-rose-900/40 bg-secondary px-4 py-2.5 text-sm outline-none focus:border-rose-500 text-foreground"
+                        >
+                          <option>Female Driver Required</option>
+                          <option>Female Driver Preferred</option>
+                        </select>
+                      </div>
+                    )}
                   </div>
                 </div>
               </section>

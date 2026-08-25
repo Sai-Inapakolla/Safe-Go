@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, Query
 from beanie import PydanticObjectId
 
 from app.models import Driver, DriverStatus, User, Gender, Vehicle
-from app.schemas import RouteRequest, RouteResponse, NearbyDriverResponse
-from app.services.map_service import get_route
+from app.schemas import RouteRequest, RouteResponse, RerouteRequest, RerouteResponse, NearbyDriverResponse
+from app.services.map_service import get_route, reroute_active_trip
 from app.utils.fare import haversine_distance, estimate_duration
 from app.services.geo_service import geo_service
 
@@ -31,8 +31,23 @@ async def calculate_route(payload: RouteRequest):
         mode=payload.mode,
         passenger_count=payload.passenger_count,
         scheduled_at=payload.scheduled_at,
+        driver_lat=payload.driver_latitude,
+        driver_lng=payload.driver_longitude,
     )
     return RouteResponse(**result)
+
+
+@router.post("/reroute", response_model=RerouteResponse)
+async def reroute_trip(payload: RerouteRequest):
+    result = await reroute_active_trip(
+        driver_lat=payload.driver_latitude,
+        driver_lng=payload.driver_longitude,
+        dest_lat=payload.destination_latitude,
+        dest_lng=payload.destination_longitude,
+        mode=payload.mode,
+        reason=payload.reason,
+    )
+    return RerouteResponse(**result)
 
 
 @router.get("/nearby-drivers", response_model=List[NearbyDriverResponse])

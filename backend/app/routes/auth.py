@@ -2,10 +2,14 @@ import random
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.models import User, UserRole
-from app.schemas import UserRegister, UserLogin, TokenResponse, UserResponse, FirebaseSyncRequest, SendOTPRequest, VerifyOTPRequest
+from app.schemas import (
+    UserRegister, UserLogin, TokenResponse, UserResponse, 
+    FirebaseSyncRequest, SendOTPRequest, VerifyOTPRequest, SetPasswordRequest
+)
 from app.services.auth_service import register_user, authenticate_user, create_token_for_user, get_or_create_firebase_user
 from app.utils.dependencies import get_current_user
 from app.utils.firebase_admin import verify_firebase_token, HTTPAuthorizationCredentials
+from app.utils.security import hash_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -111,17 +115,39 @@ async def firebase_auth(
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is deactivated")
 
-    # We still issue a local token for consistency, or we could just use the Firebase token everywhere.
-    # For now, let's keep the local token for legacy support in other parts of the app.
     token = create_token_for_user(user)
     role_val = user.role.value if hasattr(user.role, 'value') else user.role
+    needs_password = (user.hashed_password is None or user.hashed_password == "")
+    needs_phone = (user.phone is None or user.phone == "" or user.phone.startswith("fb-"))
     
     return TokenResponse(
         access_token=token,
         token_type="bearer",
         role=role_val,
         user_id=str(user.id),
+        needs_password=(needs_password or needs_phone),
+        needs_phone=needs_phone,
     )
+
+
+@router.post("/set-password")
+async def set_account_password(
+    payload: SetPasswordRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Set or update password and phone for user (e.g. users registered via Google)."""
+    if payload.password != payload.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+    if len(payload.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters long")
+    
+    current_user.hashed_password = hash_password(payload.password)
+    if payload.phone:
+        clean_phone = payload.phone.strip()
+        if clean_phone and not clean_phone.startswith("fb-"):
+            current_user.phone = clean_phone
+    await current_user.save()
+    return {"message": "Account security updated successfully", "has_password": True, "phone": current_user.phone}
 
 
 @router.get("/me", response_model=UserResponse)

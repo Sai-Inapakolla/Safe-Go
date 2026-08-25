@@ -8,8 +8,10 @@ import {
   createUserWithEmailAndPassword, 
   GoogleAuthProvider, 
   signInWithPopup,
-  updateProfile
+  updateProfile,
+  updatePassword
 } from "firebase/auth";
+import { Check, ShieldCheck, ArrowRight, KeyRound } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -19,6 +21,15 @@ const AuthPage = () => {
   const isLogin = location.pathname === "/login";
 
   const [role, setRole] = useState<"passenger" | "driver" | "admin">("passenger");
+
+  // Step state: "auth" (standard sign-in / sign-up) vs "set_password" (password creation for Google accounts)
+  const [step, setStep] = useState<"auth" | "set_password">("auth");
+  const [googleUserEmail, setGoogleUserEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+  const [pendingRedirect, setPendingRedirect] = useState<string>("/home");
 
   // Form State
   const [fullName, setFullName] = useState("");
@@ -35,19 +46,21 @@ const AuthPage = () => {
   useEffect(() => {
     const token = localStorage.getItem("token");
     const userRole = localStorage.getItem("userRole");
-    if (token) {
+    if (token && step === "auth") {
       if (userRole === "admin") navigate("/admin");
       else if (userRole === "driver") navigate("/driver");
       else navigate("/home");
     }
-  }, [navigate]);
+  }, [navigate, step]);
 
   // Clear errors and password visibility when switching roles or pages
   useEffect(() => {
     setError("");
     setShowPassword(false);
     setShowConfirmPassword(false);
-  }, [role, isLogin]);
+    setShowNewPassword(false);
+    setShowConfirmNewPassword(false);
+  }, [role, isLogin, step]);
 
   const handleGoogleLogin = async () => {
     setError("");
@@ -74,19 +87,93 @@ const AuthPage = () => {
       localStorage.removeItem("safego_accepted_rides");
       localStorage.removeItem("safego_declined_rides");
       
+      const from = (location.state as { from?: { pathname: string } })?.from?.pathname;
       const finalRole = (data.role === "admin" || result.user.email?.includes("admin")) ? "admin" : data.role;
       localStorage.setItem("userRole", finalRole);
       
-      if (finalRole === "admin") {
-        navigate("/admin");
+      const destination = from || (finalRole === "admin" ? "/admin" : finalRole === "driver" ? "/driver" : "/home");
+
+      // If user has no password set (new Google sign up), prompt them to set their password
+      if (data.needs_password) {
+        setGoogleUserEmail(result.user.email || "");
+        setPendingRedirect(destination);
+        setStep("set_password");
       } else {
-        navigate(finalRole === "driver" ? "/driver" : "/home");
+        navigate(destination);
       }
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Google authentication failed");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    if (!phone || phone.trim().length < 7) {
+      setError("Please enter a valid phone number");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setError("Password must be at least 6 characters long");
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/api/auth/set-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          password: newPassword,
+          confirm_password: confirmNewPassword,
+          phone: phone.trim()
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || "Failed to complete setup");
+      }
+
+      const resData = await res.json().catch(() => ({}));
+      if (resData.phone) {
+        localStorage.setItem("safego_user_phone", resData.phone);
+      } else {
+        localStorage.setItem("safego_user_phone", phone.trim());
+      }
+
+      // Sync password with Firebase if currentUser exists
+      try {
+        if (auth.currentUser) {
+          await updatePassword(auth.currentUser, newPassword);
+        }
+      } catch (fbErr) {
+        console.warn("Firebase password sync note (Backend is already secured):", fbErr);
+      }
+
+      navigate(pendingRedirect);
+    } catch (err: any) {
+      setError(err.message || "Failed to complete setup");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSkipPassword = () => {
+    navigate(pendingRedirect);
   };
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -94,11 +181,13 @@ const AuthPage = () => {
     setError("");
     setLoading(true);
 
+    const from = (location.state as { from?: { pathname: string } })?.from?.pathname;
+
     try {
       let idToken = "";
       
       if (isLogin) {
-        // Try local backend login first (for seeded demo users)
+        // Try local backend login first (for seeded demo users and users who set passwords)
         try {
           const localRes = await fetch(`${API_URL}/api/auth/login`, {
             method: "POST",
@@ -117,7 +206,7 @@ const AuthPage = () => {
             setLoading(false);
             if (finalRole === "admin") navigate("/admin");
             else if (finalRole === "driver") navigate("/driver");
-            else navigate("/home");
+            else navigate(from || "/home");
             return;
           }
         } catch (e) {
@@ -171,11 +260,15 @@ const AuthPage = () => {
       } else if (finalRole === "driver") {
         navigate("/driver");
       } else {
-        navigate("/home");
+        navigate(from || "/home");
       }
 
     } catch (err: any) {
-      setError(err.message);
+      if (err.message && (err.message.includes("auth/invalid-credential") || err.message.includes("auth/wrong-password") || err.message.includes("Invalid email or password"))) {
+        setError("Invalid credentials. If you originally signed up with Google, please click 'Sign in with Google' below.");
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -243,190 +336,305 @@ const AuthPage = () => {
 
         {/* Form Card Container */}
         <div className="w-full max-w-[500px] md:max-w-[580px] lg:max-w-[640px] py-14 px-10 sm:px-12 lg:px-16 rounded-[2.5rem] lg:rounded-[3.5rem] bg-card/70 border border-border/80 shadow-[0_15px_50px_-15px_rgba(0,0,0,0.1)] backdrop-blur-md relative z-10 transition-all hover:shadow-[0_20px_60px_-12px_rgba(0,0,0,0.15)]">
-          <div className="mb-8 flex flex-col items-center md:items-start">
-            <Link to="/" className="md:hidden mb-6 inline-block transition-transform hover:scale-105">
-              <SafeGoLogo size={36} />
-            </Link>
-            
-            <h2 className="font-display text-3xl lg:text-4xl font-black text-foreground tracking-tight uppercase text-center md:text-left">
-              {isLogin ? "Welcome Back!" : (role === "admin" ? "Admin Access" : "Join SafeGo")}
-            </h2>
-            <p className="mt-2 text-muted-foreground text-sm text-center md:text-left font-medium">
-              {isLogin ? "Welcome back! Please enter your details." : "Create an account to start booking premium rides."}
-            </p>
-          </div>
+          {step === "set_password" ? (
+            <div className="animate-in fade-in zoom-in-95 duration-500">
+              <div className="mb-6 flex flex-col items-center md:items-start">
+                <Link to="/" className="md:hidden mb-6 inline-block transition-transform hover:scale-105">
+                  <SafeGoLogo size={36} />
+                </Link>
 
-          {/* Role toggle */}
-          <div className="mb-6 flex w-full md:w-fit rounded-xl border border-border/60 bg-muted/40 p-1 backdrop-blur-sm">
-            {(["passenger", "driver", "admin"] as const).map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setRole(r)}
-                className={`flex-1 md:flex-none rounded-lg px-5 py-2 text-xs font-bold uppercase tracking-wider transition-all ${role === r ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-
-          {role === "admin" && !isLogin && (
-            <div className="mb-6 rounded-2xl bg-primary/5 border border-primary/20 p-4 text-xs font-semibold text-primary leading-relaxed">
-              Company credentials are required for Admin access.
-              <button
-                onClick={() => navigate("/login")}
-                className="ml-1.5 font-black underline hover:text-primary/80"
-              >
-                Go to Login
-              </button>
-            </div>
-          )}
-
-          {error && (
-            <div className="mb-6 flex items-center gap-3 rounded-2xl bg-destructive/5 border border-destructive/20 p-4 text-xs font-bold text-destructive">
-              <AlertCircle size={16} className="shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleAuth} className="flex flex-col gap-4">
-            {!isLogin && role !== "admin" && (
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground ml-1">Full Legal Name</label>
-                <input
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="w-full rounded-xl border border-border/80 bg-background/50 px-4 py-3.5 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  placeholder="John Doe"
-                />
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold mb-4 shadow-sm">
+                  <ShieldCheck size={15} className="shrink-0" />
+                  <span className="truncate max-w-[260px]">Google Connected: {googleUserEmail}</span>
+                </div>
+                
+                <h2 className="font-display text-2xl lg:text-3xl font-black text-foreground tracking-tight uppercase text-center md:text-left">
+                  Complete Your Profile
+                </h2>
+                <p className="mt-2 text-muted-foreground text-sm text-center md:text-left font-medium leading-relaxed">
+                  Enter your phone number and create a password to complete your SafeGo account registration.
+                </p>
               </div>
-            )}
-            
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground ml-1">Email Address</label>
-              <input
-                required
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-xl border border-border/80 bg-background/50 px-4 py-3.5 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-                placeholder="you@email.com"
-              />
-            </div>
 
-            {!isLogin && role !== "admin" && (
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground ml-1">Phone Number</label>
-                <input
-                  required
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full rounded-xl border border-border/80 bg-background/50 px-4 py-3.5 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  placeholder="+63 900 000 0000"
-                />
-              </div>
-            )}
+              {error && (
+                <div className="mb-6 flex items-center gap-3 rounded-2xl bg-destructive/5 border border-destructive/20 p-4 text-xs font-bold text-destructive">
+                  <AlertCircle size={16} className="shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between ml-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Password</label>
-              </div>
-              <div className="relative">
-                <input
-                  required
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-xl border border-border/80 bg-background/50 pl-4 pr-11 py-3.5 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  placeholder="••••••••"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none transition-colors"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </div>
-
-            {!isLogin && role !== "admin" && (
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground ml-1">Confirm Password</label>
-                <div className="relative">
+              <form onSubmit={handleSetPassword} className="flex flex-col gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground ml-1">Phone Number</label>
                   <input
                     required
-                    type={showConfirmPassword ? "text" : "password"}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full rounded-xl border border-border/80 bg-background/50 pl-4 pr-11 py-3.5 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-                    placeholder="••••••••"
+                    type="tel"
+                    inputMode="tel"
+                    value={phone}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const sanitized = val.replace(/[^\d+ ]/g, '').replace(/(?!^)\+/g, '');
+                      setPhone(sanitized);
+                    }}
+                    className="w-full rounded-xl border border-border/80 bg-background/50 px-4 py-3.5 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 text-foreground"
+                    placeholder="+91 98765 43210"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground ml-1">New Password</label>
+                  <div className="relative">
+                    <input
+                      required
+                      type={showNewPassword ? "text" : "password"}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full rounded-xl border border-border/80 bg-background/50 pl-4 pr-11 py-3.5 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 text-foreground"
+                      placeholder="Min. 6 characters"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none transition-colors"
+                      aria-label={showNewPassword ? "Hide password" : "Show password"}
+                    >
+                      {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground ml-1">Confirm New Password</label>
+                  <div className="relative">
+                    <input
+                      required
+                      type={showConfirmNewPassword ? "text" : "password"}
+                      value={confirmNewPassword}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      className="w-full rounded-xl border border-border/80 bg-background/50 pl-4 pr-11 py-3.5 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 text-foreground"
+                      placeholder="Confirm password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none transition-colors"
+                      aria-label={showConfirmNewPassword ? "Hide confirm password" : "Show confirm password"}
+                    >
+                      {showConfirmNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="mt-3 flex w-full justify-center items-center gap-2 rounded-xl bg-primary py-4 text-sm font-bold uppercase tracking-wider text-primary-foreground transition-all hover:brightness-110 hover:shadow-lg hover:shadow-primary/10 disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {loading ? <Loader2 className="animate-spin" size={18} /> : (
+                    <>
+                      <span>Complete Setup & Continue</span>
+                      <ArrowRight size={16} />
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSkipPassword}
+                  className="mt-1 text-center text-xs font-bold text-muted-foreground hover:text-foreground py-2 uppercase tracking-wider transition-colors"
+                >
+                  Skip for now & Go to Dashboard
+                </button>
+              </form>
+            </div>
+          ) : (
+            <div>
+              <div className="mb-8 flex flex-col items-center md:items-start">
+                <Link to="/" className="md:hidden mb-6 inline-block transition-transform hover:scale-105">
+                  <SafeGoLogo size={36} />
+                </Link>
+                
+                <h2 className="font-display text-3xl lg:text-4xl font-black text-foreground tracking-tight uppercase text-center md:text-left">
+                  {isLogin ? "Welcome Back!" : (role === "admin" ? "Admin Access" : "Join SafeGo")}
+                </h2>
+                <p className="mt-2 text-muted-foreground text-sm text-center md:text-left font-medium">
+                  {isLogin ? "Welcome back! Please enter your details." : "Create an account to start booking premium rides."}
+                </p>
+              </div>
+
+              {/* Role toggle */}
+              <div className="mb-6 flex w-full md:w-fit rounded-xl border border-border/60 bg-muted/40 p-1 backdrop-blur-sm">
+                {(["passenger", "driver", "admin"] as const).map((r) => (
                   <button
+                    key={r}
                     type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none transition-colors"
-                    aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                    onClick={() => setRole(r)}
+                    className={`flex-1 md:flex-none rounded-lg px-5 py-2 text-xs font-bold uppercase tracking-wider transition-all ${role === r ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
                   >
-                    {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    {r}
+                  </button>
+                ))}
+              </div>
+
+              {role === "admin" && !isLogin && (
+                <div className="mb-6 rounded-2xl bg-primary/5 border border-primary/20 p-4 text-xs font-semibold text-primary leading-relaxed">
+                  Company credentials are required for Admin access.
+                  <button
+                    onClick={() => navigate("/login")}
+                    className="ml-1.5 font-black underline hover:text-primary/80"
+                  >
+                    Go to Login
                   </button>
                 </div>
-              </div>
-            )}
+              )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="mt-4 flex w-full justify-center items-center gap-2 rounded-xl bg-primary py-4 text-sm font-bold uppercase tracking-wider text-primary-foreground transition-all hover:brightness-110 hover:shadow-lg hover:shadow-primary/10 disabled:opacity-70 disabled:cursor-not-allowed"
-            >
-              {loading ? <Loader2 className="animate-spin" size={18} /> : (isLogin || role === "admin" ? "Sign In" : "Create Account")}
-            </button>
+              {error && (
+                <div className="mb-6 flex items-center gap-3 rounded-2xl bg-destructive/5 border border-destructive/20 p-4 text-xs font-bold text-destructive">
+                  <AlertCircle size={16} className="shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
 
-            <div className="relative my-2 flex items-center py-2">
-              <div className="flex-grow border-t border-border/60"></div>
-              <span className="shrink-0 px-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Or continue with</span>
-              <div className="flex-grow border-t border-border/60"></div>
+              <form onSubmit={handleAuth} className="flex flex-col gap-4">
+                {!isLogin && role !== "admin" && (
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground ml-1">Full Legal Name</label>
+                    <input
+                      required
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="w-full rounded-xl border border-border/80 bg-background/50 px-4 py-3.5 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      placeholder="John Doe"
+                    />
+                  </div>
+                )}
+                
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground ml-1">Email Address</label>
+                  <input
+                    required
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full rounded-xl border border-border/80 bg-background/50 px-4 py-3.5 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    placeholder="you@email.com"
+                  />
+                </div>
+
+                {!isLogin && role !== "admin" && (
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground ml-1">Phone Number</label>
+                    <input
+                      required
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full rounded-xl border border-border/80 bg-background/50 px-4 py-3.5 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      placeholder="+63 900 000 0000"
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between ml-1">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Password</label>
+                  </div>
+                  <div className="relative">
+                    <input
+                      required
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full rounded-xl border border-border/80 bg-background/50 pl-4 pr-11 py-3.5 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none transition-colors"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+
+                {!isLogin && role !== "admin" && (
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground ml-1">Confirm Password</label>
+                    <div className="relative">
+                      <input
+                        required
+                        type={showConfirmPassword ? "text" : "password"}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="w-full rounded-xl border border-border/80 bg-background/50 pl-4 pr-11 py-3.5 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        placeholder="••••••••"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmNewPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none transition-colors"
+                        aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                      >
+                        {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="mt-4 flex w-full justify-center items-center gap-2 rounded-xl bg-primary py-4 text-sm font-bold uppercase tracking-wider text-primary-foreground transition-all hover:brightness-110 hover:shadow-lg hover:shadow-primary/10 disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {loading ? <Loader2 className="animate-spin" size={18} /> : (isLogin || role === "admin" ? "Sign In" : "Create Account")}
+                </button>
+
+                <div className="relative my-2 flex items-center py-2">
+                  <div className="flex-grow border-t border-border/60"></div>
+                  <span className="shrink-0 px-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Or continue with</span>
+                  <div className="flex-grow border-t border-border/60"></div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={handleGoogleLogin}
+                  className="flex w-full justify-center items-center gap-3 rounded-xl border border-border bg-background py-4 text-xs font-bold uppercase tracking-wider text-foreground transition-all hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                    <path d="M1 1h22v22H1z" fill="none" />
+                  </svg>
+                  Sign in with Google
+                </button>
+              </form>
+
+              {role !== "admin" && (
+                <p className="mt-6 text-center text-sm text-muted-foreground font-semibold">
+                  {isLogin ? "Don't have an account? " : "Already have an account? "}
+                  <Link to={isLogin ? "/signup" : "/login"} className="text-primary hover:underline ml-1">
+                    {isLogin ? "Sign Up" : "Login"}
+                  </Link>
+                </p>
+              )}
+
+              {role === "admin" && !isLogin && (
+                <p className="mt-6 text-center text-xs text-muted-foreground font-medium">
+                  Administrative accounts are managed by SafeGo.
+                </p>
+              )}
+
+              {role === "admin" && isLogin && (
+                <p className="mt-6 text-center text-xs text-muted-foreground font-medium">
+                  Only authorized personnel may access the admin dashboard.
+                </p>
+              )}
             </div>
-
-            <button
-              type="button"
-              disabled={loading}
-              onClick={handleGoogleLogin}
-              className="flex w-full justify-center items-center gap-3 rounded-xl border border-border bg-background py-4 text-xs font-bold uppercase tracking-wider text-foreground transition-all hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                <path d="M1 1h22v22H1z" fill="none" />
-              </svg>
-              Sign in with Google
-            </button>
-          </form>
-
-          {role !== "admin" && (
-            <p className="mt-6 text-center text-sm text-muted-foreground font-semibold">
-              {isLogin ? "Don't have an account? " : "Already have an account? "}
-              <Link to={isLogin ? "/signup" : "/login"} className="text-primary hover:underline ml-1">
-                {isLogin ? "Sign Up" : "Login"}
-              </Link>
-            </p>
-          )}
-
-          {role === "admin" && !isLogin && (
-            <p className="mt-6 text-center text-xs text-muted-foreground font-medium">
-              Administrative accounts are managed by SafeGo.
-            </p>
-          )}
-
-          {role === "admin" && isLogin && (
-            <p className="mt-6 text-center text-xs text-muted-foreground font-medium">
-              Only authorized personnel may access the admin dashboard.
-            </p>
           )}
         </div>
       </div>

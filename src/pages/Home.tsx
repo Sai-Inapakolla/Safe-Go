@@ -7,16 +7,416 @@ import { modes } from "@/config/modeConfig";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import { useTranslation } from "react-i18next";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, type Variants } from "framer-motion";
 import {
   Shield, Bell, MapPin, CheckCircle, ArrowRight, Star,
   Clock, Users, Car, ShieldCheck, Zap, HelpCircle, Lock,
   Banknote, GraduationCap, Heart, CalendarCheck, Navigation,
-  X, User, Globe, Accessibility, Cpu, MessageSquare
+  X, User, Globe, Accessibility, Cpu, MessageSquare,
+  ChevronLeft, ChevronRight, Sparkles, Pause, Play
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 // ─── Services Hero Graphic Component ───────────────────────────────────────────
+// ─── Shared Phone Screen Content Component ───────────────────────────────────────────
+const PhoneScreenContent = ({
+  active,
+  slideshowImages,
+  slideshowIndex
+}: {
+  active: string | null;
+  slideshowImages: string[];
+  slideshowIndex: number;
+}) => {
+  return (
+    <div
+      className={`w-full h-full bg-[#f8fafc] dark:bg-zinc-950 overflow-hidden relative flex flex-col transition-all duration-500 ${active === "Emergency SOS" ? "ring-4 ring-red-500/80 ring-inset" : ""
+        }`}
+      style={{
+        animation: active === "Emergency SOS" ? "siren-ring 2s infinite" : "none"
+      }}
+    >
+      {/* Top Info Bar inside Screen */}
+      <div className="absolute top-0 inset-x-0 h-10 px-5 flex items-center justify-between z-40 bg-white/40 dark:bg-black/30 backdrop-blur-sm border-b border-gray-200/20">
+        <span className="text-[10px] font-extrabold text-gray-700 dark:text-gray-300">9:41</span>
+        <div className="flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-[8px] text-emerald-600 dark:text-emerald-400 font-extrabold uppercase tracking-wider">SECURED</span>
+        </div>
+      </div>
+
+      {active ? (
+        <motion.div
+          key="map-screen"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.3 }}
+          className="absolute inset-0 w-full h-full flex flex-col"
+        >
+          {/* Vector City Map SVG Background */}
+          <svg className="absolute inset-0 w-full h-full opacity-[0.65] dark:opacity-[0.25] z-0" viewBox="0 0 276 576" preserveAspectRatio="none">
+            <defs>
+              <pattern id="city-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#e2e8f0" strokeWidth="0.7" />
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#city-grid)" />
+
+            <path d="M -20 180 Q 80 180 120 220 T 260 250" fill="none" stroke="#e2e8f0" strokeWidth="20" strokeLinecap="round" />
+            <path d="M 60 -20 Q 60 180 140 220 T 140 600" fill="none" stroke="#e2e8f0" strokeWidth="18" strokeLinecap="round" />
+            <path d="M 220 -20 L 220 600" fill="none" stroke="#e2e8f0" strokeWidth="14" />
+
+            <path d="M -20 180 Q 80 180 120 220 T 260 250" fill="none" stroke="#ffffff" strokeWidth="1.5" strokeDasharray="4 4" strokeLinecap="round" />
+            <path d="M 60 -20 Q 60 180 140 220 T 140 600" fill="none" stroke="#ffffff" strokeWidth="1.5" strokeDasharray="4 4" strokeLinecap="round" />
+          </svg>
+
+          {/* Dynamic Map Route Line */}
+          <svg className="absolute inset-0 w-full h-full z-10" viewBox="0 0 276 576" preserveAspectRatio="none">
+            <path
+              d="M 60 140 Q 60 200 140 240 T 140 400"
+              fill="none"
+              stroke={
+                active === "Pink Mode"
+                  ? "#db2777"
+                  : active === "AI Safe Routing"
+                    ? "#4f46e5"
+                    : active === "Emergency SOS"
+                      ? "#dc2626"
+                      : "#0d9488"
+              }
+              strokeWidth="5.5"
+              strokeLinecap="round"
+              className="transition-all duration-500"
+              style={{
+                filter: active ? "drop-shadow(0 0 5px rgba(79, 70, 229, 0.45))" : "none"
+              }}
+            />
+
+            {active === "AI Safe Routing" && (
+              <path
+                d="M 60 140 L 220 140 L 220 310 L 140 400"
+                fill="none"
+                stroke="#ef4444"
+                strokeWidth="3.5"
+                strokeDasharray="4 4"
+                strokeLinecap="round"
+                className="opacity-70 animate-pulse"
+              />
+            )}
+
+            <circle cx="60" cy="140" r="5" fill="#10b981" />
+            <circle cx="60" cy="140" r="10" fill="none" stroke="#10b981" strokeWidth="1.5" className="animate-ping" style={{ animationDuration: "2s" }} />
+
+            <rect x="136" y="396" width="8" height="8" rx="1.5" fill="#ef4444" />
+            <circle cx="140" cy="400" r="12" fill="none" stroke="#ef4444" strokeWidth="1.5" className="animate-pulse" />
+          </svg>
+
+          {/* Live GPS Car Dot */}
+          <div
+            className="absolute z-20 transition-all duration-1000 ease-in-out"
+            style={{
+              left: active === "AI Safe Routing" ? "138px" : "138px",
+              top: active === "AI Safe Routing" ? "300px" : "280px"
+            }}
+          >
+            <div className={`h-4 w-4 rounded-full flex items-center justify-center border-2 border-white shadow-lg ${active === "Pink Mode" ? "bg-pink-600" : active === "Emergency SOS" ? "bg-red-600" : "bg-primary"
+              }`}>
+              <Navigation size={8} className="text-white fill-white rotate-45" />
+            </div>
+            <div className={`absolute -inset-1 rounded-full animate-ping opacity-25 ${active === "Pink Mode" ? "bg-pink-600" : "bg-primary"
+              }`} />
+          </div>
+
+          {active === "Live Tracking" && (
+            <div className="absolute left-[138px] top-[280px] z-15 pointer-events-none -translate-x-1/2 -translate-y-1/2">
+              <div className="w-24 h-24 rounded-full border border-emerald-500/40 bg-emerald-500/5" style={{ animation: "radar-sweep 2s infinite linear" }} />
+              <div className="absolute inset-0 w-24 h-24 rounded-full border border-emerald-500/20" style={{ animation: "radar-sweep 2s infinite linear", animationDelay: "1s" }} />
+            </div>
+          )}
+
+          {active === "Emergency SOS" && (
+            <div className="absolute left-1/2 top-1/3 -translate-x-1/2 z-20 bg-red-600 text-white rounded-full p-3 shadow-xl animate-bounce">
+              <Bell size={24} className="animate-spin" style={{ animationDuration: '3s' }} />
+            </div>
+          )}
+
+          {active === "AI Safe Routing" && (
+            <div className="absolute left-1/2 top-[160px] -translate-x-1/2 z-20 bg-red-500 text-white text-[8px] font-extrabold uppercase py-0.5 px-1.5 rounded shadow border border-white flex items-center gap-0.5 animate-pulse">
+              <X size={8} /> High-Risk Area Bypassed
+            </div>
+          )}
+
+          {/* Floating Badges */}
+          <div
+            className={`absolute top-[50px] left-[12px] z-30 transition-all duration-300 badge-float-1 flex items-center gap-1 rounded-full px-2.5 py-1.5 shadow-md border ${active === "Pink Mode"
+              ? "bg-pink-50 border-pink-200 scale-110 shadow-pink-100"
+              : "bg-white dark:bg-zinc-900 border-gray-100 dark:border-zinc-800"
+              }`}
+          >
+            <div className={`h-4.5 w-4.5 rounded-full flex items-center justify-center ${active === "Pink Mode" ? "bg-pink-600 text-white" : "border border-red-500 text-red-500"}`}>
+              <X size={10} className="stroke-[3]" />
+            </div>
+            <span className={`text-[9px] font-extrabold ${active === "Pink Mode" ? "text-pink-700" : "text-gray-800 dark:text-gray-200"}`}>
+              {active === "Pink Mode" ? "Pink Mode" : "Pass"}
+            </span>
+          </div>
+
+          <div
+            className={`absolute top-[45px] right-[10px] z-30 transition-all duration-300 badge-float-2 flex items-center gap-1.5 rounded-full px-3 py-1.5 shadow-md border ${active === "Emergency SOS"
+              ? "bg-red-600 border-red-500 scale-112 shadow-red-200 text-white"
+              : "bg-red-50 dark:bg-red-950/20 border-red-100 dark:border-red-900/30 text-red-600 dark:text-red-400"
+              }`}
+          >
+            <Bell size={10} className={active === "Emergency SOS" ? "text-white" : "text-red-500"} />
+            <span className="text-[9px] font-extrabold">Emergency Protected</span>
+          </div>
+
+          <div
+            className={`absolute top-[95px] left-[8px] z-30 transition-all duration-300 badge-float-3 flex items-center gap-1.5 rounded-full px-2.5 py-1.5 shadow-md border ${active === "Verified Operators"
+              ? "bg-emerald-50 border-emerald-200 scale-110 shadow-emerald-100"
+              : "bg-white dark:bg-zinc-900 border-gray-100 dark:border-zinc-800"
+              }`}
+          >
+            <ShieldCheck size={11} className="text-emerald-500" />
+            <span className={`text-[9px] font-extrabold ${active === "Verified Operators" ? "text-emerald-700" : "text-gray-800 dark:text-gray-200"}`}>Verified Driver</span>
+          </div>
+
+          <div
+            className={`absolute top-[145px] right-[8px] z-30 transition-all duration-300 badge-float-1 flex items-center gap-1.5 rounded-full px-2.5 py-1.5 shadow-md border ${active === "AI Safe Routing"
+              ? "bg-indigo-50 border-indigo-200 scale-110 shadow-indigo-100"
+              : "bg-white dark:bg-zinc-900 border-gray-100 dark:border-zinc-800"
+              }`}
+          >
+            <Navigation size={10} className="text-indigo-500 fill-indigo-100 rotate-45" />
+            <span className={`text-[9px] font-extrabold ${active === "AI Safe Routing" ? "text-indigo-700" : "text-gray-800 dark:text-gray-200"}`}>AI Safe Route</span>
+          </div>
+
+          {active === "PWD Accessibility" && (
+            <div className="absolute top-[215px] left-[12px] z-30 animate-bounce flex items-center gap-1 bg-blue-600 border border-blue-500 text-white rounded-full px-2.5 py-1.5 shadow-lg">
+              <Users size={11} />
+              <span className="text-[9px] font-extrabold">PWD Assisted</span>
+            </div>
+          )}
+
+          {active === "Elderly Assistance" && (
+            <div className="absolute top-[210px] right-[12px] z-30 animate-bounce flex items-center gap-1 bg-amber-500 border border-amber-400 text-white rounded-full px-2.5 py-1.5 shadow-lg">
+              <Heart size={11} className="fill-white" />
+              <span className="text-[9px] font-extrabold">Elderly Care</span>
+            </div>
+          )}
+
+          {/* Bottom Ride Details Card */}
+          <div className="absolute bottom-[38px] left-[12px] right-[12px] bg-white dark:bg-zinc-900 rounded-2xl p-3.5 shadow-[0_12px_30px_rgba(0,0,0,0.08)] border border-gray-100 dark:border-zinc-800/80 z-30 transition-all duration-300 flex flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <div className={`h-7 w-7 rounded-full flex items-center justify-center ${active === "Pink Mode"
+                ? "bg-pink-100 text-pink-600"
+                : active === "PWD Accessibility"
+                  ? "bg-blue-100 text-blue-600"
+                  : active === "Elderly Assistance"
+                    ? "bg-amber-100 text-amber-600"
+                    : "bg-[#0d9488]/10 text-[#0d9488]"
+                }`}>
+                {active === "Pink Mode" ? (
+                  <User size={14} />
+                ) : active === "PWD Accessibility" ? (
+                  <Users size={14} />
+                ) : (
+                  <User size={14} />
+                )}
+              </div>
+
+              <div className={`px-2 py-0.5 rounded-md text-[8px] font-extrabold uppercase tracking-wide ${active === "Emergency SOS"
+                ? "bg-red-100 text-red-600"
+                : active === "Pink Mode"
+                  ? "bg-pink-100 text-pink-600"
+                  : active === "PWD Accessibility"
+                    ? "bg-blue-100 text-blue-600"
+                    : active === "Elderly Assistance"
+                      ? "bg-amber-100 text-amber-600"
+                      : "bg-emerald-100 text-emerald-700"
+                }`}>
+                {active === "Emergency SOS" ? "SOS BROADCAST" : active === "Pink Mode" ? "FEMALE OPERATOR" : active === "PWD Accessibility" ? "ACCESSIBLE RIDE" : active === "Elderly Assistance" ? "CARE SPECIALIST" : active === "Multilingual App" ? "डिजिटल भुगतान" : "DIGITAL PAYMENT"}
+              </div>
+            </div>
+
+            <div className="mb-2">
+              <div className="flex items-baseline gap-1.5">
+                <span className={`text-xl font-black tracking-tight ${active === "Emergency SOS" ? "text-red-600 animate-pulse" : "text-gray-900 dark:text-white"
+                  }`}>
+                  {active === "Emergency SOS" ? "ACTIVE" : active === "Multilingual App" ? "3 मिनट" : "3 min"}
+                </span>
+                <span className="text-[9.5px] text-gray-500 dark:text-gray-400 font-bold">
+                  {active === "Emergency SOS" ? "Alert Broadcasted" : active === "Pink Mode" ? "Innova • Female Driver" : active === "Multilingual App" ? "सेडान • 1.7 किमी" : "Sedan • 1.7 km"}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5 relative pl-3.5 border-l border-dashed border-gray-200 dark:border-zinc-800 ml-1 text-left">
+              <div className="relative">
+                <div className="absolute -left-[18px] top-[4px] h-2 w-2 rounded-full bg-emerald-500 border border-white" />
+                <p className="text-[8.5px] font-extrabold text-gray-700 dark:text-gray-300 leading-none">
+                  {active === "Multilingual App" ? "7वीं मेन रोड, इंदिरा नगर" : "7th Main Rd, Indiranagar"}
+                </p>
+              </div>
+              <div className="relative mt-0.5">
+                <div className="absolute -left-[18px] top-[4px] h-2 w-2 rounded-sm bg-red-500 border border-white" />
+                <p className="text-[8.5px] font-extrabold text-gray-700 dark:text-gray-300 leading-none">
+                  {active === "Multilingual App" ? "कोरामंगला" : "Koramangala"}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-2.5 pt-2 border-t border-gray-100 dark:border-zinc-800/80 text-[7.5px] font-extrabold uppercase tracking-wide text-left text-primary">
+              {active === "Pink Mode" && <span className="text-pink-600">✓ Priya S. • Female Driver Verified</span>}
+              {active === "Emergency SOS" && <span className="text-red-600 animate-pulse">!! SOS Alert: Contacts & Police Notified</span>}
+              {active === "PWD Accessibility" && <span className="text-blue-600">✓ Wheelchair Ramp & Driver Assist Ready</span>}
+              {active === "Elderly Assistance" && <span className="text-amber-600">✓ Door-to-Door Support Assured</span>}
+              {active === "AI Safe Routing" && <span className="text-indigo-600">✦ Route Safety: 99.8% - Safe Corridor</span>}
+              {active === "Live Tracking" && <span className="text-emerald-600">✦ Live GPS Active - 3 Guardians Synced</span>}
+              {active === "Verified Operators" && <span className="text-emerald-600">✓ Background Check: 100% Cleared</span>}
+              {active === "Multilingual App" && <span className="text-blue-600">✦ Hindi Language Active</span>}
+            </div>
+          </div>
+        </motion.div>
+      ) : (
+        <motion.div
+          key="welcome-screen"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.3 }}
+          className="absolute inset-0 w-full h-full z-30 flex flex-col justify-between"
+        >
+          <div className="absolute inset-0 z-0 overflow-hidden">
+            <AnimatePresence mode="popLayout">
+              <motion.img
+                key={slideshowImages[slideshowIndex]}
+                src={slideshowImages[slideshowIndex]}
+                alt="SafeGo Slide"
+                className="absolute inset-0 w-full h-full object-cover"
+                initial={{ opacity: 0, scale: 1.05 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 1.2, ease: "easeInOut" }}
+              />
+            </AnimatePresence>
+            <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/10 to-black/85 z-10 pointer-events-none" />
+          </div>
+
+          <div className="relative z-10 px-5 pt-12 flex flex-col text-left">
+            <div className="inline-flex items-center gap-1 bg-primary/20 backdrop-blur-md border border-white/20 px-2 py-0.5 rounded-full w-fit mb-1.5 animate-pulse">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" style={{ animationDuration: '2s' }} />
+              <span className="text-[7.5px] text-white font-extrabold uppercase tracking-widest">LIVE IN INDIA</span>
+            </div>
+            <h3 className="text-xl font-black text-white leading-tight font-display tracking-tight drop-shadow-md">
+              SafeGo India
+            </h3>
+            <p className="text-[10px] font-semibold text-white/80 leading-snug drop-shadow-sm mt-0.5">
+              Your Safest Journey starts here.
+            </p>
+          </div>
+
+          <div className="h-16 pb-12 w-full relative z-10" />
+        </motion.div>
+      )}
+
+      {/* Home Indicator */}
+      <div className="absolute bottom-1 inset-x-0 flex justify-center z-40">
+        <div className="w-16 h-1 bg-gray-300 dark:bg-zinc-800 rounded-full"></div>
+      </div>
+    </div>
+  );
+};
+
+// ─── Mobile Hero Showcase Component ───────────────────────────────────────────
+const MobileHeroShowcase = () => {
+  const [selectedCard, setSelectedCard] = useState<string>("Pink Mode");
+  const [slideshowIndex, setSlideshowIndex] = useState(0);
+
+  const slideshowImages = [
+    "/taxi-yellow-1.webp",
+    "/taxi-yellow-2.webp",
+    "/taxi-yellow-3.webp",
+    "/taxi-yellow-4.webp"
+  ];
+
+  const features = [
+    { title: "Pink Mode", desc: "Verified female drivers exclusively for women passengers.", icon: <User className="text-[#f43f5e] w-4 h-4" /> },
+    { title: "Emergency SOS", desc: "One-tap emergency alert instantly notifies authorities & contacts.", icon: <Bell className="text-red-500 w-4 h-4" /> },
+    { title: "AI Safe Routing", desc: "Machine learning analyzes road safety for the safest route.", icon: <Cpu className="text-indigo-500 w-4 h-4" /> },
+    { title: "Live Tracking", desc: "Share real-time GPS location with family with one tap.", icon: <MapPin className="text-emerald-500 w-4 h-4" /> },
+    { title: "PWD Accessibility", desc: "Ramp-equipped vehicles & specialized driver assistance.", icon: <Accessibility className="text-blue-500 w-4 h-4" /> },
+    { title: "Elderly Assistance", desc: "Door-to-door patient support for senior citizens.", icon: <Heart className="text-amber-500 w-4 h-4" /> },
+    { title: "Verified Operators", desc: "100% background checks and biometric monitoring.", icon: <ShieldCheck className="text-teal-500 w-4 h-4" /> },
+    { title: "Multilingual App", desc: "Seamless navigation & speech in regional languages.", icon: <MessageSquare className="text-blue-500 w-4 h-4" /> },
+  ];
+
+  const activeFeature = features.find(f => f.title === selectedCard) || features[0];
+
+  return (
+    <div className="w-full flex flex-col items-center select-none">
+      {/* Central Phone Mockup */}
+      <div className="relative w-[270px] sm:w-[290px] h-[540px] sm:h-[580px] z-20 bg-[#1e1e1e] rounded-[2.8rem] border-[10px] border-[#2d2d2d] shadow-[0_20px_50px_rgba(0,0,0,0.35)] overflow-hidden flex flex-col justify-center items-center">
+        {/* Notch */}
+        <div className="absolute top-0 inset-x-0 h-5 flex justify-center z-50">
+          <div className="w-20 h-4 bg-[#2d2d2d] rounded-b-xl"></div>
+        </div>
+
+        <PhoneScreenContent
+          active={selectedCard}
+          slideshowImages={slideshowImages}
+          slideshowIndex={slideshowIndex}
+        />
+      </div>
+
+      {/* Interactive Feature Pills */}
+      <div className="w-full mt-6">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground text-center mb-3">
+          Tap a feature to test live simulation:
+        </p>
+        <div className="flex flex-wrap justify-center gap-2 max-w-sm mx-auto px-2">
+          {features.map((f) => {
+            const isSelected = selectedCard === f.title;
+            return (
+              <button
+                key={f.title}
+                type="button"
+                onClick={() => setSelectedCard(f.title)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${isSelected
+                  ? "bg-primary text-primary-foreground shadow-md scale-105"
+                  : "bg-muted/80 hover:bg-muted text-foreground border border-border/60"
+                  }`}
+              >
+                <span>{f.title}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Active Feature Detail Card */}
+        {activeFeature && (
+          <motion.div
+            key={activeFeature.title}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-4 p-4 rounded-2xl bg-card border border-border/80 shadow-md max-w-xs mx-auto flex items-start gap-3 text-left"
+          >
+            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+              {activeFeature.icon}
+            </div>
+            <div>
+              <h4 className="text-xs font-black text-foreground uppercase tracking-wider">{activeFeature.title}</h4>
+              <p className="text-[11px] text-muted-foreground font-medium mt-0.5 leading-snug">{activeFeature.desc}</p>
+            </div>
+          </motion.div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── Desktop Services Hero Graphic Component ───────────────────────────────────────────
 const ServicesHeroGraphic = () => {
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
@@ -36,7 +436,7 @@ const ServicesHeroGraphic = () => {
     if (active) return;
     const interval = setInterval(() => {
       setSlideshowIndex((prev) => (prev + 1) % slideshowImages.length);
-    }, 3500); // Slow, premium transition rate for a comfortable, cinematic flow
+    }, 3500);
     return () => clearInterval(interval);
   }, [active]);
 
@@ -126,45 +526,23 @@ const ServicesHeroGraphic = () => {
   };
 
   return (
-    <div className="relative w-[1000px] h-[720px] flex justify-center items-center shrink-0 scale-[0.45] sm:scale-[0.58] md:scale-[0.72] lg:scale-[0.82] xl:scale-[0.92] origin-center select-none">
-
+    <div className="relative w-[1000px] h-[720px] justify-center items-center shrink-0 scale-[0.72] lg:scale-[0.82] xl:scale-[0.92] origin-center select-none hidden lg:flex">
       {/* Stylesheet for flowchart animations */}
       <style>{`
         @keyframes dash-flow {
-          to {
-            stroke-dashoffset: -24;
-          }
+          to { stroke-dashoffset: -24; }
         }
         .flow-line {
           stroke-dasharray: 8 6;
           animation: dash-flow var(--flow-speed, 1.8s) linear infinite;
           transition: stroke-width 0.3s, opacity 0.3s, stroke 0.3s;
         }
-        @keyframes float-y-1 {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-4px); }
-        }
-        @keyframes float-y-2 {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(4px); }
-        }
-        @keyframes float-x {
-          0%, 100% { transform: translateX(0px); }
-          50% { transform: translateX(3px); }
-        }
-        @keyframes radar-sweep {
-          0% { transform: scale(0.1); opacity: 0.9; }
-          100% { transform: scale(2.2); opacity: 0; }
-        }
-        @keyframes siren-ring {
-          0%, 100% { box-shadow: 0 0 0 0px rgba(239, 68, 68, 0.4); }
-          50% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
-        }
-        @keyframes bell-shake {
-          0%, 100% { transform: rotate(0deg); }
-          20%, 60% { transform: rotate(12deg); }
-          40%, 80% { transform: rotate(-12deg); }
-        }
+        @keyframes float-y-1 { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-4px); } }
+        @keyframes float-y-2 { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(4px); } }
+        @keyframes float-x { 0%, 100% { transform: translateX(0px); } 50% { transform: translateX(3px); } }
+        @keyframes radar-sweep { 0% { transform: scale(0.1); opacity: 0.9; } 100% { transform: scale(2.2); opacity: 0; } }
+        @keyframes siren-ring { 0%, 100% { box-shadow: 0 0 0 0px rgba(239, 68, 68, 0.4); } 50% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); } }
+        @keyframes bell-shake { 0%, 100% { transform: rotate(0deg); } 20%, 60% { transform: rotate(12deg); } 40%, 80% { transform: rotate(-12deg); } }
         .badge-float-1 { animation: float-y-1 4s ease-in-out infinite; }
         .badge-float-2 { animation: float-y-2 4.5s ease-in-out infinite; }
         .badge-float-3 { animation: float-x 3.8s ease-in-out infinite; }
@@ -172,443 +550,31 @@ const ServicesHeroGraphic = () => {
 
       {/* Central Phone */}
       <div className="relative w-[300px] h-[600px] z-20 bg-[#1e1e1e] rounded-[3.2rem] border-[12px] border-[#2d2d2d] shadow-[0_25px_60px_rgba(0,0,0,0.45)] overflow-hidden flex flex-col justify-center items-center">
-        {/* Notch */}
         <div className="absolute top-0 inset-x-0 h-6 flex justify-center z-50">
           <div className="w-24 h-5 bg-[#2d2d2d] rounded-b-2xl"></div>
         </div>
 
-        {/* Interactive Phone Screen UI */}
-        <div className={`w-full h-full bg-[#f8fafc] dark:bg-zinc-950 overflow-hidden relative flex flex-col transition-all duration-500 ${active === "Emergency SOS" ? "ring-4 ring-red-500/80 ring-inset" : ""
-          }`}
-          style={{
-            animation: active === "Emergency SOS" ? "siren-ring 2s infinite" : "none"
-          }}>
-          {/* Top Info Bar inside Screen */}
-          <div className="absolute top-0 inset-x-0 h-10 px-5 flex items-center justify-between z-40 bg-white/40 dark:bg-black/30 backdrop-blur-sm border-b border-gray-200/20">
-            <span className="text-[10px] font-extrabold text-gray-700 dark:text-gray-300">9:41</span>
-            <div className="flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[8px] text-emerald-600 dark:text-emerald-400 font-extrabold uppercase tracking-wider">SECURED</span>
-            </div>
-          </div>
-
-          {active ? (
-            <motion.div
-              key="map-screen"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3 }}
-              className="absolute inset-0 w-full h-full flex flex-col"
-            >
-              {/* Vector City Map SVG Background */}
-              <svg className="absolute inset-0 w-full h-full opacity-[0.65] dark:opacity-[0.25] z-0" viewBox="0 0 276 576" preserveAspectRatio="none">
-                {/* Soft grid lines */}
-                <defs>
-                  <pattern id="city-grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                    <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#e2e8f0" strokeWidth="0.7" />
-                  </pattern>
-                </defs>
-                <rect width="100%" height="100%" fill="url(#city-grid)" />
-
-                {/* Roads */}
-                <path d="M -20 180 Q 80 180 120 220 T 260 250" fill="none" stroke="#e2e8f0" strokeWidth="20" strokeLinecap="round" />
-                <path d="M 60 -20 Q 60 180 140 220 T 140 600" fill="none" stroke="#e2e8f0" strokeWidth="18" strokeLinecap="round" />
-                <path d="M 220 -20 L 220 600" fill="none" stroke="#e2e8f0" strokeWidth="14" />
-
-                {/* Road center lines */}
-                <path d="M -20 180 Q 80 180 120 220 T 260 250" fill="none" stroke="#ffffff" strokeWidth="1.5" strokeDasharray="4 4" strokeLinecap="round" />
-                <path d="M 60 -20 Q 60 180 140 220 T 140 600" fill="none" stroke="#ffffff" strokeWidth="1.5" strokeDasharray="4 4" strokeLinecap="round" />
-              </svg>
-
-              {/* Dynamic Map Route Line */}
-              <svg className="absolute inset-0 w-full h-full z-10" viewBox="0 0 276 576" preserveAspectRatio="none">
-                {/* Base route */}
-                <path
-                  d="M 60 140 Q 60 200 140 240 T 140 400"
-                  fill="none"
-                  stroke={
-                    active === "Pink Mode"
-                      ? "#db2777"
-                      : active === "AI Safe Routing"
-                        ? "#4f46e5"
-                        : active === "Emergency SOS"
-                          ? "#dc2626"
-                          : "#0d9488"
-                  }
-                  strokeWidth="5.5"
-                  strokeLinecap="round"
-                  className="transition-all duration-500"
-                  style={{
-                    filter: active ? "drop-shadow(0 0 5px rgba(79, 70, 229, 0.45))" : "none"
-                  }}
-                />
-
-                {/* Alternating bypassed unsafe route for AI Safe Routing */}
-                {active === "AI Safe Routing" && (
-                  <path
-                    d="M 60 140 L 220 140 L 220 310 L 140 400"
-                    fill="none"
-                    stroke="#ef4444"
-                    strokeWidth="3.5"
-                    strokeDasharray="4 4"
-                    strokeLinecap="round"
-                    className="opacity-70 animate-pulse"
-                  />
-                )}
-
-                {/* Route Start Waypoint */}
-                <circle cx="60" cy="140" r="5" fill="#10b981" />
-                <circle cx="60" cy="140" r="10" fill="none" stroke="#10b981" strokeWidth="1.5" className="animate-ping" style={{ animationDuration: "2s" }} />
-
-                {/* Route End Waypoint */}
-                <rect x="136" y="396" width="8" height="8" rx="1.5" fill="#ef4444" />
-                <circle cx="140" cy="400" r="12" fill="none" stroke="#ef4444" strokeWidth="1.5" className="animate-pulse" />
-              </svg>
-
-              {/* Live GPS Car Dot */}
-              <div
-                className="absolute z-20 transition-all duration-1000 ease-in-out"
-                style={{
-                  left: active === "AI Safe Routing" ? "138px" : "138px",
-                  top: active === "AI Safe Routing" ? "300px" : "280px"
-                }}
-              >
-                <div className={`h-4 w-4 rounded-full flex items-center justify-center border-2 border-white shadow-lg ${active === "Pink Mode" ? "bg-pink-600" : active === "Emergency SOS" ? "bg-red-600" : "bg-primary"
-                  }`}>
-                  <Navigation size={8} className="text-white fill-white rotate-45" />
-                </div>
-                <div className={`absolute -inset-1 rounded-full animate-ping opacity-25 ${active === "Pink Mode" ? "bg-pink-600" : "bg-primary"
-                  }`} />
-              </div>
-
-              {/* Radar Sweep Effect (Live Tracking Active) */}
-              {active === "Live Tracking" && (
-                <div className="absolute left-[138px] top-[280px] z-15 pointer-events-none -translate-x-1/2 -translate-y-1/2">
-                  <div className="w-24 h-24 rounded-full border border-emerald-500/40 bg-emerald-500/5" style={{ animation: "radar-sweep 2s infinite linear" }} />
-                  <div className="absolute inset-0 w-24 h-24 rounded-full border border-emerald-500/20" style={{ animation: "radar-sweep 2s infinite linear", animationDelay: "1s" }} />
-                </div>
-              )}
-
-              {/* Siren Alert Icon (Emergency Active) */}
-              {active === "Emergency SOS" && (
-                <div className="absolute left-1/2 top-1/3 -translate-x-1/2 z-20 bg-red-600 text-white rounded-full p-3 shadow-xl animate-bounce">
-                  <Bell size={24} className="animate-spin" style={{ animationDuration: '3s' }} />
-                </div>
-              )}
-
-              {/* AI Bypass Badge overlay */}
-              {active === "AI Safe Routing" && (
-                <div className="absolute left-1/2 top-[160px] -translate-x-1/2 z-20 bg-red-500 text-white text-[8px] font-extrabold uppercase py-0.5 px-1.5 rounded shadow border border-white flex items-center gap-0.5 animate-pulse">
-                  <X size={8} /> High-Risk Area Bypassed
-                </div>
-              )}
-
-              {/* ────── Floating Safety Badges (matching first screenshot) ────── */}
-
-              {/* Badge 1: Pass / Pink Mode */}
-              <div
-                className={`absolute top-[50px] left-[12px] z-30 transition-all duration-300 badge-float-1 flex items-center gap-1 rounded-full px-2.5 py-1.5 shadow-md border ${active === "Pink Mode"
-                  ? "bg-pink-50 border-pink-200 scale-110 shadow-pink-100"
-                  : "bg-white dark:bg-zinc-900 border-gray-100 dark:border-zinc-800"
-                  }`}
-                style={{
-                  borderColor: active === "Pink Mode" ? "#f472b6" : undefined,
-                  boxShadow: active === "Pink Mode" ? "0 8px 20px rgba(244, 114, 182, 0.25)" : undefined
-                }}
-              >
-                <div className={`h-4.5 w-4.5 rounded-full flex items-center justify-center ${active === "Pink Mode" ? "bg-pink-600 text-white" : "border border-red-500 text-red-500"}`}>
-                  <X size={10} className="stroke-[3]" />
-                </div>
-                <span className={`text-[9px] font-extrabold ${active === "Pink Mode" ? "text-pink-700" : "text-gray-800 dark:text-gray-200"}`}>
-                  {active === "Pink Mode" ? "Pink Mode" : "Pass"}
-                </span>
-              </div>
-
-              {/* Badge 2: Emergency Protected (Red) */}
-              <div
-                className={`absolute top-[45px] right-[10px] z-30 transition-all duration-300 badge-float-2 flex items-center gap-1.5 rounded-full px-3 py-1.5 shadow-md border ${active === "Emergency SOS"
-                  ? "bg-red-600 border-red-500 scale-112 shadow-red-200 text-white"
-                  : "bg-red-50 dark:bg-red-950/20 border-red-100 dark:border-red-900/30 text-red-600 dark:text-red-400"
-                  }`}
-                style={{
-                  animation: active === "Emergency SOS" ? "bell-shake 0.5s infinite" : undefined
-                }}
-              >
-                <Bell size={10} className={active === "Emergency SOS" ? "text-white" : "text-red-500"} />
-                <span className="text-[9px] font-extrabold">Emergency Protected</span>
-              </div>
-
-              {/* Badge 3: Verified Driver */}
-              <div
-                className={`absolute top-[95px] left-[8px] z-30 transition-all duration-300 badge-float-3 flex items-center gap-1.5 rounded-full px-2.5 py-1.5 shadow-md border ${active === "Verified Operators"
-                  ? "bg-emerald-50 border-emerald-200 scale-110 shadow-emerald-100"
-                  : "bg-white dark:bg-zinc-900 border-gray-100 dark:border-zinc-800"
-                  }`}
-                style={{
-                  borderColor: active === "Verified Operators" ? "#34d399" : undefined,
-                  boxShadow: active === "Verified Operators" ? "0 8px 20px rgba(52, 211, 153, 0.25)" : undefined
-                }}
-              >
-                <ShieldCheck size={11} className="text-emerald-500" />
-                <span className={`text-[9px] font-extrabold ${active === "Verified Operators" ? "text-emerald-700" : "text-gray-800 dark:text-gray-200"}`}>Verified Driver</span>
-              </div>
-
-              {/* Badge 4: AI Safe Route */}
-              <div
-                className={`absolute top-[145px] right-[8px] z-30 transition-all duration-300 badge-float-1 flex items-center gap-1.5 rounded-full px-2.5 py-1.5 shadow-md border ${active === "AI Safe Routing"
-                  ? "bg-indigo-50 border-indigo-200 scale-110 shadow-indigo-100"
-                  : "bg-white dark:bg-zinc-900 border-gray-100 dark:border-zinc-800"
-                  }`}
-                style={{
-                  borderColor: active === "AI Safe Routing" ? "#818cf8" : undefined,
-                  boxShadow: active === "AI Safe Routing" ? "0 8px 20px rgba(129, 140, 248, 0.25)" : undefined
-                }}
-              >
-                <Navigation size={10} className="text-indigo-500 fill-indigo-100 rotate-45" />
-                <span className={`text-[9px] font-extrabold ${active === "AI Safe Routing" ? "text-indigo-700" : "text-gray-800 dark:text-gray-200"}`}>AI Safe Route</span>
-              </div>
-
-              {/* Badge 5: 24/7 Monitored */}
-              <div
-                className={`absolute bottom-[220px] left-[10px] z-30 transition-all duration-300 badge-float-2 flex items-center gap-1.5 rounded-full px-2.5 py-1.5 shadow-md border ${active === "Live Tracking"
-                  ? "bg-pink-50 border-pink-200 scale-110 shadow-pink-100"
-                  : "bg-white dark:bg-zinc-900 border-gray-100 dark:border-zinc-800"
-                  }`}
-                style={{
-                  borderColor: active === "Live Tracking" ? "#f472b6" : undefined
-                }}
-              >
-                <Clock size={11} className="text-pink-500" />
-                <span className={`text-[9px] font-extrabold ${active === "Live Tracking" ? "text-pink-700" : "text-gray-800 dark:text-gray-200"}`}>24/7 Monitored</span>
-              </div>
-
-              {/* Badge 6: Multilingual Enabled */}
-              <div
-                className={`absolute bottom-[200px] right-[10px] z-30 transition-all duration-300 badge-float-3 flex items-center gap-1.5 rounded-full px-2.5 py-1.5 shadow-md border ${active === "Multilingual App"
-                  ? "bg-blue-50 border-blue-200 scale-110 shadow-blue-100"
-                  : "bg-white dark:bg-zinc-900 border-gray-100 dark:border-zinc-800"
-                  }`}
-                style={{
-                  borderColor: active === "Multilingual App" ? "#60a5fa" : undefined
-                }}
-              >
-                <Globe size={11} className="text-blue-500" />
-                <span className={`text-[9px] font-extrabold ${active === "Multilingual App" ? "text-blue-700" : "text-gray-800 dark:text-gray-200"}`}>Multilingual Enabled</span>
-              </div>
-
-              {/* Dynamic Accessibility and Elderly Badges (fades in) */}
-              {active === "PWD Accessibility" && (
-                <div className="absolute top-[215px] left-[12px] z-30 animate-bounce flex items-center gap-1 bg-blue-600 border border-blue-500 text-white rounded-full px-2.5 py-1.5 shadow-lg">
-                  <Users size={11} />
-                  <span className="text-[9px] font-extrabold">PWD Assisted</span>
-                </div>
-              )}
-
-              {active === "Elderly Assistance" && (
-                <div className="absolute top-[210px] right-[12px] z-30 animate-bounce flex items-center gap-1 bg-amber-500 border border-amber-400 text-white rounded-full px-2.5 py-1.5 shadow-lg">
-                  <Heart size={11} className="fill-white" />
-                  <span className="text-[9px] font-extrabold">Elderly Care</span>
-                </div>
-              )}
-
-              {/* ────── Bottom Ride Details Card (matching first screenshot) ────── */}
-              <div className="absolute bottom-[38px] left-[12px] right-[12px] bg-white dark:bg-zinc-900 rounded-2xl p-4 shadow-[0_12px_30px_rgba(0,0,0,0.08)] border border-gray-100 dark:border-zinc-800/80 z-30 transition-all duration-300 flex flex-col">
-
-                {/* Card Header (Profile & Payment Type) */}
-                <div className="flex items-center justify-between mb-2">
-                  <div className={`h-8 w-8 rounded-full flex items-center justify-center ${active === "Pink Mode"
-                    ? "bg-pink-100 text-pink-600"
-                    : active === "PWD Accessibility"
-                      ? "bg-blue-100 text-blue-600"
-                      : active === "Elderly Assistance"
-                        ? "bg-amber-100 text-amber-600"
-                        : "bg-[#0d9488]/10 text-[#0d9488]"
-                    }`}>
-                    {active === "Pink Mode" ? (
-                      <User size={16} />
-                    ) : active === "PWD Accessibility" ? (
-                      <Users size={16} />
-                    ) : (
-                      <User size={16} />
-                    )}
-                  </div>
-
-                  {/* Digital Payment Label */}
-                  <div className={`px-2 py-0.5 rounded-md text-[8px] font-extrabold uppercase tracking-wide ${active === "Emergency SOS"
-                    ? "bg-red-100 text-red-600"
-                    : active === "Pink Mode"
-                      ? "bg-pink-100 text-pink-600"
-                      : active === "PWD Accessibility"
-                        ? "bg-blue-100 text-blue-600"
-                        : active === "Elderly Assistance"
-                          ? "bg-amber-100 text-amber-600"
-                          : "bg-emerald-100 text-emerald-700"
-                    }`}>
-                    {active === "Emergency SOS" ? (
-                      "SOS BROADCAST"
-                    ) : active === "Pink Mode" ? (
-                      "FEMALE OPERATOR"
-                    ) : active === "PWD Accessibility" ? (
-                      "ACCESSIBLE RIDE"
-                    ) : active === "Elderly Assistance" ? (
-                      "CARE SPECIALIST"
-                    ) : active === "Multilingual App" ? (
-                      "डिजिटल भुगतान"
-                    ) : (
-                      "DIGITAL PAYMENT"
-                    )}
-                  </div>
-                </div>
-
-                {/* Ride Details (ETA, car type) */}
-                <div className="mb-3">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className={`text-2xl font-black tracking-tight ${active === "Emergency SOS" ? "text-red-600 animate-pulse" : "text-gray-900 dark:text-white"
-                      }`}>
-                      {active === "Emergency SOS" ? (
-                        "ACTIVE"
-                      ) : active === "Multilingual App" ? (
-                        "3 मिनट"
-                      ) : (
-                        "3 min"
-                      )}
-                    </span>
-                    <span className="text-[10px] text-gray-500 dark:text-gray-400 font-bold">
-                      {active === "Emergency SOS" ? (
-                        "Alert Broadcasted"
-                      ) : active === "Pink Mode" ? (
-                        "Innova • Female Driver"
-                      ) : active === "Multilingual App" ? (
-                        "सेडान • 1.7 किमी"
-                      ) : (
-                        "Sedan • 1.7 km"
-                      )}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Route addresses */}
-                <div className="flex flex-col gap-2 relative pl-4 border-l border-dashed border-gray-200 dark:border-zinc-800 ml-1.5 text-left">
-                  {/* Pickup Address */}
-                  <div className="relative">
-                    <div className="absolute -left-[20px] top-[4px] h-2.5 w-2.5 rounded-full bg-emerald-500 border border-white" />
-                    <p className="text-[9px] font-extrabold text-gray-700 dark:text-gray-300 leading-none">
-                      {active === "Multilingual App" ? "7वीं मेन रोड, इंदिरा नगर" : "7th Main Rd, Indiranagar"}
-                    </p>
-                  </div>
-
-                  {/* Destination Address */}
-                  <div className="relative mt-0.5">
-                    <div className="absolute -left-[20px] top-[4px] h-2.5 w-2.5 rounded-sm bg-red-500 border border-white" />
-                    <p className="text-[9px] font-extrabold text-gray-700 dark:text-gray-300 leading-none">
-                      {active === "Multilingual App" ? "कोरामंगला" : "Koramangala"}
-                    </p>
-                  </div>
-                </div>
-
-                {/* State messages */}
-                {active && (
-                  <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-zinc-800/80 text-[8px] font-extrabold uppercase tracking-wide text-left text-primary">
-                    {active === "Pink Mode" && (
-                      <span className="text-pink-600">✓ प्रिया एस. • महिला चालक सत्यापित</span>
-                    )}
-                    {active === "Emergency SOS" && (
-                      <span className="text-red-600 animate-pulse">!! आपातकालीन अलर्ट: संपर्क एवं पुलिस को सूचित किया जा रहा है</span>
-                    )}
-                    {active === "PWD Accessibility" && (
-                      <span className="text-blue-600">✓ रैंप युक्त वाहन एवं विशेष सहायता सक्रिय</span>
-                    )}
-                    {active === "Elderly Assistance" && (
-                      <span className="text-amber-600">✓ द्वार तक सहायता सुनिश्चित की गई</span>
-                    )}
-                    {active === "AI Safe Routing" && (
-                      <span className="text-indigo-600 animate-pulse">✦ मार्ग सुरक्षा: 99.8% - सभी संवेदनशील क्षेत्र बाईपास</span>
-                    )}
-                    {active === "Live Tracking" && (
-                      <span className="text-emerald-600">✦ लाइव ट्रैकिंग सक्रिय - 3 संरक्षक जुड़े हैं</span>
-                    )}
-                    {active === "Verified Operators" && (
-                      <span className="text-emerald-600">✓ पृष्ठभूमि जांच: 100% स्पष्ट</span>
-                    )}
-                    {active === "Multilingual App" && (
-                      <span className="text-blue-600">✦ हिंदी भाषा सक्रिय</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="welcome-screen"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3 }}
-              className="absolute inset-0 w-full h-full z-30 flex flex-col justify-between"
-            >
-              {/* Background Image Slideshow with smooth cross-fade */}
-              <div className="absolute inset-0 z-0 overflow-hidden">
-                <AnimatePresence mode="popLayout">
-                  <motion.img
-                    key={slideshowImages[slideshowIndex]}
-                    src={slideshowImages[slideshowIndex]}
-                    alt="SafeGo Slide"
-                    className="absolute inset-0 w-full h-full object-cover"
-                    initial={{ opacity: 0, scale: 1.05 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 1.2, ease: "easeInOut" }}
-                  />
-                </AnimatePresence>
-                {/* Dynamic Overlay Gradient for perfect readability */}
-                <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/10 to-black/85 z-10 pointer-events-none" />
-              </div>
-
-              {/* Top Header Section inside Phone */}
-              <div className="relative z-10 px-5 pt-12 flex flex-col text-left">
-                <div className="inline-flex items-center gap-1 bg-primary/20 backdrop-blur-md border border-white/20 px-2 py-0.5 rounded-full w-fit mb-1.5 animate-pulse">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" style={{ animationDuration: '2s' }} />
-                  <span className="text-[7.5px] text-white font-extrabold uppercase tracking-widest">LIVE IN INDIA</span>
-                </div>
-                <h3 className="text-xl font-black text-white leading-tight font-display tracking-tight drop-shadow-md">
-                  SafeGo India
-                </h3>
-                <p className="text-[10px] font-semibold text-white/80 leading-snug drop-shadow-sm mt-0.5">
-                  Your Safest Journey starts here.
-                </p>
-              </div>
-
-
-
-              {/* Spacer to keep welcome screen layout balanced and clean */}
-              <div className="h-16 pb-12 w-full relative z-10" />
-            </motion.div>
-          )}
-
-          {/* Home Button Bar inside Screen */}
-          <div className="absolute bottom-1 inset-x-0 flex justify-center z-40">
-            <div className="w-16 h-1 bg-gray-300 dark:bg-zinc-800 rounded-full"></div>
-          </div>
-        </div>
+        <PhoneScreenContent
+          active={active}
+          slideshowImages={slideshowImages}
+          slideshowIndex={slideshowIndex}
+        />
       </div>
 
-      {/* SVG Dotted lines behind phone curving elegantly to converge nicely near phone center */}
+      {/* SVG Dotted lines behind phone */}
       <svg className="absolute inset-0 w-full h-full z-10 pointer-events-none" viewBox="0 0 1000 720">
-        {/* Left lines curving elegantly to converge nicely near phone center */}
         <path d="M 290 90 Q 320 90, 350 210" className="flow-line" {...getLineStyles("Pink Mode")} fill="none" />
         <path d="M 290 270 Q 320 270, 350 310" className="flow-line" {...getLineStyles("PWD Accessibility")} fill="none" />
         <path d="M 290 450 Q 320 450, 350 410" className="flow-line" {...getLineStyles("Elderly Assistance")} fill="none" />
         <path d="M 290 630 Q 320 630, 350 510" className="flow-line" {...getLineStyles("AI Safe Routing")} fill="none" />
 
-        {/* Right lines curving elegantly to converge nicely near phone center */}
         <path d="M 710 90 Q 680 90, 650 210" className="flow-line" {...getLineStyles("Emergency SOS")} fill="none" />
         <path d="M 710 270 Q 680 270, 650 310" className="flow-line" {...getLineStyles("Live Tracking")} fill="none" />
         <path d="M 710 450 Q 680 450, 650 410" className="flow-line" {...getLineStyles("Verified Operators")} fill="none" />
         <path d="M 710 630 Q 680 630, 650 510" className="flow-line" {...getLineStyles("Multilingual App")} fill="none" />
       </svg>
 
-      {/* Left Feature Cards - Re-engineered for high visibility */}
+      {/* Left Feature Cards */}
       {leftCards.map((card) => {
         const isSelected = selectedCard === card.title;
         const isHovered = hoveredCard === card.title;
@@ -664,12 +630,9 @@ const ServicesHeroGraphic = () => {
               borderColor: isSelected || isHovered ? ACCENT_COLOR : undefined
             }}
           >
-            {/* Left Circular Icon Container */}
             <div className="w-12 h-12 rounded-full flex items-center justify-center bg-[#fff1f2] dark:bg-rose-950/20 border border-rose-100/50 dark:border-rose-900/30 flex-shrink-0">
               {getCardIcon(card.title)}
             </div>
-
-            {/* Right Left-Aligned Text Content */}
             <div className="flex-1 min-w-0 text-left">
               <h4 className="font-extrabold text-[15px] mb-0.5 text-[#111827] dark:text-white transition-colors duration-300"
                 style={{ color: isSelected || isHovered ? ACCENT_COLOR : undefined }}>
@@ -683,7 +646,7 @@ const ServicesHeroGraphic = () => {
         );
       })}
 
-      {/* Right Feature Cards - Re-engineered for high visibility */}
+      {/* Right Feature Cards */}
       {rightCards.map((card) => {
         const isSelected = selectedCard === card.title;
         const isHovered = hoveredCard === card.title;
@@ -739,12 +702,9 @@ const ServicesHeroGraphic = () => {
               borderColor: isSelected || isHovered ? ACCENT_COLOR : undefined
             }}
           >
-            {/* Left Circular Icon Container */}
             <div className="w-12 h-12 rounded-full flex items-center justify-center bg-[#fff1f2] dark:bg-rose-950/20 border border-rose-100/50 dark:border-rose-900/30 flex-shrink-0">
               {getCardIcon(card.title)}
             </div>
-
-            {/* Right Left-Aligned Text Content */}
             <div className="flex-1 min-w-0 text-left">
               <h4 className="font-extrabold text-[15px] mb-0.5 text-[#111827] dark:text-white transition-colors duration-300"
                 style={{ color: isSelected || isHovered ? ACCENT_COLOR : undefined }}>
@@ -757,7 +717,6 @@ const ServicesHeroGraphic = () => {
           </motion.div>
         );
       })}
-
     </div>
   );
 };
@@ -766,7 +725,7 @@ const ServicesHeroGraphic = () => {
 const SafetyDashboardWidget = () => {
   const [currentTime, setCurrentTime] = useState("");
   const [activeCheck, setActiveCheck] = useState("Sentinel AI Active");
-  
+
   const checks = [
     "Analyzing street illumination...",
     "Scanning municipal safety reports...",
@@ -879,6 +838,235 @@ const SafetyDashboardWidget = () => {
   );
 };
 
+// ─── Key Features Single Slide Component (Auto 5-Second Interval) ─────────────────────
+const SingleFeatureSlider = () => {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [direction, setDirection] = useState(1);
+
+  const features = [
+    {
+      id: "01",
+      icon: User,
+      title: "Pink Mode",
+      subtitle: "Women-Only Verified Rides",
+      bg: "bg-pink-500/10 text-pink-600 dark:text-pink-400 border-pink-500/30",
+      iconBg: "bg-pink-500/15 text-pink-600 dark:text-pink-400",
+      accent: "#db2777",
+      tag: "Women Safety Standard",
+      text: "Verified female drivers exclusively dedicated to women passengers, complete with enhanced SOS monitoring and live trip guardian sharing."
+    },
+    {
+      id: "02",
+      icon: Heart,
+      title: "Elderly Mode",
+      subtitle: "Door-to-Door Senior Care",
+      bg: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
+      iconBg: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+      accent: "#d97706",
+      tag: "Senior Citizen Priority",
+      text: "Patient, top-rated drivers offering door-to-door assistance, low step-in vehicle priority, and continuous location alerts for loved ones."
+    },
+    {
+      id: "03",
+      icon: Clock,
+      title: "24/7 Car Delivery",
+      subtitle: "Always On Demand",
+      bg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+      iconBg: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+      accent: "#10b981",
+      tag: "Round-The-Clock Service",
+      text: "Reserve a ride any time of the day or night. Our fleets are actively running during off-hours to make sure you never get stranded."
+    },
+    {
+      id: "04",
+      icon: Lock,
+      title: "Absolute Confidentiality",
+      subtitle: "End-to-End Encrypted",
+      bg: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30",
+      iconBg: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400",
+      accent: "#6366f1",
+      tag: "Data & Privacy Shield",
+      text: "Your personal location data and contact info are securely encrypted. Drivers cannot access your real phone number through the app."
+    },
+    {
+      id: "05",
+      icon: Zap,
+      title: "Premium Ride Package",
+      subtitle: "First-Class Amenities",
+      bg: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30",
+      iconBg: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+      accent: "#3b82f6",
+      tag: "Verified Fleet Standard",
+      text: "Enjoy complimentary Wi-Fi, phone chargers, and bottled water included standard on our verified Premium Fleet vehicles."
+    },
+    {
+      id: "06",
+      icon: HelpCircle,
+      title: "Dedicated Support",
+      subtitle: "Instant Human Help",
+      bg: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30",
+      iconBg: "bg-rose-500/15 text-rose-600 dark:text-rose-400",
+      accent: "#f43f5e",
+      tag: "24/7 Command Center",
+      text: "Got an issue? Hit the help button to connect instantly with a live human representative at our dedicated support center."
+    }
+  ];
+
+  // Auto slide every 5 seconds (resets fresh on slide change)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setDirection(1);
+      setActiveIndex((current) => (current + 1) % features.length);
+    }, 5000);
+
+    return () => clearInterval(timer);
+  }, [activeIndex, features.length]);
+
+  const nextSlide = () => {
+    setDirection(1);
+    setActiveIndex((prev) => (prev + 1) % features.length);
+  };
+
+  const prevSlide = () => {
+    setDirection(-1);
+    setActiveIndex((prev) => (prev - 1 + features.length) % features.length);
+  };
+
+  const currentFeature = features[activeIndex];
+
+  const slideVariants: Variants = {
+    enter: (dir: number) => ({
+      x: dir > 0 ? 60 : -60,
+      opacity: 0,
+      scale: 0.97
+    }),
+    center: {
+      x: 0,
+      opacity: 1,
+      scale: 1,
+      transition: {
+        x: { type: "spring", stiffness: 300, damping: 28 },
+        opacity: { duration: 0.35 }
+      }
+    },
+    exit: (dir: number) => ({
+      x: dir > 0 ? -60 : 60,
+      opacity: 0,
+      scale: 0.97,
+      transition: {
+        x: { type: "spring", stiffness: 300, damping: 28 },
+        opacity: { duration: 0.25 }
+      }
+    })
+  };
+
+  return (
+    <div className="w-full max-w-2xl mx-auto select-none relative">
+      {/* Single Feature Spotlight Card */}
+      <div className="relative min-h-[300px]">
+        <AnimatePresence mode="wait" custom={direction}>
+          <motion.div
+            key={currentFeature.id}
+            custom={direction}
+            variants={slideVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            className="w-full"
+          >
+            <div className="relative p-8 sm:p-10 rounded-[2.5rem] bg-card border-2 border-primary/30 shadow-[0_20px_50px_rgba(0,0,0,0.06)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] backdrop-blur-xl flex flex-col justify-between overflow-hidden text-left">
+              {/* Background Ambient Glow */}
+              <div
+                className="absolute top-[-40px] right-[-40px] w-48 h-48 rounded-full blur-[70px] opacity-20 pointer-events-none"
+                style={{ backgroundColor: currentFeature.accent }}
+              />
+
+              <div>
+                {/* Header row: Icon, Category Badge, and Number */}
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-4">
+                    <div
+                      className={`flex shrink-0 h-16 w-16 items-center justify-center rounded-2xl ${currentFeature.iconBg} shadow-sm border border-border/50`}
+                    >
+                      <currentFeature.icon size={28} style={{ color: currentFeature.accent }} />
+                    </div>
+                    <div>
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20">
+                        <Sparkles size={11} />
+                        {currentFeature.tag}
+                      </span>
+                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mt-1">
+                        {currentFeature.subtitle}
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="font-display font-black text-4xl sm:text-5xl text-muted-foreground/20">
+                    {currentFeature.id}
+                  </span>
+                </div>
+
+                {/* Content */}
+                <h3 className="font-display text-2xl sm:text-3xl font-black text-foreground mb-3">
+                  {currentFeature.title}
+                </h3>
+                <p className="text-base sm:text-lg leading-relaxed text-muted-foreground font-medium">
+                  {currentFeature.text}
+                </p>
+              </div>
+
+              {/* Bottom Quick Feature Tag */}
+              <div className="mt-8 pt-5 border-t border-border/60 flex items-center justify-between text-xs text-muted-foreground font-semibold">
+                <span>SafeGo Verified Standard</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={prevSlide}
+                    aria-label="Previous Feature"
+                    className="h-8 w-8 rounded-full bg-muted/80 hover:bg-primary hover:text-primary-foreground text-foreground flex items-center justify-center transition-all active:scale-95 border border-border/50"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={nextSlide}
+                    aria-label="Next Feature"
+                    className="h-8 w-8 rounded-full bg-muted/80 hover:bg-primary hover:text-primary-foreground text-foreground flex items-center justify-center transition-all active:scale-95 border border-border/50"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      {/* Minimalist Pagination Dots */}
+      <div className="mt-6 flex items-center justify-center gap-2">
+        {features.map((f, idx) => {
+          const isActive = idx === activeIndex;
+          return (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => {
+                setDirection(idx > activeIndex ? 1 : -1);
+                setActiveIndex(idx);
+              }}
+              className={`h-2 rounded-full transition-all duration-300 ${isActive
+                ? "w-8 bg-primary shadow-sm"
+                : "w-2 bg-muted hover:bg-muted-foreground/40"
+                }`}
+              aria-label={`Go to slide ${f.id}`}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const Home = () => {
   const { t } = useTranslation();
   const [activeMode, setActiveMode] = useState("all");
@@ -950,9 +1138,9 @@ const Home = () => {
   return (
     <div ref={revealRef} className="relative">
       {/* Fixed background image for curtain reveal effect */}
-      <div 
+      <div
         className="fixed top-[80px] inset-x-0 bottom-0 -z-10 bg-cover bg-center bg-no-repeat pointer-events-none select-none transition-opacity duration-300"
-        style={{ 
+        style={{
           backgroundImage: "url('/airport_taxis.jpg')",
           backgroundAttachment: "fixed",
           opacity: showCurtainBg ? 1 : 0,
@@ -967,51 +1155,74 @@ const Home = () => {
         {/* Subtle Background Pattern */}
         <div className="absolute inset-0 pointer-events-none opacity-[0.03] dark:opacity-[0.02] z-0" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0)', backgroundSize: '40px 40px' }}></div>
 
-        <div className="mx-auto flex w-full flex-col-reverse items-center gap-16 px-6 py-12 lg:flex-row lg:gap-20 sm:px-10 lg:px-16 relative z-10">
+        <div className="mx-auto flex w-full flex-col items-center gap-12 lg:gap-20 px-5 sm:px-10 lg:px-16 lg:flex-row relative z-10">
 
           {/* Left Content */}
           <motion.div
-            initial={{ opacity: 0, x: -50 }}
+            initial={{ opacity: 0, x: -30 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8 }}
-            className="flex-1 text-center lg:text-left lg:-mt-20"
+            transition={{ duration: 0.7 }}
+            className="flex-1 text-center lg:text-left lg:-mt-10 max-w-2xl"
           >
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary font-semibold text-sm mb-6">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary/10 text-primary font-bold text-xs sm:text-sm mb-6 border border-primary/20 shadow-sm">
               <ShieldCheck size={16} />
               <span>Premium Safety Standard</span>
             </div>
-            <h1 className="font-display text-5xl font-black leading-[1.1] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
+            <h1 className="font-display text-4xl sm:text-6xl lg:text-7xl font-black leading-[1.1] tracking-tight text-foreground">
               Elevate Your Journey
             </h1>
-            <p className="mt-6 max-w-2xl text-lg font-medium leading-relaxed text-primary mx-auto lg:mx-0">
+            <p className="mt-5 text-base sm:text-lg font-medium leading-relaxed text-primary mx-auto lg:mx-0">
               SafeGo ensures every woman, elderly citizen, and differently-abled passenger travels with safety, dignity, and confidence.
             </p>
-            <p className="mt-4 max-w-2xl text-lg font-medium leading-relaxed text-muted-foreground mx-auto lg:mx-0">
+            <p className="mt-3 text-sm sm:text-base font-medium leading-relaxed text-muted-foreground mx-auto lg:mx-0">
               SafeGo adapts to you with tailored routes, verified operators, and real-time monitoring. Premium safety, accessible for all.
             </p>
 
+            {/* Mobile & Desktop CTA Action Buttons */}
+            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3.5">
+              <Link
+                to="/book/normal"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-2xl bg-primary text-primary-foreground font-extrabold text-sm uppercase tracking-wider shadow-lg shadow-primary/25 hover:brightness-110 active:scale-95 transition-all"
+              >
+                <span>Book a Safe Ride</span>
+                <ArrowRight size={16} />
+              </Link>
+              <Link
+                to="/drive-with-us"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-card border border-border/80 text-foreground font-bold text-sm uppercase tracking-wider hover:bg-muted active:scale-95 transition-all"
+              >
+                <span>Drive With Us</span>
+              </Link>
+            </div>
 
             {/* The SafeGo Promise Quote */}
             <div className="mt-8 max-w-xl hidden lg:block text-left">
-              <p className="text-[17px] font-medium text-foreground italic leading-relaxed min-h-[50px]">
+              <p className="text-[16px] font-medium text-foreground italic leading-relaxed min-h-[48px]">
                 {displayedQuote}
-                <span className="inline-block w-1 h-5 bg-primary ml-1 animate-pulse" style={{ visibility: displayedQuote.length === fullQuote.length ? 'hidden' : 'visible' }} />
+                <span className="inline-block w-1 h-4 bg-primary ml-1 animate-pulse" style={{ visibility: displayedQuote.length === fullQuote.length ? 'hidden' : 'visible' }} />
               </p>
-              <p className="mt-4 text-xs font-bold tracking-widest text-primary uppercase">- THE SAFEGO PROMISE</p>
+              <p className="mt-3 text-xs font-bold tracking-widest text-primary uppercase">- THE SAFEGO PROMISE</p>
             </div>
           </motion.div>
 
-          {/* Right Content - Phone Mockup */}
+          {/* Right Content - Responsive Phone Showcase */}
           <motion.div
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-            className="flex-1 flex justify-center items-center py-10 lg:py-0 relative lg:-mt-20"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.15 }}
+            className="flex-1 flex justify-center items-center w-full py-4 lg:py-0 relative lg:-mt-10 overflow-visible"
           >
             {/* Glowing background behind phone */}
-            <div className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full scale-75 opacity-50 pointer-events-none"></div>
-            <div className="w-[400px] sm:w-[520px] md:w-[640px] lg:w-[738px] xl:w-[828px] h-[320px] sm:h-[415px] md:h-[515px] lg:h-[590px] xl:h-[660px] flex items-center justify-center overflow-visible shrink-0">
+            <div className="absolute inset-0 bg-primary/15 blur-[90px] rounded-full scale-75 opacity-60 pointer-events-none"></div>
+
+            {/* Desktop 1000px interactive diagram */}
+            <div className="hidden lg:flex w-full justify-center items-center overflow-visible">
               <ServicesHeroGraphic />
+            </div>
+
+            {/* Mobile & Tablet Clean Phone Showcase */}
+            <div className="flex lg:hidden w-full justify-center items-center">
+              <MobileHeroShowcase />
             </div>
           </motion.div>
 
@@ -1220,7 +1431,7 @@ const Home = () => {
       {/* KEY FEATURES */}
       <section id="features" className="section-padding bg-slate-50 dark:bg-zinc-900/60 relative z-10 border-t border-b border-border/10 overflow-hidden">
         <div className="mx-auto w-full px-6 sm:px-10 lg:px-16">
-          <div className="scroll-reveal text-center max-w-2xl mx-auto">
+          <div className="scroll-reveal text-center max-w-2xl mx-auto mb-10">
             <span className="caption-label">TAKING CARE OF EVERY CLIENT</span>
             <h2 className="mt-3 font-display text-4xl font-bold text-foreground sm:text-5xl">Key Features</h2>
             <p className="mt-4 text-lg text-muted-foreground">
@@ -1228,43 +1439,8 @@ const Home = () => {
             </p>
           </div>
 
-          <div className="mt-16 relative">
-            {/* Background connecting snake line for Flowchart (Desktop) */}
-            <div className="hidden lg:block absolute top-[100px] left-[12%] right-[12%] bottom-0 pointer-events-none z-0">
-              <svg width="100%" height="100%" preserveAspectRatio="none">
-                <path d="M 0 0 C 300 0, 700 0, 1000 0" stroke="currentColor" strokeWidth="2" strokeDasharray="8 8" className="text-border" fill="none" />
-              </svg>
-            </div>
-
-            <div className="grid gap-10 lg:gap-8 sm:grid-cols-2 lg:grid-cols-4 relative z-10">
-              {[
-                { icon: Clock, title: "24/7 Car Delivery", bg: "bg-mode-teal-light", color: "text-primary", border: "border-primary", text: "Reserve a ride any time of the day or night. Our fleets are actively running during off-hours to make sure you never get stranded." },
-                { icon: Lock, title: "Absolute Confidentiality", bg: "bg-secondary", color: "text-foreground", border: "border-border", text: "Your personal location data and contact info are securely encrypted. Drivers cannot access your real phone number through the app." },
-                { icon: Zap, title: "Premium Ride Package", bg: "bg-mode-blue-light", color: "text-mode-blue", border: "border-mode-blue", text: "Enjoy complimentary Wi-Fi, phone chargers, and bottled water included standard on our verified Premium Fleet vehicles." },
-                { icon: HelpCircle, title: "Dedicated Support", bg: "bg-mode-pink-light", color: "text-mode-pink", border: "border-mode-pink", text: "Got an issue? Hit the help button to connect instantly with a live human representative at our support center." },
-              ].map((f, idx) => (
-                <div key={f.title} className="relative scroll-reveal group">
-                  {/* Flow Arrows */}
-                  {idx < 3 && (
-                    <div className="hidden lg:flex absolute -right-4 top-[32px] z-20 h-6 w-6 items-center justify-center text-muted-foreground translate-x-1/2 bg-background rounded-full border border-border shadow-sm">
-                      <ArrowRight size={14} />
-                    </div>
-                  )}
-
-                  <div className={`safego-card relative h-full flex flex-col p-8 transition-colors border-2 border-transparent hover:${f.border} bg-card/90 backdrop-blur-md`}>
-                    <div className="flex items-center gap-4 mb-5">
-                      <div className={`flex shrink-0 h-16 w-16 items-center justify-center rounded-2xl ${f.bg} shadow-sm group-hover:scale-110 transition-transform`}>
-                        <f.icon size={28} className={f.color} />
-                      </div>
-                      <span className="font-display font-extrabold text-3xl opacity-10">0{idx + 1}</span>
-                    </div>
-
-                    <h3 className="font-display text-xl font-bold text-foreground">{f.title}</h3>
-                    <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground flex-1">{f.text}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div className="scroll-reveal">
+            <SingleFeatureSlider />
           </div>
         </div>
       </section>

@@ -27,6 +27,14 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     role: str
     user_id: str  # MongoDB ObjectId as string
+    needs_password: Optional[bool] = False
+    needs_phone: Optional[bool] = False
+
+
+class SetPasswordRequest(BaseModel):
+    password: str = Field(..., min_length=6)
+    confirm_password: str = Field(..., min_length=6)
+    phone: Optional[str] = None
 
 
 class FirebaseSyncRequest(BaseModel):
@@ -199,6 +207,8 @@ class RouteRequest(BaseModel):
     mode: str = "normal"
     passenger_count: int = 1
     scheduled_at: Optional[datetime] = None
+    driver_latitude: Optional[float] = None
+    driver_longitude: Optional[float] = None
 
 
 class RouteResponse(BaseModel):
@@ -210,6 +220,27 @@ class RouteResponse(BaseModel):
     surge_multiplier: Optional[float] = 1.0
     route_polyline: Optional[str] = None
     steps: Optional[List[Any]] = []
+    driver_to_pickup: Optional[dict] = None
+
+
+class RerouteRequest(BaseModel):
+    driver_latitude: float
+    driver_longitude: float
+    destination_latitude: float
+    destination_longitude: float
+    mode: str = "normal"
+    reason: str = "driver_deviation"
+
+
+class RerouteResponse(BaseModel):
+    rerouted: bool = True
+    reroute_reason: str = "driver_deviation"
+    distance_km: float
+    duration_minutes: float
+    route_polyline: Optional[str] = None
+    steps: Optional[List[Any]] = []
+    ai_safety_prediction: Optional[str] = "Stable"
+
 
 
 class RideRequest(BaseModel):

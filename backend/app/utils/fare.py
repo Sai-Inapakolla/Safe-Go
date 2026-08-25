@@ -59,8 +59,27 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     return R * c
 
 
-def estimate_duration(distance_km: float) -> float:
-    """Rough time estimate assuming ~30 km/h average speed in Philippine traffic."""
+def estimate_duration(distance_km: float, hour: int | None = None) -> float:
+    """
+    Traffic-aware duration estimate in minutes.
+    Considers time-of-day peak traffic hours (8-10 AM, 5-8 PM) and road network speed models.
+    """
     if distance_km <= 0:
         return 1.0
-    return round((distance_km / 30.0) * 60, 1)
+
+    # Base average city speed: 28 km/h
+    base_speed = 28.0
+
+    # Time-of-day traffic factor
+    traffic_multiplier = 1.0
+    if hour is not None:
+        if (8 <= hour <= 10) or (17 <= hour <= 20):
+            traffic_multiplier = 1.35  # Peak traffic congestion (+35% time)
+        elif (11 <= hour <= 16):
+            traffic_multiplier = 1.15  # Moderate midday traffic (+15% time)
+        elif (22 <= hour or hour <= 5):
+            traffic_multiplier = 0.85  # Free-flowing night traffic (-15% time)
+
+    duration_minutes = (distance_km / base_speed) * 60.0 * traffic_multiplier
+    return max(1.0, round(duration_minutes, 1))
+

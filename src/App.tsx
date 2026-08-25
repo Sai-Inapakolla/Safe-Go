@@ -23,6 +23,9 @@ import ApplyDriver from "./pages/ApplyDriver";
 import PWDMode from "./pages/PWDMode";
 import About from "./pages/About";
 
+import ProtectedRoute from "./components/ProtectedRoute";
+import { ScrollToTop } from "./components/ScrollToTop";
+
 const queryClient = new QueryClient();
 
 /**
@@ -49,6 +52,7 @@ const App = () => (
         <Toaster />
         <Sonner position="top-right" expand={true} richColors closeButton />
         <BrowserRouter>
+          <ScrollToTop />
           <VoiceAssistantProvider>
             {/* <FloatingAssistant /> */}
             <Suspense fallback={<PageLoader />}>
@@ -57,15 +61,15 @@ const App = () => (
                 <Route path="/home" element={<Home />} />
                 <Route path="/login" element={<AuthPage />} />
                 <Route path="/signup" element={<AuthPage />} />
-                <Route path="/book/:mode" element={<BookingPage />} />
-                <Route path="/ride/tracking" element={<RideTracking />} />
+                <Route path="/book/:mode" element={<ProtectedRoute><BookingPage /></ProtectedRoute>} />
+                <Route path="/ride/tracking" element={<ProtectedRoute><RideTracking /></ProtectedRoute>} />
                 <Route path="/safety" element={<Safety />} />
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/driver" element={<DriverPortal />} />
-                <Route path="/admin" element={<AdminDashboard />} />
+                <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                <Route path="/driver" element={<ProtectedRoute allowedRoles={["driver", "admin"]}><DriverPortal /></ProtectedRoute>} />
+                <Route path="/admin" element={<ProtectedRoute allowedRoles={["admin"]}><AdminDashboard /></ProtectedRoute>} />
                 <Route path="/drive-with-us" element={<DriveWithUs />} />
                 <Route path="/apply-driver" element={<ApplyDriver />} />
-                <Route path="/pwd-mode" element={<PWDMode />} />
+                <Route path="/pwd-mode" element={<ProtectedRoute><PWDMode /></ProtectedRoute>} />
                 <Route path="/about" element={<About />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>

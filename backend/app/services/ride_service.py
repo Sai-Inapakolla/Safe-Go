@@ -65,8 +65,16 @@ async def create_ride(
     import random
     generated_otp = f"{random.randint(1000, 9999)}"
 
+    valid_driver_id = None
+    if driver_id and len(str(driver_id)) == 24:
+        try:
+            valid_driver_id = PydanticObjectId(driver_id)
+        except Exception:
+            valid_driver_id = None
+
     ride = Ride(
         passenger_id=passenger_id,
+        driver_id=valid_driver_id,
         mode=RideMode(mode),
         status=RideStatus.searching,
         pickup_address=pickup_address,

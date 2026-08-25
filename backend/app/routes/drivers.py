@@ -120,7 +120,7 @@ async def _ride_dict(ride: Ride, passenger_map: Optional[dict] = None) -> dict:
         "completed_at": _format_dt(ride.completed_at),
         "cancelled_at": _format_dt(ride.cancelled_at),
         "cancel_reason": ride.cancel_reason,
-        "otp": getattr(ride, "otp", None) or "4829",
+        "otp": getattr(ride, "otp", None) or f"{(abs(hash(str(ride.id))) % 9000) + 1000}",
         "is_otp_verified": getattr(ride, "is_otp_verified", False),
         "created_at": _format_dt(ride.created_at),
         "updated_at": _format_dt(ride.updated_at),

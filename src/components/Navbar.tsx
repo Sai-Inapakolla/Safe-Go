@@ -18,7 +18,6 @@ export const Navbar = ({ fullWidth = true }: { fullWidth?: boolean }) => {
     { label: t('nav.home', 'Home'), to: "/home" },
     { label: t('nav.book', 'Book'), to: "/book/normal" },
     { label: t('nav.drive_with_us', 'Drive With Us'), to: "/drive-with-us" },
-    { label: t('nav.safety', 'Safety'), to: "/safety" },
     { label: t('nav.dashboard', 'Dashboard'), to: "/dashboard" },
     { label: t('nav.about', 'About'), to: "/about" },
   ];
@@ -33,7 +32,7 @@ export const Navbar = ({ fullWidth = true }: { fullWidth?: boolean }) => {
     <nav
       className={`sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-xl transition-all ${scrolled ? "shadow-sm" : ""}`}
     >
-      <div className={`relative flex h-20 w-full items-center ${fullWidth ? "px-6 sm:px-10 lg:px-16" : "max-w-[1400px] mx-auto px-6 sm:px-8 lg:px-12"}`}>
+      <div className={`relative flex h-20 w-full items-center justify-between ${fullWidth ? "px-5 sm:px-10 lg:px-16" : "max-w-[1400px] mx-auto px-5 sm:px-8 lg:px-12"}`}>
         {/* Logo */}
         <Link to="/home" className="flex-shrink-0">
           <SafeGoLogo size={24} />
@@ -52,7 +51,7 @@ export const Navbar = ({ fullWidth = true }: { fullWidth?: boolean }) => {
           ))}
         </div>
 
-        <div className="hidden items-center gap-3 md:flex ml-auto">
+        <div className="hidden items-center gap-3 md:flex">
           <LanguageSwitcher />
           <ThemeToggle />
           {localStorage.getItem("token") ? (
@@ -94,8 +93,12 @@ export const Navbar = ({ fullWidth = true }: { fullWidth?: boolean }) => {
           )}
         </div>
 
-        <button className="md:hidden" onClick={() => setOpen(!open)} aria-label="Toggle menu">
-          {open ? <X size={24} /> : <Menu size={24} />}
+        <button 
+          className="ml-auto md:hidden p-2.5 rounded-xl border border-border/50 text-foreground hover:bg-muted transition-colors flex items-center justify-center" 
+          onClick={() => setOpen(!open)} 
+          aria-label="Toggle menu"
+        >
+          {open ? <X size={20} /> : <Menu size={20} />}
         </button>
       </div>
 

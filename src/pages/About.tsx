@@ -209,10 +209,13 @@ const About = () => {
         {/* Call to Action */}
         <section className="py-20">
           <div className="container mx-auto px-6">
-            <div className="rounded-[3rem] bg-foreground p-12 text-center text-background relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-              <h2 className="text-3xl md:text-5xl font-black mb-6 relative z-10">We're just getting started.</h2>
-              <p className="text-background/70 max-w-xl mx-auto mb-4 relative z-10 italic">
+            <div className="rounded-[3rem] bg-gradient-to-br from-zinc-900 via-zinc-950 to-black text-white p-12 md:p-16 text-center relative overflow-hidden border border-zinc-800 shadow-2xl">
+              <div className="absolute top-0 right-0 w-80 h-80 bg-primary/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+              <div className="absolute bottom-0 left-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2 pointer-events-none" />
+              <h2 className="text-3xl md:text-5xl font-black mb-6 relative z-10 text-white tracking-tight font-display">
+                We're just getting started.
+              </h2>
+              <p className="text-zinc-300 max-w-xl mx-auto mb-4 relative z-10 italic text-base md:text-lg leading-relaxed font-medium">
                 "Our mission is to ensure that no passenger ever feels unsafe during their journey. Every line of code we write is a step toward a safer tomorrow."
               </p>
             </div>

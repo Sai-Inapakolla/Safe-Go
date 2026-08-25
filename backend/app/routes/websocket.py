@@ -76,14 +76,50 @@ async def driver_location(websocket: WebSocket, driver_id: str, token: str = Que
                     ride_oid = PydanticObjectId(ride_id)
                     loc = RideLocationHistory(ride_id=ride_oid, latitude=latitude, longitude=longitude)
                     await loc.insert()
-                    await manager.broadcast_to_ride(ride_oid, {
+
+                    # Fetch active ride details to compute live road distance & ETA
+                    from app.models import Ride, RideStatus
+                    from app.services.map_service import fetch_osrm_route, reroute_active_trip
+                    from app.utils.fare import haversine_distance
+
+                    ride = await Ride.get(ride_oid)
+                    payload_out = {
                         "type": "driver_location",
                         "latitude": latitude,
                         "longitude": longitude,
-                        "status": "in_progress",
+                        "status": ride.status.value if ride else "in_progress",
                         "driver_id": driver_id,
-                    })
-                except Exception:
+                    }
+
+                    if ride and ride.destination_latitude and ride.destination_longitude:
+                        target_lat = ride.destination_latitude if ride.status == RideStatus.in_progress else ride.pickup_latitude
+                        target_lng = ride.destination_longitude if ride.status == RideStatus.in_progress else ride.pickup_longitude
+
+                        if target_lat and target_lng:
+                            dist = haversine_distance(latitude, longitude, target_lat, target_lng)
+                            payload_out["distance_km"] = round(dist, 2)
+                            payload_out["eta_minutes"] = max(1.0, round((dist / 28.0) * 60, 1))
+
+                            # Trigger AI Rerouting check if requested or driver is moving off route
+                            is_off_route = data.get("trigger_reroute", False)
+                            if is_off_route:
+                                mode_str = ride.mode.value if hasattr(ride.mode, "value") else str(ride.mode)
+                                reroute_data = await reroute_active_trip(
+                                    driver_lat=latitude,
+                                    driver_lng=longitude,
+                                    dest_lat=target_lat,
+                                    dest_lng=target_lng,
+                                    mode=mode_str,
+                                    reason="driver_deviation"
+                                )
+                                payload_out["route_polyline"] = reroute_data.get("route_polyline")
+                                payload_out["distance_km"] = reroute_data.get("distance_km")
+                                payload_out["eta_minutes"] = reroute_data.get("duration_minutes")
+                                payload_out["ai_safety_prediction"] = reroute_data.get("ai_safety_prediction")
+
+                    await manager.broadcast_to_ride(ride_oid, payload_out)
+                except Exception as e:
+                    print(f"[WebSocket Error] Ride broadcast exception: {e}")
                     pass
 
             await manager.broadcast_to_admins({
