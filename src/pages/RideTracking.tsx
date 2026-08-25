@@ -79,8 +79,8 @@ const RideTracking = () => {
       if (!mapContainerRef.current || !window.L || mapInstanceRef.current) return;
       const L = window.L;
 
-      const pLat = rideData?.pickup_latitude || 22.3023;
-      const pLng = rideData?.pickup_longitude || 73.3762;
+      const pLat = Number.isFinite(Number(rideData?.pickup_latitude)) ? Number(rideData.pickup_latitude) : 22.3023;
+      const pLng = Number.isFinite(Number(rideData?.pickup_longitude)) ? Number(rideData.pickup_longitude) : 73.3762;
 
       const map = L.map(mapContainerRef.current, { zoomControl: false }).setView([pLat, pLng], 15);
       mapInstanceRef.current = map;
@@ -100,20 +100,20 @@ const RideTracking = () => {
       }).addTo(map);
 
       // Render Pickup & Dest Markers
-      if (rideData?.pickup_latitude && rideData?.pickup_longitude) {
+      if (Number.isFinite(Number(rideData?.pickup_latitude)) && Number.isFinite(Number(rideData?.pickup_longitude))) {
         const pickupIcon = L.divIcon({
           html: `<div style="background:#10b981;width:14px;height:14px;border:2px solid white;border-radius:50%;box-shadow:0 0 10px #10b98180;"></div>`,
           className: "", iconSize: [14, 14], iconAnchor: [7, 7]
         });
-        L.marker([rideData.pickup_latitude, rideData.pickup_longitude], { icon: pickupIcon }).addTo(map);
+        L.marker([Number(rideData.pickup_latitude), Number(rideData.pickup_longitude)], { icon: pickupIcon }).addTo(map);
       }
 
-      if (rideData?.destination_latitude && rideData?.destination_longitude) {
+      if (Number.isFinite(Number(rideData?.destination_latitude)) && Number.isFinite(Number(rideData?.destination_longitude))) {
         const destIcon = L.divIcon({
           html: `<div style="background:#ef4444;width:14px;height:14px;border:2px solid white;border-radius:3px;box-shadow:0 0 10px #ef444480;"></div>`,
           className: "", iconSize: [14, 14], iconAnchor: [7, 7]
         });
-        L.marker([rideData.destination_latitude, rideData.destination_longitude], { icon: destIcon }).addTo(map);
+        L.marker([Number(rideData.destination_latitude), Number(rideData.destination_longitude)], { icon: destIcon }).addTo(map);
       }
 
       // Render Route Polyline

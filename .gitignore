@@ -39,7 +39,13 @@ backend/app/rag/vector_db/
 # Local databases
 mongodb_data/
 
+# Coverage and Test Output
+coverage/
+.coverage
+*.lcov
+
 # Vite temporary files
 vite.config.ts.timestamp*
+*.timestamp-*.mjs
 
 

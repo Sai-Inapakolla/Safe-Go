@@ -74,34 +74,75 @@ async def trigger_sos(payload: SOSCreate, current_user: Optional[User] = Depends
             notification_service.send_sos_sms(to_number=phone, user_name=user_name, location_url=location_url or "Live Tracking Active")
             notification_service.trigger_sos_call(to_number=phone, user_name=user_name)
 
-        # Dispatch Emergency Alert to Admin Phone
+        # Dispatch Emergency Alert to Admin and Tester Phones
+        location_info = f"{location_url} | Route: {payload.route_info or 'Active Route'}"
         admin_phone = _format_phone(settings.ADMIN_PHONE)
-        if admin_phone and admin_phone != phone:
-            notification_service.send_sos_sms(to_number=admin_phone, user_name=f"[ADMIN] {user_name}", location_url=f"{location_url} | Route: {payload.route_info or 'Active Route'}")
+        tester_phone = _format_phone(settings.TESTER_PHONE)
+        notified_numbers = {phone}
+
+        if admin_phone and admin_phone not in notified_numbers:
+            notification_service.send_sos_sms(to_number=admin_phone, user_name=f"[ADMIN] {user_name}", location_url=location_info)
+            notified_numbers.add(admin_phone)
+
+        if tester_phone and tester_phone not in notified_numbers:
+            notification_service.send_sos_sms(to_number=tester_phone, user_name=f"[TESTER] {user_name}", location_url=location_info)
+            notified_numbers.add(tester_phone)
 
         if current_user:
             contacts = await EmergencyContact.find(EmergencyContact.user_id == current_user.id).to_list()
             for contact in contacts:
                 c_phone = _format_phone(contact.phone)
-                if c_phone and c_phone != phone and c_phone != admin_phone:
+                if c_phone and c_phone not in notified_numbers:
                     notification_service.send_sos_sms(to_number=c_phone, user_name=user_name, location_url=location_url or "Live Tracking Active")
+                    notified_numbers.add(c_phone)
     except Exception as e:
         print(f"Failed to send emergency notifications: {e}")
 
     return _sos_dict(sos)
 
 
+@router.post("/sos/{sos_id}/dispatch-authorities", response_model=SOSResponse)
+async def dispatch_authorities(sos_id: str, current_user: Optional[User] = Depends(get_optional_user)):
+    """Escalate SOS alert to dispatch authorities and alert both Admin and Tester."""
+    sos = await SOSAlert.get(PydanticObjectId(sos_id))
+    if not sos:
+        raise HTTPException(status_code=404, detail="SOS alert not found")
+
+    sos.notes = f"{(sos.notes or '')} [AUTHORITIES ESCALATION: Response Requested]".strip()
+    sos.severity = SOSSeverity.critical
+    await sos.save()
+
+    try:
+        location_url = f"https://www.google.com/maps?q={sos.latitude},{sos.longitude}" if (sos.latitude and sos.longitude) else sos.location_address
+        admin_phone = _format_phone(settings.ADMIN_PHONE)
+        tester_phone = _format_phone(settings.TESTER_PHONE)
+
+        notified = set()
+        for p, role_label in [(admin_phone, "[ADMIN PRIORITY]"), (tester_phone, "[TESTER PRIORITY]")]:
+            if p and p not in notified:
+                notification_service.send_sos_sms(
+                    to_number=p,
+                    user_name=f"{role_label} CRITICAL DISPATCH ESCALATION",
+                    location_url=f"{location_url} | Severity: CRITICAL"
+                )
+                notified.add(p)
+    except Exception as e:
+        print(f"Failed to dispatch authority notifications: {e}")
+
+    return _sos_dict(sos)
+
+
 @router.post("/sos/{sos_id}/cancel", response_model=SOSResponse)
-async def cancel_sos(sos_id: str, current_user: User = Depends(get_current_user)):
-    sos = await SOSAlert.find_one(SOSAlert.id == PydanticObjectId(sos_id), SOSAlert.user_id == current_user.id)
+async def cancel_sos(sos_id: str, current_user: Optional[User] = Depends(get_optional_user)):
+    sos = await SOSAlert.get(PydanticObjectId(sos_id))
     if not sos:
         raise HTTPException(status_code=404, detail="SOS alert not found")
     if sos.status != SOSStatus.active:
         raise HTTPException(status_code=400, detail="SOS alert is not active")
     sos.status = SOSStatus.false_alarm
     sos.resolved_at = datetime.now(timezone.utc)
-    sos.resolved_by = current_user.id
-    sos.notes = "Cancelled by user (false alarm)"
+    sos.resolved_by = current_user.id if current_user else None
+    sos.notes = "Cancelled by user (false alarm / alert dismissed)"
     await sos.save()
     return _sos_dict(sos)
 
@@ -121,13 +162,13 @@ async def resolve_sos(sos_id: str, payload: SOSResolve, admin_user: User = Depen
 
 @router.post("/public-sos", status_code=201)
 async def trigger_public_sos(payload: SOSCreate):
-    """Trigger SOS for guest/unauthenticated users directly to Twilio SMS and Admin phone."""
+    """Trigger SOS for guest/unauthenticated users directly to Twilio SMS and Admin/Tester phones."""
     try:
         location_url = f"https://www.google.com/maps?q={payload.latitude},{payload.longitude}" if (payload.latitude and payload.longitude) else payload.location_address
         phone = _format_phone(payload.emergency_contact_phone)
         contact_name = payload.emergency_contact_name or "Emergency Contact"
 
-        print(f"[SOS DISPATCH] Contact Phone: {phone}, Admin Phone: {settings.ADMIN_PHONE}")
+        print(f"[SOS DISPATCH] Contact Phone: {phone}, Admin Phone: {settings.ADMIN_PHONE}, Tester Phone: {settings.TESTER_PHONE}")
 
         if phone:
             res1 = notification_service.send_sos_sms(to_number=phone, user_name=f"Pink Mode Passenger ({contact_name})", location_url=location_url or "Live Tracking Active")
@@ -135,11 +176,20 @@ async def trigger_public_sos(payload: SOSCreate):
             print(f"[SOS DISPATCH] Contact SMS result: {res1}, Call result: {res2}")
 
         admin_phone = _format_phone(settings.ADMIN_PHONE)
-        if admin_phone and admin_phone != phone:
+        tester_phone = _format_phone(settings.TESTER_PHONE)
+        notified = {phone} if phone else set()
+
+        if admin_phone and admin_phone not in notified:
             res3 = notification_service.send_sos_sms(to_number=admin_phone, user_name="[ADMIN] Pink Mode Passenger", location_url=f"{location_url} | Route: {payload.route_info or 'Active Route'}")
             print(f"[SOS DISPATCH] Admin SMS result: {res3}")
+            notified.add(admin_phone)
 
-        return {"status": "success", "message": "SOS alert transmitted via Twilio"}
+        if tester_phone and tester_phone not in notified:
+            res4 = notification_service.send_sos_sms(to_number=tester_phone, user_name="[TESTER] Pink Mode Passenger", location_url=f"{location_url} | Route: {payload.route_info or 'Active Route'}")
+            print(f"[SOS DISPATCH] Tester SMS result: {res4}")
+            notified.add(tester_phone)
+
+        return {"status": "success", "message": "SOS alert transmitted via Twilio to Admin and Tester"}
     except Exception as e:
         print(f"[SOS DISPATCH ERROR] {e}")
         return {"status": "error", "detail": str(e)}

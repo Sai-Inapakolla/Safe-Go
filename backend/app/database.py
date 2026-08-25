@@ -33,7 +33,45 @@ async def init_db():
     print(f"[DB] Connected to MongoDB: {db_name}")
     
     # Seed Indian drivers for local/booking fleet intelligence testing
+    await seed_admin_and_tester()
     await seed_indian_drivers()
+
+
+async def seed_admin_and_tester():
+    from app.models import User, UserRole, Gender
+    from app.utils.security import hash_password
+
+    # Primary Admin
+    admin_user = await User.find_one(User.email == settings.ADMIN_EMAIL)
+    if not admin_user:
+        admin_user = User(
+            full_name="SafeGo Admin",
+            email=settings.ADMIN_EMAIL,
+            phone=settings.ADMIN_PHONE,
+            hashed_password=hash_password(settings.ADMIN_PASSWORD),
+            role=UserRole.admin,
+            gender=Gender.male,
+            is_active=True,
+            is_verified=True,
+        )
+        await admin_user.insert()
+        print(f"[DB] Seeded Primary Admin: {settings.ADMIN_EMAIL}")
+
+    # QA / Tester Admin
+    tester_user = await User.find_one(User.email == settings.TESTER_EMAIL)
+    if not tester_user:
+        tester_user = User(
+            full_name="SafeGo Tester",
+            email=settings.TESTER_EMAIL,
+            phone=settings.TESTER_PHONE,
+            hashed_password=hash_password(settings.TESTER_PASSWORD),
+            role=UserRole.admin,
+            gender=Gender.female,
+            is_active=True,
+            is_verified=True,
+        )
+        await tester_user.insert()
+        print(f"[DB] Seeded QA Tester Admin: {settings.TESTER_EMAIL}")
 
 
 async def seed_indian_drivers():

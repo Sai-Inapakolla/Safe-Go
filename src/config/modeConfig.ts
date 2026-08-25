@@ -86,4 +86,24 @@ export const modes: ModeConfig[] = [
   },
 ];
 
-export const getModeConfig = (id: RideMode) => modes.find((m) => m.id === id)!;
+export const getModeConfig = (id?: string | null): ModeConfig => {
+  if (!id) return modes.find((m) => m.id === "normal") || modes[3];
+  const cleanId = id.toLowerCase().trim();
+
+  // Direct match
+  const found = modes.find((m) => m.id === cleanId);
+  if (found) return found;
+
+  // Handle common aliases or typos (e.g. 'eldery' -> 'elderly')
+  if (cleanId.startsWith("elder") || cleanId === "eldery" || cleanId === "senior" || cleanId === "seniors" || cleanId === "old") {
+    return modes.find((m) => m.id === "elderly") || modes[2];
+  }
+  if (cleanId.startsWith("pink") || cleanId === "women" || cleanId === "woman" || cleanId === "female") {
+    return modes.find((m) => m.id === "pink") || modes[1];
+  }
+  if (cleanId.startsWith("pwd") || cleanId.includes("disab") || cleanId === "accessible" || cleanId === "wheelchair") {
+    return modes.find((m) => m.id === "pwd") || modes[0];
+  }
+
+  return modes.find((m) => m.id === "normal") || modes[3];
+};

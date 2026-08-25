@@ -15,6 +15,9 @@ import { useState, useEffect, useRef } from "react";
 
 // ─── Simulated nearby cabs ───────────────────────────────────────────────────
 const generateNearbyCabs = (lat: number, lng: number, mode: string = "normal", dbDrivers: any[] = []) => {
+  const safeBaseLat = Number.isFinite(Number(lat)) ? Number(lat) : 22.3023;
+  const safeBaseLng = Number.isFinite(Number(lng)) ? Number(lng) : 73.3762;
+
   // Filter database drivers based on mode
   let filteredDbDrivers = dbDrivers;
   if (mode === "pink") {
@@ -41,12 +44,12 @@ const generateNearbyCabs = (lat: number, lng: number, mode: string = "normal", d
     const dbDriver = filteredDbDrivers[i];
     
     // Check if dbDriver has exact pinpoint coordinates from backend DB
-    let cabLat = dbDriver?.current_latitude || dbDriver?.latitude || dbDriver?.lat;
-    let cabLng = dbDriver?.current_longitude || dbDriver?.longitude || dbDriver?.lng;
+    let cabLat = Number(dbDriver?.current_latitude ?? dbDriver?.latitude ?? dbDriver?.lat);
+    let cabLng = Number(dbDriver?.current_longitude ?? dbDriver?.longitude ?? dbDriver?.lng);
 
-    if (!cabLat || !cabLng) {
-      cabLat = lat + Math.sin(angles[i % angles.length]) * distances[i % distances.length];
-      cabLng = lng + Math.cos(angles[i % angles.length]) * distances[i % distances.length];
+    if (!Number.isFinite(cabLat) || !Number.isFinite(cabLng)) {
+      cabLat = safeBaseLat + Math.sin(angles[i % angles.length]) * distances[i % distances.length];
+      cabLng = safeBaseLng + Math.cos(angles[i % angles.length]) * distances[i % distances.length];
     }
 
     if (dbDriver) {
@@ -114,13 +117,13 @@ const MapPanel = ({
   const mapInstanceRef = useRef<any>(null);
   const destMarkerRef = useRef<any>(null);
   const pickupMarkerRef = useRef<any>(null);
+  const carMarkerRef = useRef<any>(null);
+  const simulationIntervalRef = useRef<any>(null);
   const [cabs, setCabs] = useState<any[]>([]);
   const [locating, setLocating] = useState(true);
   const [locError, setLocError] = useState(false);
   const [selectedCab, setSelectedCab] = useState<number | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const carMarkerRef = useRef<any>(null);
-  const simulationIntervalRef = useRef<any>(null);
 
   // Pinpoint on map & On-Map search states
   const [isPinpointMode, setIsPinpointMode] = useState(false);
@@ -135,8 +138,9 @@ const MapPanel = ({
 
   // Helper for smooth Leaflet marker animation (no sudden marker jumps!)
   const animateMarkerTo = (marker: any, targetLat: number, targetLng: number, duration: number = 350) => {
-    if (!marker) return;
+    if (!marker || !Number.isFinite(targetLat) || !Number.isFinite(targetLng)) return;
     const startLatLng = marker.getLatLng();
+    if (!startLatLng || !Number.isFinite(startLatLng.lat) || !Number.isFinite(startLatLng.lng)) return;
     const startLat = startLatLng.lat;
     const startLng = startLatLng.lng;
     const startTime = performance.now();
@@ -147,7 +151,9 @@ const MapPanel = ({
       const easeProgress = 0.5 - Math.cos(progress * Math.PI) / 2; // Smooth sine curve
       const currentLat = startLat + (targetLat - startLat) * easeProgress;
       const currentLng = startLng + (targetLng - startLng) * easeProgress;
-      marker.setLatLng([currentLat, currentLng]);
+      if (Number.isFinite(currentLat) && Number.isFinite(currentLng)) {
+        marker.setLatLng([currentLat, currentLng]);
+      }
 
       if (progress < 1) {
         requestAnimationFrame(step);
@@ -179,8 +185,12 @@ const MapPanel = ({
         setMapReady(false);
       }
 
+      const safeLat = Number.isFinite(Number(lat)) ? Number(lat) : 22.3023;
+      const safeLng = Number.isFinite(Number(lng)) ? Number(lng) : 73.3762;
+
       const L = window.L;
-      const map = L.map(mapContainerRef.current, { zoomControl: false }).setView([lat, lng], 15);
+      if (!L) return;
+      const map = L.map(mapContainerRef.current, { zoomControl: false }).setView([safeLat, safeLng], 15);
       mapInstanceRef.current = map;
       setMapReady(true);
 
@@ -212,28 +222,30 @@ const MapPanel = ({
         <style>@keyframes pulse-ring { 0% { transform:scale(1); opacity:0.8; } 100% { transform:scale(2.5); opacity:0; } }</style>
       `;
       const youIcon = L.divIcon({ html: pulseHtml, className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
-      userMarker = L.marker([lat, lng], { icon: youIcon }).addTo(map).bindPopup("<b>" + t('booking.you_are_here', '📍 You are here') + "</b>");
+      userMarker = L.marker([safeLat, safeLng], { icon: youIcon }).addTo(map).bindPopup("<b>" + t('booking.you_are_here', '📍 You are here') + "</b>");
 
-      L.circle([lat, lng], { radius: 60, color: "#3b82f6", fillOpacity: 0.08, weight: 1.5 }).addTo(map);
+      L.circle([safeLat, safeLng], { radius: 60, color: "#3b82f6", fillOpacity: 0.08, weight: 1.5 }).addTo(map);
 
-      const fallbackCabs = generateNearbyCabs(lat, lng, mode, activeDrivers);
+      const fallbackCabs = generateNearbyCabs(safeLat, safeLng, mode, activeDrivers);
       setCabs(fallbackCabs);
 
       fallbackCabs.forEach((cab: any) => {
-        const cabHtml = `
-          <div style="position:relative;display:flex;flex-direction:column;align-items:center;">
-            <div style="background:${accent};color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.25);">
-              ${(cab.name || "D").split(" ").map((n: string) => n[0]).join("")}
+        if (Number.isFinite(cab.lat) && Number.isFinite(cab.lng)) {
+          const cabHtml = `
+            <div style="position:relative;display:flex;flex-direction:column;align-items:center;">
+              <div style="background:${accent};color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.25);">
+                ${(cab.name || "D").split(" ").map((n: string) => n[0]).join("")}
+              </div>
+              <div style="background:hsl(var(--card));border-radius:6px;padding:1px 5px;font-size:9px;font-weight:700;color:hsl(var(--card-foreground));margin-top:2px;box-shadow:0 1px 4px rgba(0,0,0,0.15);white-space:nowrap;">
+                🚖 ${cab.name.split(" ")[0]} (${cab.eta}m)
+              </div>
             </div>
-            <div style="background:hsl(var(--card));border-radius:6px;padding:1px 5px;font-size:9px;font-weight:700;color:hsl(var(--card-foreground));margin-top:2px;box-shadow:0 1px 4px rgba(0,0,0,0.15);white-space:nowrap;">
-              🚖 ${cab.name.split(" ")[0]} (${cab.eta}m)
-            </div>
-          </div>
-        `;
-        const cabIcon = L.divIcon({ html: cabHtml, className: "", iconSize: [36, 52], iconAnchor: [18, 52] });
-        L.marker([cab.lat, cab.lng], { icon: cabIcon })
-          .addTo(map)
-          .bindPopup(`<b>🚖 ${cab.name}</b><br>⭐ ${cab.rating} &nbsp;·&nbsp; ETA ${cab.eta} min<br><span style="font-size:10px;color:#64748b;">GPS: ${cab.lat.toFixed(4)}, ${cab.lng.toFixed(4)}</span>`);
+          `;
+          const cabIcon = L.divIcon({ html: cabHtml, className: "", iconSize: [36, 52], iconAnchor: [18, 52] });
+          L.marker([cab.lat, cab.lng], { icon: cabIcon })
+            .addTo(map)
+            .bindPopup(`<b>🚖 ${cab.name}</b><br>⭐ ${cab.rating} &nbsp;·&nbsp; ETA ${cab.eta} min<br><span style="font-size:10px;color:#64748b;">GPS: ${cab.lat.toFixed(4)}, ${cab.lng.toFixed(4)}</span>`);
+        }
       });
 
       setLocating(false);
@@ -264,6 +276,7 @@ const MapPanel = ({
       watchId = navigator.geolocation.watchPosition(
         (pos) => {
           const { latitude: rawLat, longitude: rawLng, accuracy } = pos.coords;
+          if (!Number.isFinite(rawLat) || !Number.isFinite(rawLng)) return;
           // Filter noisy fixes (>50m accuracy threshold)
           if (accuracy && accuracy > 50) return;
 
@@ -277,7 +290,7 @@ const MapPanel = ({
             smoothedLng = smoothedLng * (1 - alpha) + rawLng * alpha;
           }
 
-          if (userMarker) {
+          if (userMarker && Number.isFinite(smoothedLat) && Number.isFinite(smoothedLng)) {
             animateMarkerTo(userMarker, smoothedLat, smoothedLng, 400);
           }
         },
@@ -300,13 +313,14 @@ const MapPanel = ({
     loadLeaflet();
 
     return () => {
-      if (watchId !== null) navigator.geolocation?.clearWatch(watchId);
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
       mapInstanceRef.current?.remove();
       mapInstanceRef.current = null;
       setMapReady(false);
     };
-  }, []);
+  }, [accent, mode]);
 
+  // Handle Route Trigger and Leaflet Polylines
   useEffect(() => {
     const L = window.L;
     if (!mapInstanceRef.current || !L || !mapReady) return;
@@ -325,33 +339,37 @@ const MapPanel = ({
       if (routePolyline) {
         try {
           const geojson = JSON.parse(routePolyline);
-          const coordsList = geojson.coordinates.map((c: any) => [c[1], c[0]]);
+          const coordsList = (geojson.coordinates || [])
+            .map((c: any) => [Number(c[1]), Number(c[0])])
+            .filter((c: any) => Number.isFinite(c[0]) && Number.isFinite(c[1]));
 
-          mapInstanceRef.current.eachLayer((layer: any) => {
-            if (layer.options && layer.options.isRouteLayer) {
-              mapInstanceRef.current.removeLayer(layer);
-            }
-          });
+          if (coordsList.length >= 2) {
+            mapInstanceRef.current.eachLayer((layer: any) => {
+              if (layer.options && layer.options.isRouteLayer) {
+                mapInstanceRef.current.removeLayer(layer);
+              }
+            });
 
-          L.polyline(coordsList, { color: accent, weight: 6, opacity: 0.8, className: 'route-glow', isRouteLayer: true }).addTo(mapInstanceRef.current);
-          L.polyline(coordsList, { color: 'white', weight: 2, dashArray: '8 8', isRouteLayer: true }).addTo(mapInstanceRef.current);
+            L.polyline(coordsList, { color: accent, weight: 6, opacity: 0.8, className: 'route-glow', isRouteLayer: true }).addTo(mapInstanceRef.current);
+            L.polyline(coordsList, { color: 'white', weight: 2, dashArray: '8 8', isRouteLayer: true }).addTo(mapInstanceRef.current);
 
-          // Add Pickup and Destination Markers
-          const pickupIcon = L.divIcon({
-            html: `<div style="background:${accent};width:14px;height:14px;border:2px solid white;border-radius:50%;box-shadow:0 0 10px ${accent}80;"></div>`,
-            className: "", iconSize: [14, 14], iconAnchor: [7, 7]
-          });
-          const destIcon = L.divIcon({
-            html: `<div style="background:#ef4444;width:14px;height:14px;border:2px solid white;border-radius:3px;box-shadow:0 0 10px #ef444480;"></div>`,
-            className: "", iconSize: [14, 14], iconAnchor: [7, 7]
-          });
+            // Add Pickup and Destination Markers
+            const pickupIcon = L.divIcon({
+              html: `<div style="background:${accent};width:14px;height:14px;border:2px solid white;border-radius:50%;box-shadow:0 0 10px ${accent}80;"></div>`,
+              className: "", iconSize: [14, 14], iconAnchor: [7, 7]
+            });
+            const destIcon = L.divIcon({
+              html: `<div style="background:#ef4444;width:14px;height:14px;border:2px solid white;border-radius:3px;box-shadow:0 0 10px #ef444480;"></div>`,
+              className: "", iconSize: [14, 14], iconAnchor: [7, 7]
+            });
 
-          L.marker(coordsList[0], { icon: pickupIcon, isRouteLayer: true }).addTo(mapInstanceRef.current);
-          L.marker(coordsList[coordsList.length - 1], { icon: destIcon, isRouteLayer: true }).addTo(mapInstanceRef.current);
+            L.marker(coordsList[0], { icon: pickupIcon, isRouteLayer: true }).addTo(mapInstanceRef.current);
+            L.marker(coordsList[coordsList.length - 1], { icon: destIcon, isRouteLayer: true }).addTo(mapInstanceRef.current);
 
-          const bounds = L.latLngBounds(coordsList);
-          mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
-          return;
+            const bounds = L.latLngBounds(coordsList);
+            mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
+            return;
+          }
         } catch (e) {
           console.warn("Polyline parse failed, falling back to OSRM", e);
         }
@@ -367,11 +385,21 @@ const MapPanel = ({
         const dataFrom = await resfrom.json();
         const dataTo = await resto.json();
 
-        let ptFrom = pickupCoords || centerLoc || { lat: 22.3023, lng: 73.3762 };
-        let ptTo = destinationCoords || { lat: ptFrom.lat + 0.05, lng: ptFrom.lng + 0.05 };
+        let ptFrom = (pickupCoords && Number.isFinite(Number(pickupCoords.lat)) && Number.isFinite(Number(pickupCoords.lng)))
+          ? { lat: Number(pickupCoords.lat), lng: Number(pickupCoords.lng) }
+          : (centerLoc && Number.isFinite(Number(centerLoc.lat)) && Number.isFinite(Number(centerLoc.lng)))
+            ? { lat: Number(centerLoc.lat), lng: Number(centerLoc.lng) }
+            : { lat: 22.3023, lng: 73.3762 };
+        let ptTo = (destinationCoords && Number.isFinite(Number(destinationCoords.lat)) && Number.isFinite(Number(destinationCoords.lng)))
+          ? { lat: Number(destinationCoords.lat), lng: Number(destinationCoords.lng) }
+          : { lat: ptFrom.lat + 0.05, lng: ptFrom.lng + 0.05 };
 
-        if (dataFrom && dataFrom[0]) ptFrom = { lat: parseFloat(dataFrom[0].lat), lng: parseFloat(dataFrom[0].lon) };
-        if (dataTo && dataTo[0]) ptTo = { lat: parseFloat(dataTo[0].lat), lng: parseFloat(dataTo[0].lon) };
+        if (dataFrom && dataFrom[0] && Number.isFinite(parseFloat(dataFrom[0].lat)) && Number.isFinite(parseFloat(dataFrom[0].lon))) {
+          ptFrom = { lat: parseFloat(dataFrom[0].lat), lng: parseFloat(dataFrom[0].lon) };
+        }
+        if (dataTo && dataTo[0] && Number.isFinite(parseFloat(dataTo[0].lat)) && Number.isFinite(parseFloat(dataTo[0].lon))) {
+          ptTo = { lat: parseFloat(dataTo[0].lat), lng: parseFloat(dataTo[0].lon) };
+        }
 
         const osrmRes = await fetch(`https://router.project-osrm.org/route/v1/driving/${ptFrom.lng},${ptFrom.lat};${ptTo.lng},${ptTo.lat}?overview=full&geometries=geojson`);
         const osrmData = await osrmRes.json();
@@ -383,29 +411,33 @@ const MapPanel = ({
         });
 
         if (osrmData.routes && osrmData.routes[0]) {
-          const coordsList = osrmData.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]);
+          const coordsList = (osrmData.routes[0].geometry.coordinates || [])
+            .map((c: any) => [Number(c[1]), Number(c[0])])
+            .filter((c: any) => Number.isFinite(c[0]) && Number.isFinite(c[1]));
           const distKm = osrmData.routes[0].distance / 1000;
 
           if (onRouteExtracted) onRouteExtracted(distKm, cabs);
 
-          L.polyline(coordsList, { color: accent, weight: 6, opacity: 0.8, className: 'route-glow', isRouteLayer: true }).addTo(mapInstanceRef.current);
-          L.polyline(coordsList, { color: 'white', weight: 2, dashArray: '8 8', isRouteLayer: true }).addTo(mapInstanceRef.current);
+          if (coordsList.length >= 2) {
+            L.polyline(coordsList, { color: accent, weight: 6, opacity: 0.8, className: 'route-glow', isRouteLayer: true }).addTo(mapInstanceRef.current);
+            L.polyline(coordsList, { color: 'white', weight: 2, dashArray: '8 8', isRouteLayer: true }).addTo(mapInstanceRef.current);
 
-          const pickupIcon = L.divIcon({
-            html: `<div style="background:${accent};width:14px;height:14px;border:2px solid white;border-radius:50%;box-shadow:0 0 10px ${accent}80;"></div>`,
-            className: "", iconSize: [14, 14], iconAnchor: [7, 7]
-          });
-          const destIcon = L.divIcon({
-            html: `<div style="background:#ef4444;width:14px;height:14px;border:2px solid white;border-radius:3px;box-shadow:0 0 10px #ef444480;"></div>`,
-            className: "", iconSize: [14, 14], iconAnchor: [7, 7]
-          });
+            const pickupIcon = L.divIcon({
+              html: `<div style="background:${accent};width:14px;height:14px;border:2px solid white;border-radius:50%;box-shadow:0 0 10px ${accent}80;"></div>`,
+              className: "", iconSize: [14, 14], iconAnchor: [7, 7]
+            });
+            const destIcon = L.divIcon({
+              html: `<div style="background:#ef4444;width:14px;height:14px;border:2px solid white;border-radius:3px;box-shadow:0 0 10px #ef444480;"></div>`,
+              className: "", iconSize: [14, 14], iconAnchor: [7, 7]
+            });
 
-          L.marker(coordsList[0], { icon: pickupIcon, isRouteLayer: true }).addTo(mapInstanceRef.current);
-          L.marker(coordsList[coordsList.length - 1], { icon: destIcon, isRouteLayer: true }).addTo(mapInstanceRef.current);
+            L.marker(coordsList[0], { icon: pickupIcon, isRouteLayer: true }).addTo(mapInstanceRef.current);
+            L.marker(coordsList[coordsList.length - 1], { icon: destIcon, isRouteLayer: true }).addTo(mapInstanceRef.current);
 
-          const bounds = L.latLngBounds(coordsList);
-          mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
-        } else {
+            const bounds = L.latLngBounds(coordsList);
+            mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
+          }
+        } else if (Number.isFinite(ptFrom.lat) && Number.isFinite(ptFrom.lng) && Number.isFinite(ptTo.lat) && Number.isFinite(ptTo.lng)) {
           L.polyline([[ptFrom.lat, ptFrom.lng], [ptTo.lat, ptTo.lng]], { color: accent, weight: 4, dashArray: "10 10", isRouteLayer: true }).addTo(mapInstanceRef.current);
           mapInstanceRef.current.fitBounds(L.latLngBounds([ptFrom.lat, ptFrom.lng], [ptTo.lat, ptTo.lng]), { padding: [50, 50] });
         }
@@ -420,8 +452,15 @@ const MapPanel = ({
     const L = window.L;
     if (!L || !mapInstanceRef.current || !simulatingTravel || !routePolyline || !mapReady) return;
 
-    const geojson = JSON.parse(routePolyline);
-    const coordsList = geojson.coordinates.map((c: any) => [c[1], c[0]]);
+    let coordsList: any[] = [];
+    try {
+      const geojson = JSON.parse(routePolyline);
+      coordsList = (geojson.coordinates || [])
+        .map((c: any) => [Number(c[1]), Number(c[0])])
+        .filter((c: any) => Number.isFinite(c[0]) && Number.isFinite(c[1]));
+    } catch (e) {
+      return;
+    }
 
     if (coordsList.length < 2) return;
 
@@ -476,7 +515,17 @@ const MapPanel = ({
     const L = window.L;
     if (!L) return;
 
-    const activeTarget = pickupCoords || centerLoc;
+    const validPickup = (pickupCoords && Number.isFinite(Number(pickupCoords.lat)) && Number.isFinite(Number(pickupCoords.lng)))
+      ? { lat: Number(pickupCoords.lat), lng: Number(pickupCoords.lng) }
+      : null;
+    const validCenter = (centerLoc && Number.isFinite(Number(centerLoc.lat)) && Number.isFinite(Number(centerLoc.lng)))
+      ? { lat: Number(centerLoc.lat), lng: Number(centerLoc.lng) }
+      : null;
+    const validDest = (destinationCoords && Number.isFinite(Number(destinationCoords.lat)) && Number.isFinite(Number(destinationCoords.lng)))
+      ? { lat: Number(destinationCoords.lat), lng: Number(destinationCoords.lng) }
+      : null;
+
+    const activeTarget = validPickup || validCenter;
     if (activeTarget) {
       // Only move/center map camera if the target position actually changed significantly
       const hasTargetChanged =
@@ -486,8 +535,18 @@ const MapPanel = ({
 
       if (hasTargetChanged) {
         prevTargetRef.current = { lat: activeTarget.lat, lng: activeTarget.lng };
-        const currentZoom = mapInstanceRef.current.getZoom() || 15;
-        mapInstanceRef.current.flyTo([activeTarget.lat, activeTarget.lng], currentZoom, { duration: 1.2 });
+        const currentZoom = (mapInstanceRef.current.getZoom && Number.isFinite(mapInstanceRef.current.getZoom())) 
+          ? mapInstanceRef.current.getZoom() 
+          : 15;
+        try {
+          if (mapInstanceRef.current.panTo) {
+            mapInstanceRef.current.panTo([activeTarget.lat, activeTarget.lng], { animate: true, duration: 0.8 });
+          } else if (mapInstanceRef.current.setView) {
+            mapInstanceRef.current.setView([activeTarget.lat, activeTarget.lng], currentZoom);
+          }
+        } catch (e) {
+          console.warn("Camera pan failed:", e);
+        }
       }
       const fallbackCabs = generateNearbyCabs(activeTarget.lat, activeTarget.lng, mode, activeDrivers);
       setCabs(fallbackCabs);
@@ -499,7 +558,7 @@ const MapPanel = ({
       });
 
       // 1. Live User GPS Position Pinpoint Marker
-      if (centerLoc) {
+      if (validCenter) {
         const pulseHtml = `
           <div style="position:relative;width:24px;height:24px;">
             <div style="position:absolute;inset:-8px;border-radius:50%;background:rgba(59,130,246,0.25);animation:pulse-ring 1.5s ease-out infinite;"></div>
@@ -508,13 +567,13 @@ const MapPanel = ({
           <style>@keyframes pulse-ring { 0% { transform:scale(1); opacity:0.8; } 100% { transform:scale(2.5); opacity:0; } }</style>
         `;
         const youIcon = L.divIcon({ html: pulseHtml, className: "", iconSize: [24, 24], iconAnchor: [12, 12] });
-        L.marker([centerLoc.lat, centerLoc.lng], { icon: youIcon })
+        L.marker([validCenter.lat, validCenter.lng], { icon: youIcon })
           .addTo(mapInstanceRef.current)
-          .bindPopup(`<b>📍 Live User GPS Location</b><br><span style="font-size:10px;color:#64748b;">${centerLoc.lat.toFixed(4)}, ${centerLoc.lng.toFixed(4)}</span>`);
+          .bindPopup(`<b>📍 Live User GPS Location</b><br><span style="font-size:10px;color:#64748b;">${validCenter.lat.toFixed(4)}, ${validCenter.lng.toFixed(4)}</span>`);
       }
 
       // 2. Pickup Location Pinpoint Marker
-      if (pickupCoords) {
+      if (validPickup) {
         const pickupHtml = `
           <div style="position:relative;display:flex;flex-direction:column;align-items:center;">
             <div style="background:#10b981;color:white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:bold;border:2.5px solid white;box-shadow:0 0 12px rgba(16,185,129,0.8);">
@@ -526,13 +585,13 @@ const MapPanel = ({
           </div>
         `;
         const pickupIcon = L.divIcon({ html: pickupHtml, className: "", iconSize: [36, 50], iconAnchor: [18, 50] });
-        L.marker([pickupCoords.lat, pickupCoords.lng], { icon: pickupIcon })
+        L.marker([validPickup.lat, validPickup.lng], { icon: pickupIcon })
           .addTo(mapInstanceRef.current)
-          .bindPopup(`<b>📍 Pinpointed Pickup Location</b><br><span style="font-size:10px;color:#64748b;">GPS: ${pickupCoords.lat.toFixed(4)}, ${pickupCoords.lng.toFixed(4)}</span>`);
+          .bindPopup(`<b>📍 Pinpointed Pickup Location</b><br><span style="font-size:10px;color:#64748b;">GPS: ${validPickup.lat.toFixed(4)}, ${validPickup.lng.toFixed(4)}</span>`);
       }
 
       // 3. Destination Location Pinpoint Marker
-      if (destinationCoords) {
+      if (validDest) {
         const destHtml = `
           <div style="position:relative;display:flex;flex-direction:column;align-items:center;">
             <div style="background:#ef4444;color:white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:bold;border:2.5px solid white;box-shadow:0 0 12px rgba(239,68,68,0.8);">
@@ -544,27 +603,29 @@ const MapPanel = ({
           </div>
         `;
         const destIcon = L.divIcon({ html: destHtml, className: "", iconSize: [36, 50], iconAnchor: [18, 50] });
-        L.marker([destinationCoords.lat, destinationCoords.lng], { icon: destIcon })
+        L.marker([validDest.lat, validDest.lng], { icon: destIcon })
           .addTo(mapInstanceRef.current)
-          .bindPopup(`<b>🎯 Pinpointed Destination</b><br><span style="font-size:10px;color:#64748b;">GPS: ${destinationCoords.lat.toFixed(4)}, ${destinationCoords.lng.toFixed(4)}</span>`);
+          .bindPopup(`<b>🎯 Pinpointed Destination</b><br><span style="font-size:10px;color:#64748b;">GPS: ${validDest.lat.toFixed(4)}, ${validDest.lng.toFixed(4)}</span>`);
       }
 
       // 4. Pinpoint Driver Markers
       fallbackCabs.forEach((cab: any) => {
-        const cabHtml = `
-          <div style="position:relative;display:flex;flex-direction:column;align-items:center;">
-            <div style="background:${accent};color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.25);">
-              ${(cab.name || "D").split(" ").map((n: string) => n[0]).join("")}
+        if (Number.isFinite(cab.lat) && Number.isFinite(cab.lng)) {
+          const cabHtml = `
+            <div style="position:relative;display:flex;flex-direction:column;align-items:center;">
+              <div style="background:${accent};color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.25);">
+                ${(cab.name || "D").split(" ").map((n: string) => n[0]).join("")}
+              </div>
+              <div style="background:hsl(var(--card));border-radius:6px;padding:1px 5px;font-size:9px;font-weight:700;color:hsl(var(--card-foreground));margin-top:2px;box-shadow:0 1px 4px rgba(0,0,0,0.15);white-space:nowrap;">
+                🚖 ${cab.name.split(" ")[0]} (${cab.eta}m)
+              </div>
             </div>
-            <div style="background:hsl(var(--card));border-radius:6px;padding:1px 5px;font-size:9px;font-weight:700;color:hsl(var(--card-foreground));margin-top:2px;box-shadow:0 1px 4px rgba(0,0,0,0.15);white-space:nowrap;">
-              🚖 ${cab.name.split(" ")[0]} (${cab.eta}m)
-            </div>
-          </div>
-        `;
-        const cabIcon = L.divIcon({ html: cabHtml, className: "", iconSize: [36, 52], iconAnchor: [18, 52] });
-        L.marker([cab.lat, cab.lng], { icon: cabIcon })
-          .addTo(mapInstanceRef.current)
-          .bindPopup(`<b>🚖 ${cab.name}</b><br>⭐ ${cab.rating} &nbsp;·&nbsp; ETA ${cab.eta} min<br><span style="font-size:10px;color:#64748b;">GPS: ${cab.lat.toFixed(4)}, ${cab.lng.toFixed(4)}</span>`);
+          `;
+          const cabIcon = L.divIcon({ html: cabHtml, className: "", iconSize: [36, 52], iconAnchor: [18, 52] });
+          L.marker([cab.lat, cab.lng], { icon: cabIcon })
+            .addTo(mapInstanceRef.current)
+            .bindPopup(`<b>🚖 ${cab.name}</b><br>⭐ ${cab.rating} &nbsp;·&nbsp; ETA ${cab.eta} min<br><span style="font-size:10px;color:#64748b;">GPS: ${cab.lat.toFixed(4)}, ${cab.lng.toFixed(4)}</span>`);
+        }
       });
 
       setLocError(false);
@@ -577,8 +638,9 @@ const MapPanel = ({
     const map = mapInstanceRef.current;
 
     const handleMapClick = async (e: any) => {
-      if (!isPinpointMode) return;
+      if (!isPinpointMode || !e.latlng) return;
       const { lat, lng } = e.latlng;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
       let address = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
       try {
@@ -670,7 +732,7 @@ const MapPanel = ({
           if (onSelectMapDestination) onSelectMapDestination({ lat, lng }, address);
         }
 
-        L.popup()
+        L.popup({ offset: [0, -10], closeButton: true, autoClose: false, closeOnClick: false })
           .setLatLng([lat, lng])
           .setContent(popupContainer)
           .openOn(map);
@@ -683,40 +745,32 @@ const MapPanel = ({
     };
   }, [isPinpointMode, pinTargetMode, mapReady, onSelectMapDestination, onSelectMapPickup]);
 
-  const handleMapSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setMapSearchQuery(val);
-    if (!val.trim()) {
+  // Live Location Search for On-Map Search Bar
+  const handleMapSearch = (query: string) => {
+    setMapSearchQuery(query);
+    if (!query || query.trim().length < 2) {
       setMapSearchSuggestions([]);
       setShowMapSearchDropdown(false);
       return;
     }
-    setShowMapSearchDropdown(true);
-    setIsSearchingMap(true);
 
     if (mapSearchTimeoutRef.current) clearTimeout(mapSearchTimeoutRef.current);
     mapSearchTimeoutRef.current = setTimeout(async () => {
+      setIsSearchingMap(true);
+      setShowMapSearchDropdown(true);
       try {
-        const localRes = await fetch(`${API_URL}/api/map/locations?q=${encodeURIComponent(val)}`);
-        if (localRes.ok) {
-          const localData = await localRes.json();
-          if (Array.isArray(localData) && localData.length > 0) {
-            const mapped = localData.map((loc: any) => ({
-              display_name: loc.display_name,
-              lat: loc.lat.toString(),
-              lon: loc.lng.toString()
-            }));
-            setMapSearchSuggestions(mapped);
-            setIsSearchingMap(false);
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ", India")}&limit=5&countrycodes=in`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.length > 0) {
+            setMapSearchSuggestions(data);
             return;
           }
         }
-      } catch (e) {}
 
-      try {
-        const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(val + ", India")}&limit=6&lang=en`);
-        if (res.ok) {
-          const data = await res.json();
+        const photonRes = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5&lang=en`);
+        if (photonRes.ok) {
+          const data = await photonRes.json();
           if (data && data.features && data.features.length > 0) {
             const mapped = data.features.map((f: any) => {
               const props = f.properties;
@@ -731,7 +785,9 @@ const MapPanel = ({
             setMapSearchSuggestions(mapped);
           }
         }
-      } catch (e) {} finally {
+      } catch (e) {
+        console.warn("Search failed", e);
+      } finally {
         setIsSearchingMap(false);
       }
     }, 150);
@@ -740,11 +796,20 @@ const MapPanel = ({
   const handleSelectMapSearchResult = (place: any, targetMode: "pickup" | "destination" = pinTargetMode) => {
     const lat = parseFloat(place.lat);
     const lng = parseFloat(place.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
     setMapSearchQuery(place.display_name);
     setShowMapSearchDropdown(false);
 
     if (mapInstanceRef.current) {
-      mapInstanceRef.current.flyTo([lat, lng], 16, { duration: 1.5 });
+      try {
+        if (mapInstanceRef.current.panTo) {
+          mapInstanceRef.current.panTo([lat, lng], { animate: true, duration: 0.8 });
+        } else if (mapInstanceRef.current.setView) {
+          mapInstanceRef.current.setView([lat, lng], 16);
+        }
+      } catch (e) {
+        console.warn("Camera pan failed:", e);
+      }
     }
 
     if (targetMode === "pickup") {
@@ -1641,7 +1706,11 @@ const BookingPage = () => {
 
   const selectPickup = (place: any) => {
     setPickup(place.display_name);
-    setPickupCoords({ lat: parseFloat(place.lat), lng: parseFloat(place.lon) });
+    const lat = parseFloat(place.lat);
+    const lng = parseFloat(place.lon);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      setPickupCoords({ lat, lng });
+    }
     setShowPickupDropdown(false);
     if (destination) {
       setTimeout(() => handleFindRoute(), 300);
@@ -1650,7 +1719,11 @@ const BookingPage = () => {
 
   const selectDest = (place: any) => {
     setDestination(place.display_name);
-    setDestinationCoords({ lat: parseFloat(place.lat), lng: parseFloat(place.lon) });
+    const lat = parseFloat(place.lat);
+    const lng = parseFloat(place.lon);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      setDestinationCoords({ lat, lng });
+    }
     setShowDestDropdown(false);
     if (pickup) {
       setTimeout(() => handleFindRoute(), 300);
@@ -1662,6 +1735,7 @@ const BookingPage = () => {
   };
 
   const handleSelectMapDestination = (coords: { lat: number, lng: number }, address: string) => {
+    if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) return;
     setRoutePolyline(null);
     setDestination(address);
     setDestinationCoords(coords);
@@ -1670,6 +1744,7 @@ const BookingPage = () => {
   };
 
   const handleSelectMapPickup = (coords: { lat: number, lng: number }, address: string) => {
+    if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) return;
     setRoutePolyline(null);
     setPickup(address);
     setPickupCoords(coords);

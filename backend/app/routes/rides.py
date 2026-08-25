@@ -155,7 +155,7 @@ async def get_active_ride(current_user: User = Depends(get_current_user)):
         {"passenger_id": current_user.id, "status": {"$in": active_statuses}}
     )
     if not ride:
-        recent = await Ride.find_one(Ride.passenger_id == current_user.id).sort("-created_at")
+        recent = await Ride.find(Ride.passenger_id == current_user.id).sort("-created_at").first_or_none()
         if recent and recent.status == RideStatus.completed:
             driver_brief = await _load_driver_brief(recent.driver_id)
             return _ride_dict(recent, driver_brief)

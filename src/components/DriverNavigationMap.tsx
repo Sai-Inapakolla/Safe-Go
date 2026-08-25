@@ -75,9 +75,14 @@ export const DriverNavigationMap = ({
     if (!mapContainerRef.current || !window.L || mapInstanceRef.current) return;
     const L = window.L;
 
+    const pLat = Number.isFinite(Number(pickupLat)) ? Number(pickupLat) : 22.3023;
+    const pLng = Number.isFinite(Number(pickupLng)) ? Number(pickupLng) : 73.3762;
+    const dLat = Number.isFinite(Number(destLat)) ? Number(destLat) : 22.3500;
+    const dLng = Number.isFinite(Number(destLng)) ? Number(destLng) : 73.2400;
+
     // Default coordinates center between pickup and destination
-    const centerLat = (pickupLat + destLat) / 2;
-    const centerLng = (pickupLng + destLng) / 2;
+    const centerLat = (pLat + dLat) / 2;
+    const centerLng = (pLng + dLng) / 2;
 
     const map = L.map(mapContainerRef.current, {
       zoomControl: false,
@@ -115,7 +120,7 @@ export const DriverNavigationMap = ({
       iconSize: [80, 30],
       iconAnchor: [40, 15]
     });
-    L.marker([pickupLat, pickupLng], { icon: pickupIcon }).addTo(map).bindPopup(`<b>Pickup:</b> ${pickup}`);
+    L.marker([pLat, pLng], { icon: pickupIcon }).addTo(map).bindPopup(`<b>Pickup:</b> ${pickup}`);
 
     // Destination Custom Marker
     const destIcon = L.divIcon({
@@ -128,7 +133,7 @@ export const DriverNavigationMap = ({
       iconSize: [110, 30],
       iconAnchor: [55, 15]
     });
-    L.marker([destLat, destLng], { icon: destIcon }).addTo(map).bindPopup(`<b>Destination:</b> ${destination}`);
+    L.marker([dLat, dLng], { icon: destIcon }).addTo(map).bindPopup(`<b>Destination:</b> ${destination}`);
 
     // Driver Current Location Marker (Gliding Car)
     const driverIcon = L.divIcon({
