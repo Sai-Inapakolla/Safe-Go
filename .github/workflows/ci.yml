@@ -1,0 +1,127 @@
+name: SafeGo Automated Regression & Quality Gate CI/CD
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:
+
+jobs:
+  # =========================================================================
+  # JOB 1: FRONTEND TESTS, COVERAGE & REGRESSION GATE
+  # =========================================================================
+  frontend-tests-and-coverage:
+    name: 🧪 Frontend Regression Suite & Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Check out repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 📦 Install Node Dependencies
+        run: npm ci
+
+      - name: 🔍 ESLint & Static Code Analysis
+        run: npm run lint
+
+      - name: 🚀 Run Frontend Test Suite with Vitest & Coverage Thresholds
+        run: |
+          npx vitest run --coverage \
+            --coverage.provider=v8 \
+            --coverage.reporter=text \
+            --coverage.reporter=json \
+            --coverage.reporter=html \
+            --coverage.thresholds.lines=80 \
+            --coverage.thresholds.functions=80 \
+            --coverage.thresholds.branches=75 \
+            --coverage.thresholds.statements=80
+
+      - name: 🏗️ Production Build Verification
+        run: npm run build
+
+      - name: 📊 Upload Frontend Coverage Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage-report
+          path: coverage/
+          retention-days: 14
+
+  # =========================================================================
+  # JOB 2: BACKEND MULTI-TIER & E2E REGRESSION SUITE
+  # =========================================================================
+  backend-tests-and-coverage:
+    name: 🐍 Backend E2E & Multi-Tier Regression Suite
+    runs-on: ubuntu-latest
+
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+
+    env:
+      DATABASE_URL: mongodb://localhost:27017/safego_test_db
+      SECRET_KEY: ${{ secrets.SECRET_KEY || 'ci-cd-testing-secret-key-minimum-32-chars-long' }}
+      ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL || 'admin@safego.ph' }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD || 'Admin@SafeGo2025' }}
+      ADMIN_PHONE: ${{ secrets.ADMIN_PHONE || '+919999999999' }}
+      TESTER_EMAIL: ${{ secrets.TESTER_EMAIL || 'tester@safego.ph' }}
+      TESTER_PASSWORD: ${{ secrets.TESTER_PASSWORD || 'Tester@SafeGo2025' }}
+      TESTER_PHONE: ${{ secrets.TESTER_PHONE || '+919999999999' }}
+      TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID || 'AC00000000000000000000000000000000' }}
+      TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN || '00000000000000000000000000000000' }}
+      TWILIO_PHONE_NUMBER: ${{ secrets.TWILIO_PHONE_NUMBER || '+15005550006' }}
+
+    steps:
+      - name: 📥 Check out repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install Backend Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install coverage
+
+      - name: 🚀 Run Full Backend Regression Suite (Unit, Integration, Security, E2E)
+        run: |
+          coverage run --source=backend/app -m unittest discover -s backend -p "test_*.py"
+          coverage report -m --fail-under=80
+
+      - name: 📊 Upload Backend Coverage Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage-report
+          path: .coverage
+          retention-days: 14
+
+  # =========================================================================
+  # JOB 3: CI QUALITY GATE & PASS/FAIL CRITERIA
+  # =========================================================================
+  ci-quality-gate:
+    name: 🛡️ CI Regression Quality Gate
+    needs: [ frontend-tests-and-coverage, backend-tests-and-coverage ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🟢 Verify All Critical Gates Passed
+        run: |
+          echo "========================================================"
+          echo "🎉 ALL TESTS PASSED (100% Pass Rate Across All Suites)"
+          echo "🎯 CODE COVERAGE EXCEEDS THRESHOLDS (>= 80%)"
+          echo "🔒 SECURITY & SOS CONCURRENCY GATES VERIFIED"
+          echo "🚀 READY FOR DEPLOYMENT / PULL REQUEST MERGE"
+          echo "========================================================"

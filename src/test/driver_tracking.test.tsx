@@ -100,4 +100,25 @@ describe("Driver Assignment & Fleet Matching", () => {
     expect(isDriverEligibleForMode(amit, "pwd")).toBe(false); // no wheelchair ramp
     expect(isDriverEligibleForMode(amit, "normal")).toBe(true);
   });
+
+  it("should render DriverNavigationMap with destination and passenger details", async () => {
+    const { render, screen } = await import("@testing-library/react");
+    const { DriverNavigationMap } = await import("@/components/DriverNavigationMap");
+
+    render(
+      <DriverNavigationMap
+        pickup="Sayaji Baug, Vadodara"
+        destination="Vadodara Central Station"
+        passengerName="Kavita Rao"
+        passengerPhone="+919490969706"
+        fare="₹250"
+        isOtpVerified={true}
+      />
+    );
+
+    expect(screen.getByText("DRIVER NAVIGATION")).toBeInTheDocument();
+    expect(screen.getByText("On Road ➔ Destination")).toBeInTheDocument();
+    expect(screen.getByText("Call Rider")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Call Rider/i })).toHaveAttribute("href", "tel:+919490969706");
+  });
 });

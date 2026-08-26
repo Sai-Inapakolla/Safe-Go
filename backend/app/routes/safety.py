@@ -48,10 +48,37 @@ def _sos_dict(sos: SOSAlert) -> dict:
     }
 
 
+from datetime import datetime, timezone, timedelta
+
 @router.post("/sos", response_model=SOSResponse, status_code=201)
 async def trigger_sos(payload: SOSCreate, current_user: Optional[User] = Depends(get_optional_user)):
     user_name = current_user.full_name if current_user else (payload.emergency_contact_name or "Pink Mode Passenger")
     user_id = current_user.id if current_user else PydanticObjectId("000000000000000000000000")
+
+    # 1. Idempotency Check: return existing SOS if same idempotency key provided
+    if payload.idempotency_key:
+        existing = await SOSAlert.find_one({"idempotency_key": payload.idempotency_key})
+        if existing:
+            return _sos_dict(existing)
+
+    # 2. Concurrency & Burst Abuse Guard (15-second deduplication for same user or contact)
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=15)
+    if current_user and current_user.id:
+        recent_active = await SOSAlert.find_one({
+            "user_id": current_user.id,
+            "status": SOSStatus.active.value,
+            "created_at": {"$gte": cutoff}
+        })
+        if recent_active:
+            return _sos_dict(recent_active)
+    elif payload.emergency_contact_phone:
+        recent_active = await SOSAlert.find_one({
+            "emergency_contact_phone": payload.emergency_contact_phone,
+            "status": SOSStatus.active.value,
+            "created_at": {"$gte": cutoff}
+        })
+        if recent_active:
+            return _sos_dict(recent_active)
 
     sos = SOSAlert(
         user_id=user_id,
@@ -64,39 +91,74 @@ async def trigger_sos(payload: SOSCreate, current_user: Optional[User] = Depends
         route_info=payload.route_info,
         severity=SOSSeverity(payload.severity),
         status=SOSStatus.active,
+        idempotency_key=payload.idempotency_key,
     )
-    await sos.insert()
 
+    # 3. Resilient Database Insertion
     try:
-        location_url = f"https://www.google.com/maps?q={payload.latitude},{payload.longitude}" if (payload.latitude and payload.longitude) else payload.location_address
-        phone = _format_phone(payload.emergency_contact_phone)
-        if phone:
+        await sos.insert()
+    except Exception as db_err:
+        print(f"[SOS DB ERROR] Critical database error creating SOS record: {db_err}")
+        raise HTTPException(
+            status_code=503,
+            detail="SafeGo Emergency Database temporarily unavailable. Local emergency dialer activated. Please dial 112 directly."
+        )
+
+    # 4. Multi-Channel Notification Dispatch with Isolated Error Domains
+    location_url = (
+        f"https://www.google.com/maps?q={payload.latitude},{payload.longitude}"
+        if (payload.latitude and payload.longitude)
+        else payload.location_address
+    )
+    phone = _format_phone(payload.emergency_contact_phone)
+    admin_phone = _format_phone(settings.ADMIN_PHONE)
+    tester_phone = _format_phone(settings.TESTER_PHONE)
+    location_info = f"{location_url} | Route: {payload.route_info or 'Active Route'}"
+    notified_numbers = set()
+
+    # A. Passenger Contact SMS & Call
+    if phone:
+        try:
             notification_service.send_sos_sms(to_number=phone, user_name=user_name, location_url=location_url or "Live Tracking Active")
+            notified_numbers.add(phone)
+        except Exception as e:
+            print(f"[SOS CONTACT SMS ERROR]: {e}")
+
+        try:
             notification_service.trigger_sos_call(to_number=phone, user_name=user_name)
+        except Exception as e:
+            print(f"[SOS CONTACT CALL ERROR]: {e}")
 
-        # Dispatch Emergency Alert to Admin and Tester Phones
-        location_info = f"{location_url} | Route: {payload.route_info or 'Active Route'}"
-        admin_phone = _format_phone(settings.ADMIN_PHONE)
-        tester_phone = _format_phone(settings.TESTER_PHONE)
-        notified_numbers = {phone}
-
-        if admin_phone and admin_phone not in notified_numbers:
+    # B. Central Admin Phone Alert
+    if admin_phone and admin_phone not in notified_numbers:
+        try:
             notification_service.send_sos_sms(to_number=admin_phone, user_name=f"[ADMIN] {user_name}", location_url=location_info)
             notified_numbers.add(admin_phone)
+        except Exception as e:
+            print(f"[SOS ADMIN ALERT ERROR]: {e}")
 
-        if tester_phone and tester_phone not in notified_numbers:
+    # C. Central Tester Phone Alert
+    if tester_phone and tester_phone not in notified_numbers:
+        try:
             notification_service.send_sos_sms(to_number=tester_phone, user_name=f"[TESTER] {user_name}", location_url=location_info)
             notified_numbers.add(tester_phone)
+        except Exception as e:
+            print(f"[SOS TESTER ALERT ERROR]: {e}")
 
-        if current_user:
+    # D. User's Saved Emergency Contacts
+    if current_user:
+        try:
             contacts = await EmergencyContact.find(EmergencyContact.user_id == current_user.id).to_list()
             for contact in contacts:
                 c_phone = _format_phone(contact.phone)
                 if c_phone and c_phone not in notified_numbers:
-                    notification_service.send_sos_sms(to_number=c_phone, user_name=user_name, location_url=location_url or "Live Tracking Active")
-                    notified_numbers.add(c_phone)
-    except Exception as e:
-        print(f"Failed to send emergency notifications: {e}")
+                    try:
+                        notification_service.send_sos_sms(to_number=c_phone, user_name=user_name, location_url=location_url or "Live Tracking Active")
+                        notified_numbers.add(c_phone)
+                    except Exception as c_err:
+                        print(f"[SOS SAVED CONTACT SMS ERROR]: {c_err}")
+        except Exception as e:
+            print(f"[SOS SAVED CONTACTS FETCH ERROR]: {e}")
 
     return _sos_dict(sos)
 
@@ -104,9 +166,14 @@ async def trigger_sos(payload: SOSCreate, current_user: Optional[User] = Depends
 @router.post("/sos/{sos_id}/dispatch-authorities", response_model=SOSResponse)
 async def dispatch_authorities(sos_id: str, current_user: Optional[User] = Depends(get_optional_user)):
     """Escalate SOS alert to dispatch authorities and alert both Admin and Tester."""
+    if not PydanticObjectId.is_valid(sos_id):
+        raise HTTPException(status_code=404, detail="SOS alert not found")
     sos = await SOSAlert.get(PydanticObjectId(sos_id))
     if not sos:
         raise HTTPException(status_code=404, detail="SOS alert not found")
+
+    if sos.status == SOSStatus.false_alarm or sos.status == SOSStatus.resolved:
+        raise HTTPException(status_code=400, detail="Cannot escalate cancelled or resolved SOS alert")
 
     sos.notes = f"{(sos.notes or '')} [AUTHORITIES ESCALATION: Response Requested]".strip()
     sos.severity = SOSSeverity.critical
@@ -134,11 +201,22 @@ async def dispatch_authorities(sos_id: str, current_user: Optional[User] = Depen
 
 @router.post("/sos/{sos_id}/cancel", response_model=SOSResponse)
 async def cancel_sos(sos_id: str, current_user: Optional[User] = Depends(get_optional_user)):
+    if not PydanticObjectId.is_valid(sos_id):
+        raise HTTPException(status_code=404, detail="SOS alert not found")
     sos = await SOSAlert.get(PydanticObjectId(sos_id))
     if not sos:
         raise HTTPException(status_code=404, detail="SOS alert not found")
+    if sos.status == SOSStatus.false_alarm:
+        return _sos_dict(sos)
     if sos.status != SOSStatus.active:
         raise HTTPException(status_code=400, detail="SOS alert is not active")
+
+    # IDOR Check: Users can only cancel their own SOS unless admin
+    if current_user:
+        role_val = current_user.role.value if hasattr(current_user.role, 'value') else current_user.role
+        if role_val != "admin" and sos.user_id and sos.user_id != current_user.id and str(sos.user_id) != "000000000000000000000000":
+            raise HTTPException(status_code=403, detail="Access denied: cannot cancel another user's SOS alert")
+
     sos.status = SOSStatus.false_alarm
     sos.resolved_at = datetime.now(timezone.utc)
     sos.resolved_by = current_user.id if current_user else None
@@ -149,6 +227,8 @@ async def cancel_sos(sos_id: str, current_user: Optional[User] = Depends(get_opt
 
 @router.put("/sos/{sos_id}/resolve", response_model=SOSResponse)
 async def resolve_sos(sos_id: str, payload: SOSResolve, admin_user: User = Depends(get_current_admin)):
+    if not PydanticObjectId.is_valid(sos_id):
+        raise HTTPException(status_code=404, detail="SOS alert not found")
     sos = await SOSAlert.get(PydanticObjectId(sos_id))
     if not sos:
         raise HTTPException(status_code=404, detail="SOS alert not found")
@@ -158,6 +238,7 @@ async def resolve_sos(sos_id: str, payload: SOSResolve, admin_user: User = Depen
     sos.resolved_at = datetime.now(timezone.utc)
     await sos.save()
     return _sos_dict(sos)
+
 
 
 @router.post("/public-sos", status_code=201)

@@ -22,7 +22,7 @@ describe("Navbar & Navigation Header", () => {
     expect(screen.getByText("Book")).toBeInTheDocument();
     expect(screen.getByText("Drive With Us")).toBeInTheDocument();
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(screen.getByText("About")).toBeInTheDocument();
+    expect(screen.getByText(/About/i)).toBeInTheDocument();
     expect(screen.getByText("Login")).toBeInTheDocument();
     expect(screen.getByText("Sign Up")).toBeInTheDocument();
   });

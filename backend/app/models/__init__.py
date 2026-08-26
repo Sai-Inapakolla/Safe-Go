@@ -232,6 +232,7 @@ class SOSAlert(Document):
     route_info: Optional[str] = None
     severity: SOSSeverity = SOSSeverity.critical
     status: SOSStatus = SOSStatus.active
+    idempotency_key: Optional[str] = None
     notes: Optional[str] = None
     resolved_by: Optional[PydanticObjectId] = None
     resolved_at: Optional[datetime] = None

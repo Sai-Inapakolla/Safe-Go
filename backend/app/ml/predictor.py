@@ -144,8 +144,13 @@ class SafetyPredictor:
             # 1. Map mode string to numeric ID
             mode_id = self._map_mode(mode)
             
-            # 2. Construct raw numerical features for scaling directly (eliminates pandas overhead)
-            raw_nums = np.array([[
+            # 2. Construct DataFrame with feature names for scaler
+            numerical_cols = [
+                "pickup_hour", "distance_km", "pickup_latitude", "pickup_longitude",
+                "destination_latitude", "destination_longitude", "pickup_dist_to_safe_hub",
+                "dest_dist_to_safe_hub", "pickup_in_high_risk_hotspot"
+            ]
+            raw_nums_df = pd.DataFrame([[
                 float(pickup_hour),
                 float(distance_km),
                 float(pickup_lat),
@@ -155,16 +160,18 @@ class SafetyPredictor:
                 float(pickup_dist_to_safe_hub),
                 float(dest_dist_to_safe_hub),
                 float(pickup_in_high_risk_hotspot)
-            ]], dtype=np.float32)
+            ]], columns=numerical_cols)
             
             # Apply StandardScaler
-            scaled_nums = self.scaler.transform(raw_nums)[0]
+            scaled_nums = self.scaler.transform(raw_nums_df)[0]
             
-            # 3. Assemble full features array in exact training order
-            # ["pickup_hour", "day_of_week", "distance_km", "passenger_count", "ride_mode",
-            #  "pickup_latitude", "pickup_longitude", "destination_latitude", "destination_longitude",
-            #  "pickup_dist_to_safe_hub", "dest_dist_to_safe_hub", "pickup_in_high_risk_hotspot"]
-            features_arr = np.array([[
+            # 3. Assemble full features DataFrame in exact training order
+            feature_order = [
+                "pickup_hour", "day_of_week", "distance_km", "passenger_count", "ride_mode",
+                "pickup_latitude", "pickup_longitude", "destination_latitude", "destination_longitude",
+                "pickup_dist_to_safe_hub", "dest_dist_to_safe_hub", "pickup_in_high_risk_hotspot"
+            ]
+            features_df = pd.DataFrame([[
                 scaled_nums[0],        # pickup_hour
                 float(day_of_week),    # day_of_week
                 scaled_nums[1],        # distance_km
@@ -177,11 +184,11 @@ class SafetyPredictor:
                 scaled_nums[6],        # pickup_dist_to_safe_hub
                 scaled_nums[7],        # dest_dist_to_safe_hub
                 scaled_nums[8]         # pickup_in_high_risk_hotspot
-            ]], dtype=np.float32)
+            ]], columns=feature_order)
             
             # 4. Perform Live Inference
-            pred_class = int(self.model.predict(features_arr)[0])
-            probabilities = self.model.predict_proba(features_arr)[0]
+            pred_class = int(self.model.predict(features_df)[0])
+            probabilities = self.model.predict_proba(features_df)[0]
             confidence = float(probabilities[pred_class])
             
             prediction_label = self._get_safety_label(pred_class)

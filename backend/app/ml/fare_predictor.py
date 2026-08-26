@@ -127,29 +127,32 @@ class FareSurgePredictor:
             mode_id = self._map_mode(mode)
             safety_id = self._map_safety_label(ai_safety_prediction)
             
-            # 1. Scale numeric variables directly (eliminates pandas overhead)
-            raw_nums = np.array([[
+            # 1. Scale numeric variables with feature names
+            numerical_cols = ["pickup_hour", "distance_km", "passenger_count"]
+            raw_nums_df = pd.DataFrame([[
                 float(pickup_hour),
                 float(distance_km),
                 float(passenger_count)
-            ]], dtype=np.float32)
+            ]], columns=numerical_cols)
             
             # Apply StandardScaler
-            scaled_nums = self.scaler.transform(raw_nums)[0]
+            scaled_nums = self.scaler.transform(raw_nums_df)[0]
             
-            # 2. Assemble features array in exact training order
-            # ["pickup_hour", "day_of_week", "distance_km", "passenger_count", "ride_mode", "ai_safety_prediction"]
-            features_arr = np.array([[
+            # 2. Assemble features DataFrame in exact training order
+            feature_order = [
+                "pickup_hour", "day_of_week", "distance_km", "passenger_count", "ride_mode", "ai_safety_prediction"
+            ]
+            features_df = pd.DataFrame([[
                 scaled_nums[0],        # pickup_hour
                 float(day_of_week),    # day_of_week
                 scaled_nums[1],        # distance_km
                 scaled_nums[2],        # passenger_count
                 float(mode_id),        # ride_mode
                 float(safety_id)       # ai_safety_prediction
-            ]], dtype=np.float32)
+            ]], columns=feature_order)
             
             # 3. Perform Regression Inference
-            predicted_multiplier = float(self.model.predict(features_arr)[0])
+            predicted_multiplier = float(self.model.predict(features_df)[0])
             
             # CRITICAL PERFORMANCE OPTIMIZATION: Bypassing the extremely slow tree variance iteration
             # as it is not used in the routes/API. Returning static 1.0 confidence.

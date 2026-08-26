@@ -185,6 +185,8 @@ async def get_pending_drivers(admin: User = Depends(get_current_admin)):
 
 @router.get("/drivers/{driver_id}/dossier")
 async def get_driver_dossier(driver_id: str, admin: User = Depends(get_current_admin)):
+    if not PydanticObjectId.is_valid(driver_id):
+        raise HTTPException(status_code=404, detail="Driver not found")
     driver = await Driver.get(PydanticObjectId(driver_id))
     if not driver:
         raise HTTPException(status_code=404, detail="Driver not found")
@@ -205,6 +207,8 @@ async def get_driver_dossier(driver_id: str, admin: User = Depends(get_current_a
 
 @router.put("/drivers/{driver_id}/approval", response_model=DriverResponse)
 async def approve_driver(driver_id: str, payload: DriverApproval, admin: User = Depends(get_current_admin)):
+    if not PydanticObjectId.is_valid(driver_id):
+        raise HTTPException(status_code=404, detail="Driver not found")
     driver = await Driver.get(PydanticObjectId(driver_id))
     if not driver:
         raise HTTPException(status_code=404, detail="Driver not found")
@@ -229,6 +233,8 @@ async def approve_driver(driver_id: str, payload: DriverApproval, admin: User = 
 
 @router.put("/drivers/{driver_id}/online-status", response_model=DriverResponse)
 async def toggle_driver_online(driver_id: str, payload: DriverOnlineStatus, admin: User = Depends(get_current_admin)):
+    if not PydanticObjectId.is_valid(driver_id):
+        raise HTTPException(status_code=404, detail="Driver not found")
     driver = await Driver.get(PydanticObjectId(driver_id))
     if not driver:
         raise HTTPException(status_code=404, detail="Driver not found")
@@ -236,6 +242,7 @@ async def toggle_driver_online(driver_id: str, payload: DriverOnlineStatus, admi
     driver.updated_at = datetime.now(timezone.utc)
     await driver.save()
     return await _driver_dict(driver)
+
 
 
 @router.put("/drivers/{driver_id}/documents/{doc_id}", response_model=DriverDocumentResponse)

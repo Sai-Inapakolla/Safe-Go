@@ -838,7 +838,7 @@ const MapPanel = ({
               <input
                 type="text"
                 value={mapSearchQuery}
-                onChange={handleMapSearchChange}
+                onChange={(e) => handleMapSearch(e.target.value)}
                 onFocus={() => setShowMapSearchDropdown(true)}
                 onBlur={() => setTimeout(() => setShowMapSearchDropdown(false), 200)}
                 placeholder="Search location on map..."
@@ -1216,7 +1216,7 @@ const BookingPage = () => {
         clearTimeout(timeoutId);
         if (res.ok) {
           const ride = await res.json();
-          if (ride && (ride.status === "matched" || ride.status === "driver_arriving" || ride.status === "in_progress" || ride.status === "completed")) {
+          if (ride && (ride.status === "matched" || ride.status === "driver_arriving" || ride.status === "in_progress" || ride.status === "searching" || ride.status === "pending")) {
             setPickup(ride.pickup_address || "");
             setDestination(ride.destination_address || "");
             if (ride.pickup_latitude && ride.pickup_longitude) {
@@ -1242,12 +1242,8 @@ const BookingPage = () => {
                 eta: 3
               });
             }
-            if (ride.status === "completed") {
-              setFlowState("review");
-            } else {
-              setFlowState("confirmed");
-              setAskStatus("accepted");
-            }
+            setFlowState("confirmed");
+            setAskStatus("accepted");
             return;
           }
         }
@@ -1271,10 +1267,6 @@ const BookingPage = () => {
     };
 
     restoreActiveRide();
-
-    // Poll for ride status updates every 2 seconds while waiting for driver acceptance
-    const pollInterval = setInterval(restoreActiveRide, 2000);
-    return () => clearInterval(pollInterval);
   }, [API_URL]);
 
   useEffect(() => {
@@ -2147,12 +2139,17 @@ const BookingPage = () => {
 
     try {
       localStorage.removeItem("safego_passenger_rides");
+      localStorage.removeItem("safego_ride_accepted_event");
+      localStorage.removeItem("safego_active_driver_ride");
     } catch (_) {}
 
     localStorage.removeItem('safego_current_ride_id');
     localStorage.removeItem('safego_current_ride_otp');
     localStorage.removeItem('safego_current_ride_status');
     localStorage.removeItem('safego_ride_completed_event');
+    setCurrentRideId(null);
+    setRideOtp("");
+    setIsOtpVerified(false);
     setFlowState("booking");
     setPickup("");
     setDestination("");

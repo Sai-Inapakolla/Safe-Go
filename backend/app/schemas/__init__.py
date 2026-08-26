@@ -373,6 +373,7 @@ class SOSCreate(BaseModel):
     emergency_contact_phone: Optional[str] = None
     route_info: Optional[str] = None
     severity: str = "critical"
+    idempotency_key: Optional[str] = None
 
 
 class SOSResponse(BaseModel):

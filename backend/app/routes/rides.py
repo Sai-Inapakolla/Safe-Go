@@ -150,15 +150,17 @@ async def verify_ride_otp(ride_id: str, payload: RideOTPVerifyRequest, current_u
 
 @router.get("/active", response_model=RideResponse)
 async def get_active_ride(current_user: User = Depends(get_current_user)):
-    active_statuses = [RideStatus.searching.value, RideStatus.matched.value, RideStatus.driver_arriving.value, RideStatus.in_progress.value]
+    active_statuses = [
+        RideStatus.pending.value,
+        RideStatus.searching.value,
+        RideStatus.matched.value,
+        RideStatus.driver_arriving.value,
+        RideStatus.in_progress.value
+    ]
     ride = await Ride.find_one(
         {"passenger_id": current_user.id, "status": {"$in": active_statuses}}
     )
     if not ride:
-        recent = await Ride.find(Ride.passenger_id == current_user.id).sort("-created_at").first_or_none()
-        if recent and recent.status == RideStatus.completed:
-            driver_brief = await _load_driver_brief(recent.driver_id)
-            return _ride_dict(recent, driver_brief)
         raise HTTPException(status_code=404, detail="No active ride found")
     driver_brief = await _load_driver_brief(ride.driver_id)
     return _ride_dict(ride, driver_brief)
@@ -234,6 +236,8 @@ async def simulate_completed_ride(current_user: User = Depends(get_current_user)
 
 @router.get("/{ride_id}", response_model=RideResponse)
 async def get_ride(ride_id: str, current_user: User = Depends(get_current_user)):
+    if not PydanticObjectId.is_valid(ride_id):
+        raise HTTPException(status_code=404, detail="Ride not found")
     ride = await Ride.get(PydanticObjectId(ride_id))
     if not ride:
         raise HTTPException(status_code=404, detail="Ride not found")
@@ -248,9 +252,18 @@ async def get_ride(ride_id: str, current_user: User = Depends(get_current_user))
 
 @router.put("/{ride_id}/status", response_model=RideResponse)
 async def update_ride_status(ride_id: str, payload: RideStatusUpdate, current_user: User = Depends(get_current_user)):
+    if not PydanticObjectId.is_valid(ride_id):
+        raise HTTPException(status_code=404, detail="Ride not found")
     ride = await Ride.get(PydanticObjectId(ride_id))
     if not ride:
         raise HTTPException(status_code=404, detail="Ride not found")
+    
+    role_val = current_user.role.value if hasattr(current_user.role, 'value') else current_user.role
+    if role_val != "admin" and ride.passenger_id != current_user.id:
+        driver = await Driver.find_one(Driver.user_id == current_user.id)
+        if not driver or ride.driver_id != driver.id:
+            raise HTTPException(status_code=403, detail="Access denied: unauthorized ride modification")
+
     if payload.status == "completed":
         ride = await complete_ride(ride)
     elif payload.status == "cancelled":
@@ -275,6 +288,7 @@ async def update_ride_status(ride_id: str, payload: RideStatusUpdate, current_us
         await ride.save()
     driver_brief = await _load_driver_brief(ride.driver_id)
     return _ride_dict(ride, driver_brief)
+
 
 
 @router.post("/{ride_id}/rate", response_model=RatingResponse, status_code=201)

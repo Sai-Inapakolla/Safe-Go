@@ -7,6 +7,9 @@ import { MapPlaceholder } from "@/components/MapPlaceholder";
 import { Footer } from "@/components/Footer";
 import { NavLink } from "@/components/NavLink";
 import { SafeGoLogo } from "@/components/SafeGoLogo";
+import { SafeGoLogoAnimated } from "@/components/SafeGoLogoAnimated";
+import { ScrollToTop } from "@/components/ScrollToTop";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Users, Heart } from "lucide-react";
 
 describe("Core UI Components Coverage", () => {
@@ -17,6 +20,35 @@ describe("Core UI Components Coverage", () => {
       </BrowserRouter>
     );
     expect(screen.getByText("SafeGo")).toBeInTheDocument();
+  });
+
+  it("should render SafeGoLogoAnimated SVG with calculated sizing", () => {
+    const { container } = render(<SafeGoLogoAnimated size={120} className="custom-logo-class" />);
+    const svg = container.querySelector("svg");
+    expect(svg).toBeInTheDocument();
+    expect(svg).toHaveAttribute("viewBox", "0 0 420 144");
+    expect(screen.getByText("SafeGo")).toBeInTheDocument();
+  });
+
+  it("should render ScrollToTop component and attach window scroll listener", () => {
+    const scrollToMock = vi.fn();
+    window.scrollTo = scrollToMock;
+
+    render(
+      <BrowserRouter>
+        <ScrollToTop />
+      </BrowserRouter>
+    );
+    expect(scrollToMock).toHaveBeenCalledWith({
+      top: 0,
+      left: 0,
+      behavior: "instant",
+    });
+  });
+
+  it("should render LanguageSwitcher trigger button with globe icon", () => {
+    render(<LanguageSwitcher />);
+    expect(screen.getByRole("combobox")).toBeInTheDocument();
   });
 
   it("should render MapPlaceholder with placeholder indicator", () => {

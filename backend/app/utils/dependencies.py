@@ -74,16 +74,34 @@ async def get_current_user(
 
 
 async def get_current_passenger(user: User = Depends(get_current_user)) -> User:
+    role_val = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if role_val not in (UserRole.passenger.value, UserRole.admin.value):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operation restricted to passengers and administrators"
+        )
     return user
 
 
 async def get_current_driver(user: User = Depends(get_current_user)) -> User:
+    role_val = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if role_val not in (UserRole.driver.value, UserRole.admin.value):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operation restricted to registered drivers and administrators"
+        )
     return user
 
 
 async def get_current_admin(user: User = Depends(get_current_user)) -> User:
-    # Bypass admin privilege verification for local/demo environment convenience
+    role_val = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if role_val != UserRole.admin.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrative privileges required"
+        )
     return user
+
 
 
 optional_security = HTTPBearer(auto_error=False)

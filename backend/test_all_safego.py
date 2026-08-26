@@ -2,11 +2,17 @@ import asyncio
 import os
 import sys
 import unittest
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 # Add backend directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.config import settings
+
 from app.utils.security import hash_password, verify_password, create_access_token, decode_access_token
 from app.models import (
     User, UserRole, Driver, RideMode, DriverStatus, Ride, RideStatus,
@@ -127,39 +133,45 @@ class TestSafeGoModels(unittest.TestCase):
 
 
 class TestSafeGoFastAPIEndpoints(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client_cm = TestClient(app)
+        cls.client = cls.client_cm.__enter__()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.client_cm.__exit__(None, None, None)
+
     def test_health_check(self):
-        with TestClient(app) as client:
-            response = client.get("/")
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(data["status"], "healthy")
-            self.assertEqual(data["app"], settings.APP_NAME)
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "healthy")
+        self.assertEqual(data["app"], settings.APP_NAME)
 
     def test_get_modes(self):
-        with TestClient(app) as client:
-            response = client.get("/api/modes")
-            self.assertEqual(response.status_code, 200)
-            modes = response.json()
-            self.assertTrue(len(modes) >= 4)
-            mode_ids = [m["id"] for m in modes]
-            self.assertIn("normal", mode_ids)
-            self.assertIn("pink", mode_ids)
-            self.assertIn("pwd", mode_ids)
-            self.assertIn("elderly", mode_ids)
+        response = self.client.get("/api/modes")
+        self.assertEqual(response.status_code, 200)
+        modes = response.json()
+        self.assertTrue(len(modes) >= 4)
+        mode_ids = [m["id"] for m in modes]
+        self.assertIn("normal", mode_ids)
+        self.assertIn("pink", mode_ids)
+        self.assertIn("pwd", mode_ids)
+        self.assertIn("elderly", mode_ids)
 
     def test_map_location_search_api(self):
-        with TestClient(app) as client:
-            response = client.get("/api/map/locations?q=Mumbai")
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertTrue(len(data) > 0)
-            self.assertIn("name", data[0])
+        response = self.client.get("/api/map/locations?q=Mumbai")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(len(data) > 0)
+        self.assertIn("name", data[0])
 
     def test_auth_login_invalid(self):
-        with TestClient(app) as client:
-            response = client.post("/api/auth/login", json={"email": "nonexistent@test.com", "password": "wrong"})
-            self.assertIn(response.status_code, [400, 401, 404, 422, 500])
+        response = self.client.post("/api/auth/login", json={"email": "nonexistent@test.com", "password": "wrong"})
+        self.assertIn(response.status_code, [400, 401, 404, 422, 500])
 
 
 if __name__ == "__main__":
     unittest.main()
+
