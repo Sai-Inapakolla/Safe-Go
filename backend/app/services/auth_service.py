@@ -55,42 +55,79 @@ async def get_or_create_firebase_user(firebase_token: dict, role: str = "passeng
     """
     Finds a user by Firebase UID or email, or creates a new one.
     Links the user to the Firebase identity and respects the chosen role.
+    Handles Google sign-in users where phone_number may be None.
     """
-    uid = firebase_token.get("uid")
+    uid = str(firebase_token.get("uid") or firebase_token.get("sub") or "")
     email = firebase_token.get("email")
-    name = firebase_token.get("name", "Firebase User")
+    if not email:
+        email = f"user_{uid[:12]}@safego.ph" if uid else "user@safego.ph"
+        
+    name = firebase_token.get("name") or firebase_token.get("display_name") or email.split("@")[0] or "Firebase User"
     
     # 1. Try finding by firebase_uid
-    user = await User.find_one(User.firebase_uid == uid)
-    if user:
-        if role and user.role.value != role:
-            user.role = UserRole(role)
-            await user.save()
-        return user
+    if uid:
+        user = await User.find_one(User.firebase_uid == uid)
+        if user:
+            if role:
+                try:
+                    target_role = UserRole(role)
+                    if user.role != target_role:
+                        user.role = target_role
+                        await user.save()
+                except Exception:
+                    pass
+            return user
     
     # 2. Try finding by email (in case user existed before Firebase migration)
     user = await User.find_one(User.email == email)
     if user:
-        user.firebase_uid = uid
-        # Optional: Sync role if explicitly provided during a new login
-        if role and user.role.value != role:
-            user.role = UserRole(role)
+        if uid and not user.firebase_uid:
+            user.firebase_uid = uid
+        if role:
+            try:
+                target_role = UserRole(role)
+                if user.role != target_role:
+                    user.role = target_role
+            except Exception:
+                pass
         await user.save()
         return user
     
     # 3. Create new user
     print(f"[AUTH] Creating new user for {email} (UID: {uid}, Role: {role})")
+    
+    # Compute safe unique phone placeholder if phone is not provided by provider (e.g. Google auth)
+    raw_phone = firebase_token.get("phone_number")
+    if raw_phone and isinstance(raw_phone, str) and raw_phone.strip():
+        phone_val = raw_phone.strip()
+    else:
+        phone_seed = abs(hash(f"{uid}_{email}")) % 9000000000 + 1000000000
+        phone_val = f"+91{phone_seed}"
+        # Ensure no collision in database
+        existing_phone = await User.find_one(User.phone == phone_val)
+        if existing_phone:
+            import uuid
+            phone_val = f"+91{abs(hash(uuid.uuid4().hex)) % 9000000000 + 1000000000}"
+
+    user_role = UserRole.passenger
+    if role:
+        try:
+            user_role = UserRole(role)
+        except Exception:
+            user_role = UserRole.passenger
+
     try:
         user = User(
             full_name=name,
             email=email,
-            phone=firebase_token.get("phone_number", f"fb-{uid[:10]}"), 
-            firebase_uid=uid,
-            role=UserRole(role) if role else UserRole.passenger,
-            is_verified=True 
+            phone=phone_val,
+            firebase_uid=uid if uid else None,
+            role=user_role,
+            is_verified=True
         )
         await user.insert()
         return user
     except Exception as e:
         print(f"[AUTH] Error creating user: {e}")
         raise
+

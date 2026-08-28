@@ -83,7 +83,10 @@ const AuthPage = () => {
         body: JSON.stringify({ role })
       });
       
-      if (!res.ok) throw new Error("Failed to sync Google account with SafeGo");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || "Failed to sync Google account with SafeGo");
+      }
       
       const data = await res.json();
       localStorage.setItem("token", data.access_token);
