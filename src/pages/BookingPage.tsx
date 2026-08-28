@@ -1157,8 +1157,12 @@ const BookingPage = () => {
     };
 
     try {
-      const existingSos = JSON.parse(localStorage.getItem("safego_admin_sos") || "[]");
-      localStorage.setItem("safego_admin_sos", JSON.stringify([alertObj, ...existingSos]));
+      localStorage.setItem("safego_new_sos", JSON.stringify({
+        id: alertObj.id,
+        userId: user?.full_name || 'Passenger',
+        destination: destination || pickup || 'Current Location',
+        timestamp: new Date().toISOString()
+      }));
       localStorage.setItem("safego_new_sos_alert", JSON.stringify(alertObj));
     } catch (e) {
       console.error(e);

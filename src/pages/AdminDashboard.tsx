@@ -90,7 +90,15 @@ const AdminDashboard = () => {
     return [];
   });
   const [sosAlerts, setSosAlerts] = useState<any[]>(() => {
-    try { const c = localStorage.getItem("safego_admin_sos"); if (c) return JSON.parse(c); } catch {}
+    try {
+      const c = localStorage.getItem("safego_admin_sos");
+      if (c) {
+        const parsed = JSON.parse(c);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((item: any) => !item._id?.startsWith('sos_static'));
+        }
+      }
+    } catch {}
     return [];
   });
   const [notifications, setNotifications] = useState<{ id: string, title: string, description: string, time: string, type: string, sourceId?: string }[]>([
@@ -101,6 +109,11 @@ const AdminDashboard = () => {
   const [activePop, setActivePop] = useState<{ title: string, type: string } | null>(null);
   const [selectedSOS, setSelectedSOS] = useState<any | null>(null);
   const [sosElapsed, setSosElapsed] = useState("00:00.00");
+  const [selectedAdminDoc, setSelectedAdminDoc] = useState<any | null>(null);
+  const [adminDocModalOpen, setAdminDocModalOpen] = useState(false);
+  const [safetySubTab, setSafetySubTab] = useState<'queue' | 'history'>('queue');
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'active' | 'resolved' | 'false_alarm'>('all');
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -336,56 +349,31 @@ const AdminDashboard = () => {
   const fetchSOS = async () => {
     setIsSearching(true);
     try {
-      // Fetch the latest dynamic destination from active backend rides
-      let backendDest = "";
-      try {
-        const ridesRes = await fetch(`${API_URL}/api/admin/rides/live`, {
-          headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
-        });
-        if (ridesRes.ok) {
-          const liveRidesData = await ridesRes.json();
-          if (liveRidesData && liveRidesData.length > 0) {
-            backendDest = liveRidesData[0].destination_address || "";
-          }
-        }
-      } catch (err) {
-        console.error("Failed to fetch live rides for destination sync:", err);
-      }
-
       const res = await fetch(`${API_URL}/api/admin/sos-alerts`, {
         headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
       });
       if (res.ok) {
         const data = await res.json();
+        // Strictly only real SOS alerts from database
+        const realAlerts = Array.isArray(data)
+          ? data.filter((item: any) => !item._id?.startsWith('sos_static'))
+          : [];
 
-        // Get custom destination from live backend rides, localStorage, or fallback to Ayala Triangle
-        const userDest = backendDest || localStorage.getItem('safego_current_booking_destination') || 'Ayala Triangle, Makati';
+        setSosAlerts(realAlerts);
+        try { localStorage.setItem("safego_admin_sos", JSON.stringify(realAlerts)); } catch {}
 
-        const solvedStatic = JSON.parse(localStorage.getItem("safego_solved_static_sos") || "{}");
-
-        // Always ensure at least some ACTIVE threats for demo purposes
-        const hasActive = data.some((a: any) => a.status === 'active');
-        const finalAlerts = hasActive ? data : [
-          ...data,
-          { _id: 'sos_static_1', severity: 'critical', location_address: `${userDest} (Simulated)`, user_id: 'SYSTEM_NODE', ride_id: 'SIM_992', status: solvedStatic['sos_static_1'] || 'active', created_at: new Date().toISOString() },
-          { _id: 'sos_static_2', severity: 'moderate', location_address: 'BGC Stopover (Simulated)', user_id: 'SYSTEM_NODE', ride_id: 'SIM_441', status: solvedStatic['sos_static_2'] || 'active', created_at: new Date().toISOString() }
-        ];
-
-        // Ensure mock notifications exist for these simulated alerts so they can "turn green"
-        if (!hasActive && notifications.filter(n => n.sourceId?.startsWith('sos_static')).length === 0) {
-          addNotification("CRITICAL SOS DETECTED", `Passenger SYSTEM_NODE triggered emergency node @ ${userDest}.`, "error", "sos_static_1");
-          addNotification("CRITICAL SOS DETECTED", "Passenger SYSTEM_NODE triggered emergency node @ BGC Stopover.", "error", "sos_static_2");
-        }
-
-        setSosAlerts(finalAlerts);
-        try { localStorage.setItem("safego_admin_sos", JSON.stringify(finalAlerts)); } catch {}
-
-        // Always prioritize selecting an ACTIVE alert
-        const activeToSelect = finalAlerts.find((a: any) => a.status === 'active');
-        if (activeToSelect) {
-          setSelectedSOS(activeToSelect);
-        } else if (finalAlerts.length > 0) {
-          setSelectedSOS(finalAlerts[0]);
+        // Maintain selection of active or first real alert
+        if (selectedSOS) {
+          const updated = realAlerts.find((a: any) => a._id === selectedSOS._id);
+          if (updated) {
+            setSelectedSOS(updated);
+          } else {
+            const activeToSelect = realAlerts.find((a: any) => a.status === 'active');
+            setSelectedSOS(activeToSelect || realAlerts[0] || null);
+          }
+        } else {
+          const activeToSelect = realAlerts.find((a: any) => a.status === 'active');
+          setSelectedSOS(activeToSelect || realAlerts[0] || null);
         }
       }
     } catch (err) { } finally { setIsSearching(false); }
@@ -422,12 +410,8 @@ const AdminDashboard = () => {
   };
 
   const handleApproveDriver = async (driverId: string, status: 'approved' | 'rejected') => {
-    // Optimistic Update for instant feedback
-    if (status === 'rejected') {
-      setDriversList(prev => prev.filter(d => d._id !== driverId));
-    } else {
-      setDriversList(prev => prev.map(d => d._id === driverId ? { ...d, status: status } : d));
-    }
+    // Optimistic Update for instant feedback without purging rejected records
+    setDriversList(prev => prev.map(d => d._id === driverId ? { ...d, status: status } : d));
 
     try {
       const res = await fetch(`${API_URL}/api/admin/drivers/${driverId}/approval`, {
@@ -436,11 +420,12 @@ const AdminDashboard = () => {
         body: JSON.stringify({ status })
       });
       if (res.ok) {
-        toast.success(status === 'rejected' ? 'Application Declined & Node Purged.' : `Node ${status.toUpperCase()}: Registry Synchronization Complete.`);
+        toast.success(status === 'rejected' ? 'Application marked as REJECTED.' : 'Driver application APPROVED and added to fleet!');
         fetchDrivers(); // Hard sync
         fetchUsers();   // Sync users list too!
+        fetchStats();
       } else {
-        toast.error("Protocol Error: Identity deployment failed.");
+        toast.error("Protocol Error: Identity status update failed.");
         fetchDrivers(); // Revert
       }
     } catch (err) {
@@ -499,7 +484,7 @@ const AdminDashboard = () => {
   };
 
   const handleResolveSOS = async (alertId: string, status: 'resolved' | 'false_alarm' = 'resolved') => {
-    // Transform existing notifications for this alert
+    // Transform existing notifications for this alert to resolved
     setNotifications(prev => prev.map(n =>
       n.sourceId === alertId
         ? { ...n, type: 'success', title: 'INCIDENT RESOLVED', description: `Alert #${alertId.slice(-4).toUpperCase()} cleared and stabilized.` }
@@ -513,17 +498,6 @@ const AdminDashboard = () => {
     // Update the currently viewed SOS so the dynamic clock stops immediately
     if (selectedSOS?._id === alertId) {
       setSelectedSOS((prev: any) => prev ? { ...prev, status: status, updated_at: timestamp } : null);
-    }
-
-    // If it's a mock ID (like 'sos1'), handle it locally
-    if (alertId.startsWith('sos')) {
-      if (alertId.startsWith('sos_static')) {
-        const solvedStatic = JSON.parse(localStorage.getItem("safego_solved_static_sos") || "{}");
-        solvedStatic[alertId] = status;
-        localStorage.setItem("safego_solved_static_sos", JSON.stringify(solvedStatic));
-      }
-      addNotification("SIMULATION RESOLVED", `Mock Alert #${alertId.toUpperCase()} cleared from local monitor.`, "success");
-      return;
     }
 
     setIsSubmitting(true);
@@ -544,6 +518,51 @@ const AdminDashboard = () => {
     } catch (err) {
       toast.error("CONNECTION LOST: The safety node is unreachable.");
       fetchSOS(); // Revert on failure
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResolveAllSOS = async () => {
+    const activeAlerts = sosAlerts.filter(a => a.status === 'active');
+    if (activeAlerts.length === 0) {
+      toast.info("All safety nodes are currently secure and resolved.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    const timestamp = new Date().toISOString();
+
+    // Optimistically resolve all alerts in state
+    setSosAlerts(prev => prev.map(a => ({ ...a, status: 'resolved', updated_at: timestamp })));
+    if (selectedSOS && selectedSOS.status === 'active') {
+      setSelectedSOS((prev: any) => prev ? { ...prev, status: 'resolved', updated_at: timestamp } : null);
+    }
+
+    // Convert active SOS notifications to success and dismiss any error pop
+    setNotifications(prev => prev.map(n =>
+      n.type === 'error' && (n.title.includes('SOS') || n.title.includes('EMERGENCY') || n.title.includes('CRITICAL'))
+        ? { ...n, type: 'success', title: 'ALL INCIDENTS RESOLVED', description: 'Emergency protocols deployed across all safety nodes.' }
+        : n
+    ));
+    setActivePop(null);
+
+    try {
+      const res = await fetch(`${API_URL}/api/admin/sos-alerts/resolve-all?status=resolved`, {
+        method: "PUT",
+        headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+      });
+      if (res.ok) {
+        toast.success(`Rapid response deployed! All ${activeAlerts.length} active emergency alert(s) have been resolved.`);
+        addNotification("ALL PROTOCOLS RESOLVED", `Emergency protocols successfully deployed across ${activeAlerts.length} active node(s).`, "success");
+        fetchSOS();
+        fetchStats();
+      } else {
+        fetchSOS();
+      }
+    } catch (err) {
+      toast.success(`All ${activeAlerts.length} active emergency alert(s) marked as resolved.`);
+      fetchSOS();
     } finally {
       setIsSubmitting(false);
     }
@@ -581,18 +600,21 @@ const AdminDashboard = () => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'safego_new_sos') {
         const sosData = JSON.parse(e.newValue || '{}');
-        if (sosData.destination) {
-          localStorage.setItem('safego_current_booking_destination', sosData.destination);
-        }
-        const alertDest = sosData.destination || 'Ayala Triangle, Makati';
-        addNotification("CRITICAL SOS DETECTED", `Passenger ${sosData.userId} has triggered an emergency node @ ${alertDest}.`, "error", sosData.id);
-        setActiveTab("dashboard"); // Redirect to Operation Hub
-        fetchSOS(); // Refresh list
+        const alertDest = sosData.destination || sosData.location_address || 'Current Coordinates';
+        addNotification("CRITICAL SOS DETECTED", `Passenger ${sosData.userId || 'User'} has triggered an emergency node @ ${alertDest}.`, "error", sosData.id);
+        fetchSOS(); // Refresh real SOS list from DB
+        fetchStats();
       }
       if (e.key === 'safego_new_booking') {
         const bookingData = JSON.parse(e.newValue || '{}');
         addNotification("NEW MISSION LOGGED", `Ride ${bookingData.id} initialized. Fleet unit dispatching.`, "success");
         fetchLiveRides(); // Refresh list
+      }
+      if (e.key === 'safego_new_driver_application') {
+        const appData = JSON.parse(e.newValue || '{}');
+        addNotification("NEW DRIVER APPLICATION", `Candidate ${appData.full_name || 'Driver'} submitted verification documents.`, "info");
+        fetchDrivers();
+        fetchStats();
       }
     };
 
@@ -603,7 +625,8 @@ const AdminDashboard = () => {
       fetchStats();
       if (activeTab === "live-rides") fetchLiveRides();
       if (activeTab === "alerts") fetchSOS();
-    }, 5000);
+      if (activeTab === "driver-requests" || activeTab === "drivers") fetchDrivers();
+    }, 4000);
 
     return () => {
       clearInterval(interval);
@@ -1392,13 +1415,14 @@ const AdminDashboard = () => {
                       <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Driver Candidate</th>
                       <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Vehicle Unit</th>
                       <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Gender</th>
+                      <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Verification Files</th>
                       <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Status</th>
                       <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {isSearching && driversList.length === 0 ? (
-                      <tr><td colSpan={5} className="px-8 py-20 text-center"><Loader2 className="animate-spin mx-auto text-primary" size={32} /></td></tr>
+                      <tr><td colSpan={6} className="px-8 py-20 text-center"><Loader2 className="animate-spin mx-auto text-primary" size={32} /></td></tr>
                     ) : driversList.filter(d => d.status === 'pending' || d.status === 'rejected').length > 0 ? (
                       driversList.filter(d => d.status === 'pending' || d.status === 'rejected').map((d) => (
                         <tr key={d._id} className="hover:bg-slate-50/30 transition-colors group">
@@ -1428,6 +1452,33 @@ const AdminDashboard = () => {
                               }`}>
                               {d.user?.gender || 'N/A'}
                             </span>
+                          </td>
+                          <td className="px-8 py-5">
+                            <div className="flex flex-wrap gap-1.5 max-w-[200px]">
+                              {d.documents && d.documents.filter((doc: any) => doc.file_url).length > 0 ? (
+                                d.documents.filter((doc: any) => doc.file_url).map((doc: any) => (
+                                  <button
+                                    key={doc._id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedAdminDoc({
+                                        ...doc,
+                                        driver_name: d.user?.full_name,
+                                        driver_id: d._id
+                                      });
+                                      setAdminDocModalOpen(true);
+                                    }}
+                                    className="px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 hover:bg-primary/10 hover:text-primary transition-all flex items-center gap-1 border border-slate-200 shadow-sm active:scale-95"
+                                    title={`View ${doc.document_type} on Cloudinary`}
+                                  >
+                                    <FileText size={10} />
+                                    {doc.document_type.replace('_', ' ')}
+                                  </button>
+                                ))
+                              ) : (
+                                <span className="text-[10px] text-slate-400 italic">No files uploaded</span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-8 py-5">
                             <div className="flex flex-col gap-1">
@@ -1464,7 +1515,7 @@ const AdminDashboard = () => {
                         </tr>
                       ))
                     ) : (
-                      <tr><td colSpan={5} className="px-8 py-20 text-center"><div className="flex flex-col items-center gap-3 text-slate-300"><FileText size={40} /><p className="font-semibold text-sm">No Pending Applications</p></div></td></tr>
+                      <tr><td colSpan={6} className="px-8 py-20 text-center"><div className="flex flex-col items-center gap-3 text-slate-300"><FileText size={40} /><p className="font-semibold text-sm">No Pending Applications</p></div></td></tr>
                     )}
                   </tbody>
                 </table>
@@ -1621,67 +1672,148 @@ const AdminDashboard = () => {
 
           {activeTab === "alerts" && (
             <div className="animate-in fade-in duration-500 space-y-8">
-              <div className="flex justify-between items-end">
+              <div className="flex flex-col sm:flex-row justify-between sm:items-end gap-4">
                 <div>
                   <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Safety Command Center</h2>
                   <p className="text-sm text-slate-500 mt-1 font-medium">Real-time threat assessment and emergency protocol management.</p>
                 </div>
-                <div className="flex gap-3">
-                  <div className="h-9 px-4 rounded-xl bg-rose-50 text-rose-600 text-[10px] font-bold flex items-center gap-2 border border-rose-100/50">
-                    <div className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" /> SCANNING FOR THREATS
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    onClick={handleResolveAllSOS}
+                    disabled={isSubmitting || sosAlerts.filter(a => a.status === 'active').length === 0}
+                    className={`h-11 px-5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2.5 shadow-lg transition-all ${
+                      sosAlerts.filter(a => a.status === 'active').length > 0
+                        ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-rose-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer'
+                        : 'bg-slate-100 text-slate-400 border border-slate-200 shadow-none opacity-80 cursor-default'
+                    }`}
+                  >
+                    {isSubmitting ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <ShieldCheck size={16} />
+                    )}
+                    {sosAlerts.filter(a => a.status === 'active').length > 0
+                      ? `Deploy Rapid Response & Resolve All (${sosAlerts.filter(a => a.status === 'active').length})`
+                      : 'All Incident Nodes Resolved'}
+                  </button>
+                  <div className="h-11 px-4 rounded-2xl bg-rose-50 text-rose-600 text-[10px] font-black uppercase tracking-wider flex items-center gap-2 border border-rose-100">
+                    <div className={`h-2.5 w-2.5 rounded-full ${sosAlerts.filter(a => a.status === 'active').length > 0 ? 'bg-rose-500 animate-ping' : 'bg-emerald-500'}`} />
+                    {sosAlerts.filter(a => a.status === 'active').length > 0 ? 'SCANNING FOR THREATS' : 'SYSTEM STABILIZED'}
                   </div>
                 </div>
               </div>
 
-              <div className="grid gap-8 lg:grid-cols-3">
-                <div className="lg:col-span-2 space-y-6">
-                  <Card noPadding className="overflow-hidden border-slate-200/60">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50/50 border-b border-slate-100">
-                          <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Incident Node</th>
-                          <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Severity</th>
-                          <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Status</th>
-                          <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">Protocol</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-50">
-                        {sosAlerts.length > 0 ? sosAlerts.map((sos) => (
-                          <tr
-                            key={sos._id}
-                            onClick={() => setSelectedSOS(sos)}
-                            className={`cursor-pointer transition-all ${selectedSOS?._id === sos._id ? 'bg-rose-50/50' : 'hover:bg-slate-50/30'}`}
+              {/* SAFETY SUB-NAVIGATION (QUEUE vs HISTORY) */}
+              <div className="flex items-center gap-3 border-b border-slate-200/80 pb-4">
+                <button
+                  type="button"
+                  onClick={() => setSafetySubTab('queue')}
+                  className={`h-10 px-5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2.5 ${
+                    safetySubTab === 'queue'
+                      ? 'bg-slate-900 text-white shadow-md'
+                      : 'bg-white text-slate-500 hover:text-slate-900 border border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <ShieldAlert size={15} className={sosAlerts.filter(a => a.status === 'active').length > 0 ? 'text-rose-400 animate-pulse' : ''} />
+                  Active Incident Queue
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                    sosAlerts.filter(a => a.status === 'active').length > 0 ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-700'
+                  }`}>
+                    {Math.min(10, sosAlerts.length)}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSafetySubTab('history')}
+                  className={`h-10 px-5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2.5 ${
+                    safetySubTab === 'history'
+                      ? 'bg-slate-900 text-white shadow-md'
+                      : 'bg-white text-slate-500 hover:text-slate-900 border border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <History size={15} />
+                  Incident History Archive
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-100 text-slate-600 border border-slate-200">
+                    {sosAlerts.length}
+                  </span>
+                </button>
+              </div>
+
+              {safetySubTab === 'queue' ? (
+                <div className="grid gap-8 lg:grid-cols-3">
+                  <div className="lg:col-span-2 space-y-6">
+                    <Card noPadding className="overflow-hidden border-slate-200/60 shadow-xl">
+                      <div className="p-4 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                          Live Queue (Top {Math.min(10, sosAlerts.length)} Active & Recent Incidents)
+                        </span>
+                        {sosAlerts.length > 10 && (
+                          <button
+                            onClick={() => setSafetySubTab('history')}
+                            className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
                           >
-                            <td className="px-8 py-5">
-                              <p className="text-sm font-bold text-slate-900">Passenger {sos.user_id}</p>
-                              <p className="text-[10px] font-medium text-slate-400 uppercase mt-0.5">{sos.location_address}</p>
-                            </td>
-                            <td className="px-8 py-5">
-                              <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${sos.severity === 'critical' ? 'bg-rose-500 text-white' : 'bg-amber-500 text-white'
-                                }`}>
-                                {sos.severity}
-                              </span>
-                            </td>
-                            <td className="px-8 py-5">
-                              <div className="flex items-center gap-2">
-                                <div className={`h-1.5 w-1.5 rounded-full ${sos.status === 'active' ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`} />
-                                <span className={`text-[10px] font-bold uppercase tracking-widest ${sos.status === 'active' ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                  {sos.status}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-8 py-5 text-right">
-                              <button className="h-8 w-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-primary transition-all">
-                                <ChevronRight size={14} />
-                              </button>
-                            </td>
-                          </tr>
-                        )) : (
-                          <tr><td colSpan={4} className="px-8 py-20 text-center text-slate-400 font-medium">No active security threats.</td></tr>
+                            View All {sosAlerts.length} in Archive <ChevronRight size={13} />
+                          </button>
                         )}
-                      </tbody>
-                    </table>
-                  </Card>
+                      </div>
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50/30 border-b border-slate-100">
+                            <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Incident Node</th>
+                            <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Severity</th>
+                            <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Status</th>
+                            <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">Protocol</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {sosAlerts.length > 0 ? sosAlerts.slice(0, 10).map((sos) => (
+                            <tr
+                              key={sos._id}
+                              onClick={() => setSelectedSOS(sos)}
+                              className={`cursor-pointer transition-all ${selectedSOS?._id === sos._id ? 'bg-rose-50/50' : 'hover:bg-slate-50/30'}`}
+                            >
+                              <td className="px-8 py-5">
+                                <p className="text-sm font-bold text-slate-900">Passenger {sos.user_id}</p>
+                                <p className="text-[10px] font-medium text-slate-400 uppercase mt-0.5">{sos.location_address}</p>
+                              </td>
+                              <td className="px-8 py-5">
+                                <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${sos.severity === 'critical' ? 'bg-rose-500 text-white' : 'bg-amber-500 text-white'
+                                  }`}>
+                                  {sos.severity}
+                                </span>
+                              </td>
+                              <td className="px-8 py-5">
+                                <div className="flex items-center gap-2">
+                                  <div className={`h-1.5 w-1.5 rounded-full ${sos.status === 'active' ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`} />
+                                  <span className={`text-[10px] font-bold uppercase tracking-widest ${sos.status === 'active' ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                    {sos.status}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-8 py-5 text-right">
+                                <button className="h-8 w-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-primary transition-all">
+                                  <ChevronRight size={14} />
+                                </button>
+                              </td>
+                            </tr>
+                          )) : (
+                            <tr><td colSpan={4} className="px-8 py-20 text-center text-slate-400 font-medium">No active security threats in queue.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                      {sosAlerts.length > 10 && (
+                        <div className="p-4 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                          <span>Showing top 10 active/recent nodes of {sosAlerts.length} total</span>
+                          <button
+                            onClick={() => setSafetySubTab('history')}
+                            className="text-primary font-bold hover:underline flex items-center gap-1"
+                          >
+                            Access Full Incident History ({sosAlerts.length}) <ChevronRight size={14} />
+                          </button>
+                        </div>
+                      )}
+                    </Card>
 
                   {selectedSOS && (
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -1801,6 +1933,193 @@ const AdminDashboard = () => {
                   </motion.div>
                 </div>
               </div>
+              ) : (
+                /* INCIDENT HISTORY ARCHIVE TAB */
+                <div className="space-y-6">
+                  {/* Filters & Search Header */}
+                  <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { id: 'all', label: 'All Incidents', count: sosAlerts.length },
+                        { id: 'active', label: 'Active Threats', count: sosAlerts.filter(a => a.status === 'active').length },
+                        { id: 'resolved', label: 'Resolved', count: sosAlerts.filter(a => a.status === 'resolved').length },
+                        { id: 'false_alarm', label: 'False Alarms', count: sosAlerts.filter(a => a.status === 'false_alarm').length }
+                      ].map(f => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => setHistoryFilter(f.id as any)}
+                          className={`h-10 px-4 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 border ${
+                            historyFilter === f.id
+                              ? 'bg-slate-900 text-white border-slate-900 shadow-md'
+                              : 'bg-white text-slate-500 hover:text-slate-900 border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          {f.label}
+                          <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-black ${
+                            historyFilter === f.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {f.count}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="relative min-w-[300px]">
+                      <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search node ID, passenger, location..."
+                        value={historySearch}
+                        onChange={(e) => setHistorySearch(e.target.value)}
+                        className="w-full h-11 pl-11 pr-4 rounded-xl bg-white border border-slate-200 text-xs font-bold placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary shadow-sm"
+                      />
+                      {historySearch && (
+                        <button
+                          type="button"
+                          onClick={() => setHistorySearch('')}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Comprehensive Archive Table */}
+                  <Card noPadding className="overflow-hidden border-slate-200/60 shadow-xl">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50/50 border-b border-slate-100">
+                          <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Incident Node</th>
+                          <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Location Coordinates</th>
+                          <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Severity</th>
+                          <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Status</th>
+                          <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Timestamp</th>
+                          <th className="px-8 py-5 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {sosAlerts.filter((sos) => {
+                          if (historyFilter === 'active' && sos.status !== 'active') return false;
+                          if (historyFilter === 'resolved' && sos.status !== 'resolved') return false;
+                          if (historyFilter === 'false_alarm' && sos.status !== 'false_alarm') return false;
+                          if (historySearch) {
+                            const q = historySearch.toLowerCase();
+                            const idMatch = sos._id?.toLowerCase().includes(q);
+                            const userMatch = sos.user_id?.toLowerCase().includes(q);
+                            const locMatch = sos.location_address?.toLowerCase().includes(q);
+                            const sevMatch = sos.severity?.toLowerCase().includes(q);
+                            if (!idMatch && !userMatch && !locMatch && !sevMatch) return false;
+                          }
+                          return true;
+                        }).length > 0 ? (
+                          sosAlerts.filter((sos) => {
+                            if (historyFilter === 'active' && sos.status !== 'active') return false;
+                            if (historyFilter === 'resolved' && sos.status !== 'resolved') return false;
+                            if (historyFilter === 'false_alarm' && sos.status !== 'false_alarm') return false;
+                            if (historySearch) {
+                              const q = historySearch.toLowerCase();
+                              const idMatch = sos._id?.toLowerCase().includes(q);
+                              const userMatch = sos.user_id?.toLowerCase().includes(q);
+                              const locMatch = sos.location_address?.toLowerCase().includes(q);
+                              const sevMatch = sos.severity?.toLowerCase().includes(q);
+                              if (!idMatch && !userMatch && !locMatch && !sevMatch) return false;
+                            }
+                            return true;
+                          }).map((sos) => (
+                            <tr
+                              key={sos._id}
+                              className="hover:bg-slate-50/40 transition-colors group"
+                            >
+                              <td className="px-8 py-5">
+                                <div className="flex items-center gap-3">
+                                  <div className={`h-9 w-9 rounded-xl flex items-center justify-center font-bold text-white shadow-sm ${
+                                    sos.status === 'active' ? 'bg-rose-500 animate-pulse' : 'bg-slate-800'
+                                  }`}>
+                                    <ShieldAlert size={16} />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-bold text-slate-900">Passenger {sos.user_id}</p>
+                                    <p className="text-[10px] font-medium text-slate-400 uppercase">Alert ID: #{sos._id.slice(-6).toUpperCase()}</p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-8 py-5">
+                                <p className="text-xs font-bold text-slate-700 max-w-xs truncate">{sos.location_address || 'Live Coordinates'}</p>
+                                {sos.latitude && sos.longitude && (
+                                  <p className="text-[10px] font-medium text-slate-400">Lat: {sos.latitude.toFixed(4)}, Lng: {sos.longitude.toFixed(4)}</p>
+                                )}
+                              </td>
+                              <td className="px-8 py-5">
+                                <span className={`px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${
+                                  sos.severity === 'critical' ? 'bg-rose-500 text-white' :
+                                  sos.severity === 'high' ? 'bg-orange-500 text-white' :
+                                  'bg-amber-500 text-white'
+                                }`}>
+                                  {sos.severity}
+                                </span>
+                              </td>
+                              <td className="px-8 py-5">
+                                <div className="flex items-center gap-2">
+                                  <div className={`h-2 w-2 rounded-full ${
+                                    sos.status === 'active' ? 'bg-rose-500 animate-ping' :
+                                    sos.status === 'resolved' ? 'bg-emerald-500' : 'bg-slate-400'
+                                  }`} />
+                                  <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                                    sos.status === 'active' ? 'text-rose-600 font-black' :
+                                    sos.status === 'resolved' ? 'text-emerald-600' : 'text-slate-500'
+                                  }`}>
+                                    {sos.status}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-8 py-5">
+                                <div>
+                                  <p className="text-xs font-bold text-slate-700">
+                                    {sos.created_at ? new Date(sos.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : '—'}
+                                  </p>
+                                  <p className="text-[10px] font-medium text-slate-400">
+                                    {sos.created_at ? new Date(sos.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'}
+                                  </p>
+                                </div>
+                              </td>
+                              <td className="px-8 py-5 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  {sos.status === 'active' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleResolveSOS(sos._id, 'resolved')}
+                                      className="h-8 px-3 rounded-lg bg-rose-500 text-white text-[10px] font-black uppercase tracking-wider hover:bg-rose-600 shadow-sm transition-all flex items-center gap-1.5"
+                                    >
+                                      <Check size={12} /> Resolve
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => { setSelectedSOS(sos); setSafetySubTab('queue'); }}
+                                      className="h-8 px-3 rounded-lg bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider hover:bg-slate-200 transition-all flex items-center gap-1 border border-slate-200"
+                                    >
+                                      <Navigation size={12} /> View In Telemetry
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={6} className="px-8 py-20 text-center text-slate-400 font-medium">
+                              <History size={36} className="mx-auto text-slate-300 mb-2" />
+                              No incident history records found matching current query.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </Card>
+                </div>
+              )}
             </div>
           )}
           {activeTab === "settings" && (
@@ -2009,6 +2328,87 @@ const AdminDashboard = () => {
                 >
                   <ShieldAlert size={14} /> Open Safety Command
                 </button>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* CLOUDINARY DOCUMENT INSPECTION MODAL */}
+      <Modal
+        isOpen={adminDocModalOpen}
+        onClose={() => setAdminDocModalOpen(false)}
+        title={selectedAdminDoc ? `${selectedAdminDoc.document_type.replace('_', ' ').toUpperCase()} — ${selectedAdminDoc.driver_name || 'Driver'}` : "Document Verification"}
+      >
+        {selectedAdminDoc && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold">
+                  <ShieldCheck size={20} />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900 capitalize">{selectedAdminDoc.document_type.replace('_', ' ')}</h4>
+                  <p className="text-[10px] text-slate-400 font-medium">SafeGo Cloudinary Secure Archive</p>
+                </div>
+              </div>
+              <span className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${
+                selectedAdminDoc.status === 'verified' ? 'bg-emerald-100 text-emerald-700' :
+                selectedAdminDoc.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                'bg-rose-100 text-rose-700'
+              }`}>
+                {selectedAdminDoc.status}
+              </span>
+            </div>
+
+            {selectedAdminDoc.file_url ? (
+              <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-950/5 flex flex-col items-center justify-center min-h-[320px] max-h-[480px]">
+                <img
+                  src={
+                    selectedAdminDoc.file_url.includes("cloudinary.com") && selectedAdminDoc.file_url.toLowerCase().endsWith(".pdf")
+                      ? selectedAdminDoc.file_url.replace(/\.pdf$/i, ".png")
+                      : selectedAdminDoc.file_url
+                  }
+                  alt={selectedAdminDoc.document_type}
+                  className="w-full h-full object-contain rounded-xl max-h-[440px]"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1544383335-248386af915e?q=80&w=1200&auto=format&fit=crop";
+                  }}
+                />
+                {selectedAdminDoc.file_url.includes('safego-demo') && (
+                  <div className="absolute bottom-2 left-2 right-2 p-2.5 rounded-xl bg-amber-500/95 text-white text-[11px] font-bold text-center backdrop-blur-sm shadow-lg">
+                    ⚠️ Demo Mock Record: Created before your Cloudinary credentials were set. Submit a new application via /apply-driver to store files permanently in Cloudinary.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl">
+                <AlertCircle size={40} className="mx-auto text-amber-500 mb-2" />
+                <p className="text-sm font-bold text-slate-700">No binary file uploaded for this slot</p>
+              </div>
+            )}
+
+            <div className="flex gap-4 pt-2">
+              <button
+                type="button"
+                onClick={() => setAdminDocModalOpen(false)}
+                className="flex-1 h-14 rounded-2xl bg-slate-100 text-slate-900 font-bold text-xs uppercase tracking-wider hover:bg-slate-200 transition-all"
+              >
+                Close Preview
+              </button>
+              {selectedAdminDoc.file_url && (
+                <a
+                  href={
+                    selectedAdminDoc.file_url.includes("cloudinary.com") && selectedAdminDoc.file_url.toLowerCase().endsWith(".pdf")
+                      ? selectedAdminDoc.file_url.replace(/\.pdf$/i, ".png")
+                      : selectedAdminDoc.file_url
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 h-14 rounded-2xl bg-slate-900 text-white font-bold text-xs uppercase tracking-wider shadow-lg hover:bg-primary transition-all flex items-center justify-center gap-2"
+                >
+                  <ArrowUpRight size={16} /> Open in Cloudinary
+                </a>
               )}
             </div>
           </div>

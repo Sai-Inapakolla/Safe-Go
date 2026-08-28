@@ -26,6 +26,7 @@ def _user_dict(u: User) -> dict:
             "preferred_mode": u.preferred_mode.value if u.preferred_mode and hasattr(u.preferred_mode, "value") else u.preferred_mode,
             "gender": u.gender.value if u.gender and hasattr(u.gender, "value") else u.gender,
             "profile_photo": u.profile_photo,
+            "is_elder": getattr(u, "is_elder", False),
             "is_active": u.is_active, "is_verified": u.is_verified, "created_at": u.created_at, "updated_at": u.updated_at}
 
 
@@ -73,6 +74,7 @@ def _ride_dict(r: Ride) -> dict:
 async def _driver_dict(driver: Driver) -> dict:
     user = await User.get(driver.user_id)
     vehicle = await Vehicle.find_one(Vehicle.driver_id == driver.id)
+    docs = await DriverDocument.find(DriverDocument.driver_id == driver.id).to_list()
     return {
         "_id": str(driver.id), "user_id": str(driver.user_id), "license_number": driver.license_number,
         "status": driver.status.value, "is_online": driver.is_online,
@@ -86,6 +88,7 @@ async def _driver_dict(driver: Driver) -> dict:
                     "color": vehicle.color, "plate_number": vehicle.plate_number,
                     "is_wheelchair_accessible": vehicle.is_wheelchair_accessible,
                     "is_approved": vehicle.is_approved, "created_at": vehicle.created_at} if vehicle else None,
+        "documents": [_doc_dict(d) for d in docs],
     }
 
 
@@ -212,22 +215,47 @@ async def approve_driver(driver_id: str, payload: DriverApproval, admin: User = 
     driver = await Driver.get(PydanticObjectId(driver_id))
     if not driver:
         raise HTTPException(status_code=404, detail="Driver not found")
+
     if payload.status == "approved":
         driver.status = DriverStatus.approved
         driver.approved_at = datetime.now(timezone.utc)
+        driver.updated_at = datetime.now(timezone.utc)
         await driver.save()
+
+        # Activate and verify the associated user so they can log in immediately
+        user = await User.get(driver.user_id)
+        if user:
+            user.is_verified = True
+            user.is_active = True
+            user.role = UserRole.driver
+            await user.save()
+
+        # Approve vehicle
+        vehicle = await Vehicle.find_one(Vehicle.driver_id == driver.id)
+        if vehicle:
+            vehicle.is_approved = True
+            await vehicle.save()
+
+        # Mark all pending documents as verified
+        docs = await DriverDocument.find(DriverDocument.driver_id == driver.id).to_list()
+        for doc in docs:
+            if doc.status == DocumentStatus.pending or doc.file_url:
+                doc.status = DocumentStatus.verified
+                doc.reviewed_by = admin.id
+                doc.reviewed_at = datetime.now(timezone.utc)
+                await doc.save()
+
         return await _driver_dict(driver)
     elif payload.status == "rejected":
         driver.status = DriverStatus.rejected
+        driver.updated_at = datetime.now(timezone.utc)
         await driver.save()
-        
-        # Suspend access of the associated user
+
         user = await User.get(driver.user_id)
         if user:
             user.is_verified = False
-            user.is_active = False
             await user.save()
-            
+
         return await _driver_dict(driver)
 
 
@@ -287,6 +315,26 @@ async def get_sos_alerts(status: Optional[str] = Query(None), admin: User = Depe
         query["status"] = status
     alerts = await SOSAlert.find(query).sort(-SOSAlert.created_at).to_list()
     return [_sos_dict(a) for a in alerts]
+
+
+@router.put("/sos-alerts/resolve-all")
+async def resolve_all_sos(status: str = Query("resolved"), admin: User = Depends(get_current_admin)):
+    if status not in ("resolved", "false_alarm"):
+        raise HTTPException(status_code=400, detail="Invalid status. Must be 'resolved' or 'false_alarm'")
+    
+    active_alerts = await SOSAlert.find(SOSAlert.status == SOSStatus.active).to_list()
+    now = datetime.now(timezone.utc)
+    for alert in active_alerts:
+        alert.status = SOSStatus(status)
+        alert.resolved_by = admin.id
+        alert.resolved_at = now
+        await alert.save()
+        
+    return {
+        "message": f"Successfully resolved {len(active_alerts)} SOS alerts",
+        "resolved_count": len(active_alerts),
+        "status": status
+    }
 
 
 @router.put("/sos-alerts/{alert_id}/resolve", response_model=SOSResponse)
