@@ -12,6 +12,7 @@ import {
   ShieldAlert, Phone, Siren, Radio, Copy, ShieldCheck, Lock, Search, Target
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { getApiUrl } from "@/lib/api";
 
 // ─── Simulated nearby cabs ───────────────────────────────────────────────────
 const generateNearbyCabs = (lat: number, lng: number, mode: string = "normal", dbDrivers: any[] = []) => {
@@ -134,7 +135,7 @@ const MapPanel = ({
   const [showMapSearchDropdown, setShowMapSearchDropdown] = useState(false);
   const mapSearchTimeoutRef = useRef<any>(null);
 
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+  const API_URL = getApiUrl();
 
   // Helper for smooth Leaflet marker animation (no sudden marker jumps!)
   const animateMarkerTo = (marker: any, targetLat: number, targetLng: number, duration: number = 350) => {
@@ -438,8 +439,36 @@ const MapPanel = ({
             mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
           }
         } else if (Number.isFinite(ptFrom.lat) && Number.isFinite(ptFrom.lng) && Number.isFinite(ptTo.lat) && Number.isFinite(ptTo.lng)) {
-          L.polyline([[ptFrom.lat, ptFrom.lng], [ptTo.lat, ptTo.lng]], { color: accent, weight: 4, dashArray: "10 10", isRouteLayer: true }).addTo(mapInstanceRef.current);
-          mapInstanceRef.current.fitBounds(L.latLngBounds([ptFrom.lat, ptFrom.lng], [ptTo.lat, ptTo.lng]), { padding: [50, 50] });
+          const dx = (ptTo.lng - ptFrom.lng) * 40000 * Math.cos(((ptFrom.lat + ptTo.lat) * Math.PI) / 360) / 360;
+          const dy = ((ptTo.lat - ptFrom.lat) * 40000) / 360;
+          const distApprox = Math.max(1, Math.round(Math.sqrt(dx * dx + dy * dy) * 1.2));
+          if (onRouteExtracted) onRouteExtracted(distApprox, cabs);
+
+          const interPoints: [number, number][] = [];
+          const steps = 20;
+          for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            const lat = ptFrom.lat + (ptTo.lat - ptFrom.lat) * t;
+            const lng = ptFrom.lng + (ptTo.lng - ptFrom.lng) * t;
+            const curve = Math.sin(t * Math.PI) * 0.003;
+            interPoints.push([lat + curve, lng + curve]);
+          }
+
+          L.polyline(interPoints, { color: accent, weight: 6, opacity: 0.8, className: 'route-glow', isRouteLayer: true }).addTo(mapInstanceRef.current);
+          L.polyline(interPoints, { color: 'white', weight: 2, dashArray: '8 8', isRouteLayer: true }).addTo(mapInstanceRef.current);
+
+          const pickupIcon = L.divIcon({
+            html: `<div style="background:${accent};width:14px;height:14px;border:2px solid white;border-radius:50%;box-shadow:0 0 10px ${accent}80;"></div>`,
+            className: "", iconSize: [14, 14], iconAnchor: [7, 7]
+          });
+          const destIcon = L.divIcon({
+            html: `<div style="background:#ef4444;width:14px;height:14px;border:2px solid white;border-radius:3px;box-shadow:0 0 10px #ef444480;"></div>`,
+            className: "", iconSize: [14, 14], iconAnchor: [7, 7]
+          });
+
+          L.marker([ptFrom.lat, ptFrom.lng], { icon: pickupIcon, isRouteLayer: true }).addTo(mapInstanceRef.current);
+          L.marker([ptTo.lat, ptTo.lng], { icon: destIcon, isRouteLayer: true }).addTo(mapInstanceRef.current);
+          mapInstanceRef.current.fitBounds(L.latLngBounds(interPoints), { padding: [50, 50] });
         }
       } catch (err) {
         console.warn("Routing failed", err);
@@ -1819,7 +1848,11 @@ const BookingPage = () => {
 
       // Automatically resolve coordinates if user typed and hit Enter without selecting
       if (!finalPickupCoords) {
-        finalPickupCoords = await resolveLocalCoords(pickup);
+        if (pickup.toLowerCase().includes("current location") || pickup.toLowerCase().includes("my location") || pickup.trim() === "") {
+          finalPickupCoords = mapCenter || { lat: 22.3023, lng: 73.3762 };
+        } else {
+          finalPickupCoords = await resolveLocalCoords(pickup);
+        }
         
         if (!finalPickupCoords) {
           try {
