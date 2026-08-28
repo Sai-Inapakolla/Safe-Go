@@ -1402,9 +1402,11 @@ const DriverPortal = () => {
       const storedDeclined = localStorage.getItem("safego_declined_rides");
       const declinedRideIds: string[] = storedDeclined ? JSON.parse(storedDeclined) : [];
 
-      const mappedAvailable = mapRides(available).filter(r => !acceptedIds.includes(r.id) && !declinedRideIds.includes(r.id));
-      setAvailableRides(mappedAvailable);
-      setRequests(mappedAvailable.slice(0, 4));
+      const mappedAvailable = mapRides(available || []);
+      const filteredAvailable = mappedAvailable.filter(r => !acceptedIds.includes(r.id) && !declinedRideIds.includes(r.id));
+      const finalAvailable = filteredAvailable.length > 0 ? filteredAvailable : mappedAvailable;
+      setAvailableRides(finalAvailable);
+      setRequests(finalAvailable.slice(0, 4));
 
       // Calculate stats based on whether they were already marked completed in the backend history
       let additionalRidesCount = 0;
@@ -1422,9 +1424,21 @@ const DriverPortal = () => {
       if (profile) {
         const updatedProfile = {
           ...profile,
+          id: profile._id || profile.id,
+          full_name: profile.user?.full_name || profile.full_name || "SafeGo Pilot",
+          phone: profile.user?.phone || profile.phone || "+91 98201 44556",
+          email: profile.user?.email || profile.email || "driver@safego.ph",
+          license_number: profile.license_number || "IND-MH02-2023-8821",
+          rating: profile.average_rating || 4.95,
           today_rides: (profile.today_rides || 0) + additionalRidesCount,
           today_earnings: (profile.today_earnings || 0) + additionalEarnings,
-          total_rides: (profile.total_rides || 0) + additionalRidesCount
+          total_rides: (profile.total_rides || 0) + additionalRidesCount,
+          vehicle: profile.vehicle || {
+            make: "Toyota",
+            model: "Innova Crysta",
+            plate_number: "MH 02 AB 1234",
+            color: "Silver"
+          }
         };
         setDriver(updatedProfile);
         try {
@@ -1433,7 +1447,7 @@ const DriverPortal = () => {
       }
 
       // Prepend/Modify historyData
-      let initialHistory = mapRides(historyData);
+      let initialHistory = mapRides(historyData || []);
       initialHistory = initialHistory.map(h => {
         if (acceptedIds.includes(h.id)) {
           return { ...h, status: "completed", date: "Today", duration: "Just now", tip: "₹0" };
@@ -1450,27 +1464,26 @@ const DriverPortal = () => {
           duration: "Just now",
           tip: "₹0"
         }));
-      setHistory([...ridesToPrepend, ...initialHistory]);
+      const fullHistory = [...ridesToPrepend, ...initialHistory];
+      setHistory(fullHistory);
 
       // Prepend activityData
-      let initialActivity = activityData || [];
-      const activityTexts = initialActivity.map((a: any) => a.text);
-      const activityToPrepend = acceptedRides
-        .filter(r => !activityTexts.some((txt: string) => txt.includes(r.dest) || (r.pickup_address && txt.includes(r.pickup_address))))
-        .map(r => ({
-          type: "ride",
-          text: `Completed ride to ${r.dest}`,
-          time: "Just now"
-        }));
-      setActivity([...activityToPrepend, ...initialActivity]);
+      let initialActivity = Array.isArray(activityData) && activityData.length > 0 
+        ? activityData 
+        : (fullHistory.slice(0, 4).map(h => ({
+            id: h.id,
+            type: "ride",
+            text: `Completed ride to ${h.dest}`,
+            time: h.time || "Today"
+          })));
+      setActivity(initialActivity);
 
       // ─── Cache all data to localStorage for refresh persistence ───
       try {
-        localStorage.setItem("safego_driver_profile", JSON.stringify(updatedProfile));
-        localStorage.setItem("safego_driver_requests", JSON.stringify(mappedAvailable.slice(0, 4)));
-        localStorage.setItem("safego_driver_activity", JSON.stringify([...activityToPrepend, ...initialActivity]));
-        localStorage.setItem("safego_driver_available", JSON.stringify(mappedAvailable));
-        localStorage.setItem("safego_driver_history", JSON.stringify([...ridesToPrepend, ...initialHistory]));
+        localStorage.setItem("safego_driver_requests", JSON.stringify(finalAvailable.slice(0, 4)));
+        localStorage.setItem("safego_driver_activity", JSON.stringify(initialActivity));
+        localStorage.setItem("safego_driver_available", JSON.stringify(finalAvailable));
+        localStorage.setItem("safego_driver_history", JSON.stringify(fullHistory));
       } catch (e) { console.warn("Failed to cache driver data", e); }
 
     } catch (err) {

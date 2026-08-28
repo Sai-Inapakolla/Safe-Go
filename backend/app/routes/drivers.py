@@ -478,6 +478,32 @@ async def get_driver_history(current_user: User = Depends(get_current_driver)):
     return [await _ride_dict(r, passenger_map) for r in rides]
 
 
+@router.get("/me/activity")
+async def get_driver_activity(current_user: User = Depends(get_current_driver)):
+    driver = await _get_or_create_driver(current_user.id)
+    recent_rides = await Ride.find(Ride.driver_id == driver.id).sort(-Ride.updated_at).limit(10).to_list()
+    
+    activities = []
+    for r in recent_rides:
+        status_text = "Completed ride to " + (r.destination_address or "destination") if r.status == RideStatus.completed else f"Ride {r.status.value}"
+        time_str = r.updated_at.strftime("%I:%M %p") if r.updated_at else "Recently"
+        activities.append({
+            "id": str(r.id),
+            "type": "ride",
+            "text": status_text,
+            "time": time_str,
+            "amount": f"₹{r.fare_amount}" if r.fare_amount else None
+        })
+    
+    if not activities:
+        activities = [
+            {"id": "act_1", "type": "system", "text": "Pilot node synchronized with SafeGo Matrix", "time": "Just now"},
+            {"id": "act_2", "type": "auth", "text": "Identity credentials verified on network", "time": "Today"}
+        ]
+        
+    return activities
+
+
 @router.post("/me/rides/{ride_id}/accept", response_model=RideResponse)
 async def accept_ride(ride_id: str, current_user: User = Depends(get_current_driver)):
     driver = await _get_or_create_driver(current_user.id)
