@@ -68,92 +68,6 @@ const Modal = ({ isOpen, onClose, title, children }: any) => {
   );
 };
 
-const DEFAULT_STATS = {
-  total_users: 94,
-  total_drivers: 19,
-  active_drivers: 8,
-  pending_drivers: 1,
-  total_rides: 78,
-  active_rides: 12,
-  total_sos_alerts: 112,
-  active_sos_alerts: 0,
-  driver_applications: 1,
-  rides_by_status: { completed: 1250, cancelled: 45, in_progress: 12 },
-  safety_summary: { active_alerts: 0, resolved_today: 4 }
-};
-
-const DEFAULT_USERS = [
-  { _id: "usr_adm_1", full_name: "SafeGo Admin", email: "admin@safego.ph", phone: "+91 90428 62878", role: "admin", position: "Chief Operations Officer", department: "Central Ops", is_active: true, is_verified: true, created_at: "2025-01-15T08:00:00Z" },
-  { _id: "usr_stf_1", full_name: "Aanya Sen", email: "aanya.sen@safego.ph", phone: "+91 98450 11223", role: "staff", position: "Lead Dispatcher", department: "Emergency & Safety", is_active: true, is_verified: true, created_at: "2025-02-10T09:30:00Z" },
-  { _id: "usr_drv_1", full_name: "Rajesh Kumar", email: "rajesh.k@safego.ph", phone: "+91 98201 44556", role: "driver", position: "Senior Pilot", department: "Mumbai Fleet", is_active: true, is_verified: true, created_at: "2025-02-18T10:15:00Z" },
-  { _id: "usr_drv_2", full_name: "Priya Sharma", email: "priya.s@safego.ph", phone: "+91 94480 77889", role: "driver", position: "Pink Route Specialist", department: "Bangalore Fleet", is_active: true, is_verified: true, created_at: "2025-03-01T11:45:00Z" },
-  { _id: "usr_drv_3", full_name: "Sunita Rao", email: "sunita.r@safego.ph", phone: "+91 91234 56780", role: "driver", position: "Fleet Pilot (Candidate)", department: "Delhi Fleet", is_active: false, is_verified: false, created_at: "2025-03-12T14:20:00Z" },
-  { _id: "usr_drv_4", full_name: "Amit Patel", email: "amit.p@safego.ph", phone: "+91 97123 99887", role: "driver", position: "Senior Pilot", department: "Ahmedabad Fleet", is_active: true, is_verified: true, created_at: "2025-03-15T16:00:00Z" }
-];
-
-const DEFAULT_DRIVERS = [
-  {
-    _id: "drv_1", user_id: "usr_drv_1", license_number: "IND-MH02-2023-8821", status: "approved", is_online: true,
-    current_latitude: 19.076, current_longitude: 72.8777, average_rating: 4.95, total_rides: 342, today_rides: 6, today_earnings: 2150,
-    acceptance_rate: 98.4, certified_modes: ["normal", "pwd"],
-    user: { _id: "usr_drv_1", full_name: "Rajesh Kumar", email: "rajesh.k@safego.ph", phone: "+91 98201 44556", gender: "male", role: "driver" },
-    vehicle: { _id: "veh_1", make: "Toyota", model: "Innova Crysta", year: 2023, color: "Silver", plate_number: "MH 02 AB 1234", is_wheelchair_accessible: true, is_approved: true },
-    documents: [
-      { _id: "doc_1", document_type: "license", status: "verified", file_url: "https://example.com/license.pdf" },
-      { _id: "doc_2", document_type: "vehicle_insurance", status: "verified", file_url: "https://example.com/insurance.pdf" }
-    ]
-  },
-  {
-    _id: "drv_2", user_id: "usr_drv_2", license_number: "IND-KA05-2022-4412", status: "approved", is_online: true,
-    current_latitude: 12.9716, current_longitude: 77.5946, average_rating: 4.98, total_rides: 512, today_rides: 8, today_earnings: 3400,
-    acceptance_rate: 99.1, certified_modes: ["pink", "normal"],
-    user: { _id: "usr_drv_2", full_name: "Priya Sharma", email: "priya.s@safego.ph", phone: "+91 94480 77889", gender: "female", role: "driver" },
-    vehicle: { _id: "veh_2", make: "Hyundai", model: "Creta SX", year: 2022, color: "Pearl White", plate_number: "KA 05 EF 5678", is_wheelchair_accessible: false, is_approved: true },
-    documents: [
-      { _id: "doc_3", document_type: "license", status: "verified", file_url: "https://example.com/license.pdf" }
-    ]
-  },
-  {
-    _id: "drv_3", user_id: "usr_drv_3", license_number: "IND-DL01-2024-9012", status: "pending", is_online: false,
-    current_latitude: 28.6139, current_longitude: 77.209, average_rating: 5.0, total_rides: 0, today_rides: 0, today_earnings: 0,
-    acceptance_rate: 100, certified_modes: ["pink", "elder"],
-    user: { _id: "usr_drv_3", full_name: "Sunita Rao", email: "sunita.r@safego.ph", phone: "+91 91234 56780", gender: "female", role: "driver" },
-    vehicle: { _id: "veh_3", make: "Maruti Suzuki", model: "Ertiga ZXi", year: 2024, color: "Magma Grey", plate_number: "DL 01 CD 9012", is_wheelchair_accessible: true, is_approved: false },
-    documents: [
-      { _id: "doc_4", document_type: "license", status: "pending", file_url: "https://example.com/license.pdf" },
-      { _id: "doc_5", document_type: "police_clearance", status: "pending", file_url: "https://example.com/clearance.pdf" }
-    ]
-  }
-];
-
-const DEFAULT_RIDES = [
-  {
-    _id: "ride_101", passenger_id: "usr_pax_1", driver_id: "drv_2", mode: "pink", status: "in_progress",
-    pickup_address: "Connaught Place, Central Delhi", pickup_latitude: 28.6315, pickup_longitude: 77.2167,
-    destination_address: "Saket District Centre, South Delhi", destination_latitude: 28.5244, destination_longitude: 77.2198,
-    distance_km: 14.2, duration_minutes: 32, fare_amount: 320, safety_score: 98.5,
-    started_at: new Date(Date.now() - 15 * 60000).toISOString(), created_at: new Date(Date.now() - 20 * 60000).toISOString(),
-    driver: DEFAULT_DRIVERS[1]
-  },
-  {
-    _id: "ride_102", passenger_id: "usr_pax_2", driver_id: "drv_1", mode: "pwd", status: "in_progress",
-    pickup_address: "Indiranagar 100ft Rd, Bangalore", pickup_latitude: 12.9784, pickup_longitude: 77.6408,
-    destination_address: "Manipal Hospital, HAL Old Airport Rd", destination_latitude: 12.9592, destination_longitude: 77.6568,
-    distance_km: 6.8, duration_minutes: 18, fare_amount: 245, safety_score: 99.0,
-    started_at: new Date(Date.now() - 8 * 60000).toISOString(), created_at: new Date(Date.now() - 12 * 60000).toISOString(),
-    driver: DEFAULT_DRIVERS[0]
-  }
-];
-
-const DEFAULT_SOS = [
-  {
-    _id: "sos_101", user_id: "usr_pax_3", ride_id: "ride_101",
-    latitude: 28.5678, longitude: 77.215, location_address: "Outer Ring Road, Near Flyover, New Delhi",
-    severity: "medium", status: "resolved", notes: "Route anomaly detected automatically; verified passenger safety confirmation.",
-    created_at: new Date(Date.now() - 45 * 60000).toISOString(), resolved_at: new Date(Date.now() - 35 * 60000).toISOString()
-  }
-];
-
 const AdminDashboard = () => {
   // ── Main AdminDashboard state (continued) ─────────────────────────
   const [activeTab, setActiveTab] = useState<AdminTab>((localStorage.getItem("safego_admin_active_tab") as AdminTab) || "dashboard");
@@ -163,19 +77,19 @@ const AdminDashboard = () => {
   // ─── Restore cached data from localStorage for instant display on refresh ───
   const [stats, setStats] = useState<any>(() => {
     try { const c = localStorage.getItem("safego_admin_stats"); if (c) return JSON.parse(c); } catch {}
-    return DEFAULT_STATS;
+    return null;
   });
   const [usersList, setUsersList] = useState<any[]>(() => {
     try { const c = localStorage.getItem("safego_admin_users"); if (c) return JSON.parse(c); } catch {}
-    return DEFAULT_USERS;
+    return [];
   });
   const [driversList, setDriversList] = useState<any[]>(() => {
     try { const c = localStorage.getItem("safego_admin_drivers"); if (c) return JSON.parse(c); } catch {}
-    return DEFAULT_DRIVERS;
+    return [];
   });
   const [liveRides, setLiveRides] = useState<any[]>(() => {
     try { const c = localStorage.getItem("safego_admin_rides"); if (c) return JSON.parse(c); } catch {}
-    return DEFAULT_RIDES;
+    return [];
   });
   const [sosAlerts, setSosAlerts] = useState<any[]>(() => {
     try {
@@ -187,7 +101,7 @@ const AdminDashboard = () => {
         }
       }
     } catch {}
-    return DEFAULT_SOS;
+    return [];
   });
   const [notifications, setNotifications] = useState<{ id: string, title: string, description: string, time: string, type: string, sourceId?: string }[]>([
     { id: '1', title: 'System Boot Success', description: 'All matrix nodes are synchronized and online.', time: 'Just now', type: 'success' },
