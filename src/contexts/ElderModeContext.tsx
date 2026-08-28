@@ -94,7 +94,11 @@ export const ElderModeProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 export const useElderMode = () => {
   const context = useContext(ElderModeContext);
   if (!context) {
-    throw new Error("useElderMode must be used within an ElderModeProvider");
+    return {
+      isElderMode: false,
+      toggleElderMode: () => {},
+      setElderMode: () => {},
+    };
   }
   return context;
 };

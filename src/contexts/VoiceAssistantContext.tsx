@@ -107,28 +107,33 @@ export const VoiceAssistantProvider: React.FC<{ children: ReactNode }> = ({ chil
   // Text to Speech (Browser API)
   // ---------------------------------------------------------------------------
   const speak = (text: string) => {
-    if (!("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
+    if (typeof window === "undefined" || !("speechSynthesis" in window) || !window.speechSynthesis) return;
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
 
-    // Auto-select a clear English voice if available
-    const getBestVoice = () => {
-      const voices = window.speechSynthesis.getVoices();
-      return voices.find(v => v.lang.includes("en-IN")) ||
-        voices.find(v => v.lang.includes("en-GB")) ||
-        voices.find(v => v.lang.includes("en-US")) ||
-        voices[0];
-    };
+      // Auto-select a clear English voice if available
+      const getBestVoice = () => {
+        if (!window.speechSynthesis) return undefined;
+        const voices = window.speechSynthesis.getVoices();
+        return voices.find(v => v.lang.includes("en-IN")) ||
+          voices.find(v => v.lang.includes("en-GB")) ||
+          voices.find(v => v.lang.includes("en-US")) ||
+          voices[0];
+      };
 
-    const bestVoice = getBestVoice();
-    if (bestVoice) utterance.voice = bestVoice;
+      const bestVoice = getBestVoice();
+      if (bestVoice) utterance.voice = bestVoice;
 
-    console.log("[Voice] Synthesis Result:", text);
-    window.speechSynthesis.speak(utterance);
+      console.log("[Voice] Synthesis Result:", text);
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.warn("[Voice] Speech synthesis error:", e);
+    }
   };
 
   const startListening = () => {
@@ -147,11 +152,31 @@ export const VoiceAssistantProvider: React.FC<{ children: ReactNode }> = ({ chil
     }
   };
 
-  // Preload voices
+  // Preload voices safely
   useEffect(() => {
-    const handleVoicesChanged = () => window.speechSynthesis.getVoices();
-    window.speechSynthesis.addEventListener("voiceschanged", handleVoicesChanged);
-    return () => window.speechSynthesis.removeEventListener("voiceschanged", handleVoicesChanged);
+    if (typeof window === "undefined" || !("speechSynthesis" in window) || !window.speechSynthesis) {
+      return;
+    }
+    const handleVoicesChanged = () => {
+      try {
+        window.speechSynthesis?.getVoices();
+      } catch {}
+    };
+    if (typeof window.speechSynthesis.addEventListener === "function") {
+      window.speechSynthesis.addEventListener("voiceschanged", handleVoicesChanged);
+      return () => {
+        try {
+          window.speechSynthesis?.removeEventListener("voiceschanged", handleVoicesChanged);
+        } catch {}
+      };
+    } else {
+      window.speechSynthesis.onvoiceschanged = handleVoicesChanged;
+      return () => {
+        if (window.speechSynthesis) {
+          window.speechSynthesis.onvoiceschanged = null;
+        }
+      };
+    }
   }, []);
 
   const stopListening = () => {

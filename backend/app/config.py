@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "SafeGo"
     DEBUG: bool = True
     ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
-    ADMIN_EMAIL: str = "madhansenthilkumar1@gmail.com"
+    ADMIN_EMAIL: str = "admin@safego.ph"
     ADMIN_PASSWORD: str = "Admin@SafeGo2025"
     ADMIN_PHONE: str = "+919490969706"
     TESTER_EMAIL: str = "tester@safego.in"
