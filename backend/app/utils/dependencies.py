@@ -17,9 +17,13 @@ async def get_current_user(
 ) -> User:
     token = credentials.credentials
 
-    # 1. Development Shortcut & Admin Fallback: Allow dummy & safego tokens
-    if token in ["admin-dummy-token", "safego-demo-admin"] or token.startswith("safego_token_"):
+    # 1. Development Shortcut & Role Fallbacks: Allow dummy & safego tokens
+    if token in ["admin-dummy-token", "safego-demo-admin"] or token.startswith("safego_token_") or token.startswith("safego_admin_"):
         user = await User.find_one(User.role == UserRole.admin)
+        if user:
+            return user
+    if token in ["driver-dummy-token", "safego-demo-driver"] or token.startswith("safego_driver_"):
+        user = await User.find_one(User.role == UserRole.driver)
         if user:
             return user
     if token in ["google-dummy-token", "dummy-token"]:
