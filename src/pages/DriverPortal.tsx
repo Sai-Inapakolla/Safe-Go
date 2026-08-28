@@ -18,6 +18,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+} from "@/components/ui/dialog";
 import { useRef } from "react";
 import { getApiUrl } from "@/lib/api";
 
