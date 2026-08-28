@@ -4,6 +4,7 @@ import { Menu, X } from "lucide-react";
 import { useState, useEffect } from "react";
 import { ThemeToggle } from "./ThemeToggle";
 import { LanguageSwitcher } from "./LanguageSwitcher";
+import { ElderModeToggle } from "./ElderModeToggle";
 import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
 import { useTranslation } from "react-i18next";
@@ -52,6 +53,7 @@ export const Navbar = ({ fullWidth = true }: { fullWidth?: boolean }) => {
         </div>
 
         <div className="hidden items-center gap-3 md:flex">
+          <ElderModeToggle />
           <LanguageSwitcher />
           <ThemeToggle />
           {localStorage.getItem("token") ? (
@@ -115,6 +117,10 @@ export const Navbar = ({ fullWidth = true }: { fullWidth?: boolean }) => {
             </Link>
           ))}
           <div className="mt-4 border-t border-border pt-4 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-muted-foreground">Senior Vision</span>
+              <ElderModeToggle showLabel={true} />
+            </div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-muted-foreground">Language</span>
               <LanguageSwitcher />

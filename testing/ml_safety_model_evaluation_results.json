@@ -1,0 +1,190 @@
+{
+  "model_architecture": {
+    "algorithm": "RandomForestClassifier",
+    "n_estimators": 100,
+    "max_depth": 14,
+    "random_state": 42,
+    "feature_count": 12,
+    "features": [
+      "pickup_hour",
+      "day_of_week",
+      "distance_km",
+      "passenger_count",
+      "ride_mode",
+      "pickup_latitude",
+      "pickup_longitude",
+      "destination_latitude",
+      "destination_longitude",
+      "pickup_dist_to_safe_hub",
+      "dest_dist_to_safe_hub",
+      "pickup_in_high_risk_hotspot"
+    ],
+    "target_classes": [
+      "0: Stable",
+      "1: Cautious",
+      "2: High Priority"
+    ]
+  },
+  "dataset_split": {
+    "total_samples": 10000,
+    "train_samples": 8000,
+    "test_samples": 2000,
+    "test_class_distribution": {
+      "Stable": 1018,
+      "Cautious": 373,
+      "High Priority": 609
+    }
+  },
+  "performance_metrics": {
+    "accuracy": 0.998,
+    "precision_macro": 0.998695,
+    "precision_weighted": 0.998008,
+    "precision_per_class": {
+      "Stable": 0.996086,
+      "Cautious": 1.0,
+      "High_Priority": 1.0
+    },
+    "recall_macro": 0.997811,
+    "recall_weighted": 0.998,
+    "recall_per_class": {
+      "Stable": 1.0,
+      "Cautious": 1.0,
+      "High_Priority": 0.993432
+    },
+    "f1_macro": 0.998248,
+    "f1_weighted": 0.997999,
+    "f1_per_class": {
+      "Stable": 0.998039,
+      "Cautious": 1.0,
+      "High_Priority": 0.996705
+    },
+    "confusion_matrix": {
+      "matrix_2d": [
+        [
+          1018,
+          0,
+          0
+        ],
+        [
+          0,
+          373,
+          0
+        ],
+        [
+          4,
+          0,
+          605
+        ]
+      ],
+      "labels": [
+        "Stable",
+        "Cautious",
+        "High Priority"
+      ],
+      "row_actual_col_pred": {
+        "Actual_Stable": {
+          "Pred_Stable": 1018,
+          "Pred_Cautious": 0,
+          "Pred_High_Priority": 0
+        },
+        "Actual_Cautious": {
+          "Pred_Stable": 0,
+          "Pred_Cautious": 373,
+          "Pred_High_Priority": 0
+        },
+        "Actual_High_Priority": {
+          "Pred_Stable": 4,
+          "Pred_Cautious": 0,
+          "Pred_High_Priority": 605
+        }
+      }
+    },
+    "classification_report": {
+      "Stable": {
+        "precision": 0.9960861056751468,
+        "recall": 1.0,
+        "f1-score": 0.9980392156862745,
+        "support": 1018.0
+      },
+      "Cautious": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 373.0
+      },
+      "High Priority": {
+        "precision": 1.0,
+        "recall": 0.993431855500821,
+        "f1-score": 0.9967051070840197,
+        "support": 609.0
+      },
+      "accuracy": 0.998,
+      "macro avg": {
+        "precision": 0.9986953685583823,
+        "recall": 0.9978106185002736,
+        "f1-score": 0.9982481075900981,
+        "support": 2000.0
+      },
+      "weighted avg": {
+        "precision": 0.9980078277886497,
+        "recall": 0.998,
+        "f1-score": 0.9979986658913976,
+        "support": 2000.0
+      }
+    }
+  },
+  "latency_benchmarks_ms": {
+    "mean_latency_ms": 32.267,
+    "p50_latency_ms": 31.717,
+    "p90_latency_ms": 38.686,
+    "p95_latency_ms": 41.387,
+    "p99_latency_ms": 45.491
+  },
+  "route_risk_predictions": [
+    {
+      "scenario": "Daytime Downtown Commute (Standard Normal Mode)",
+      "mode": "normal",
+      "time": "14:00",
+      "distance_km": 3.5,
+      "predicted_safety_category": "Stable",
+      "confidence_score": 0.9595,
+      "context": "Broad daylight, safe transit hub center (Vadodara Station)"
+    },
+    {
+      "scenario": "Late-Night Suburban Ring Road (Normal Mode)",
+      "mode": "normal",
+      "time": "01:00",
+      "distance_km": 9.5,
+      "predicted_safety_category": "Cautious",
+      "confidence_score": 0.8658,
+      "context": "1:00 AM midnight, NW outskirts bypass / high risk hotspot"
+    },
+    {
+      "scenario": "Persons with Disabilities (PWD Mode Commute)",
+      "mode": "pwd",
+      "time": "10:00",
+      "distance_km": 4.1,
+      "predicted_safety_category": "High Priority",
+      "confidence_score": 0.9659,
+      "context": "Morning commute with wheelchair accommodation requirement"
+    },
+    {
+      "scenario": "Women Safety Evening Outskirts (Pink Mode)",
+      "mode": "pink",
+      "time": "20:00",
+      "distance_km": 11.2,
+      "predicted_safety_category": "High Priority",
+      "confidence_score": 0.7019,
+      "context": "8:00 PM evening, SE Industrial outskirts hotspot"
+    },
+    {
+      "scenario": "Senior Citizen Daytime Trip (Elderly Mode)",
+      "mode": "elderly",
+      "time": "11:00",
+      "distance_km": 5.0,
+      "predicted_safety_category": "High Priority",
+      "confidence_score": 0.9831,
+      "context": "Senior citizen trip requiring caregiver sync"
+    }
+  ]
+}

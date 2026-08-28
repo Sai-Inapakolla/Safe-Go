@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.models import User, UserRole
 from app.schemas import (
-    UserRegister, UserLogin, TokenResponse, UserResponse, 
+    UserRegister, UserLogin, TokenResponse, UserResponse, UserUpdate,
     FirebaseSyncRequest, SendOTPRequest, VerifyOTPRequest, SetPasswordRequest
 )
 from app.services.auth_service import register_user, authenticate_user, create_token_for_user, get_or_create_firebase_user
@@ -76,6 +76,7 @@ async def register(payload: UserRegister):
             password=payload.password,
             role=payload.role,
             gender=payload.gender,
+            is_elder=bool(payload.is_elder),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -91,6 +92,27 @@ async def login(payload: UserLogin):
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is deactivated")
+
+    # If user is a driver, check application status
+    if user.role == UserRole.driver:
+        from app.models import Driver, DriverStatus
+        driver = await Driver.find_one(Driver.user_id == user.id)
+        if driver:
+            if driver.status == DriverStatus.pending:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Your driver application is currently pending admin review. You will be able to log in once approved by SafeGo Admins."
+                )
+            elif driver.status == DriverStatus.rejected:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Your driver application was rejected. Please contact SafeGo support or submit a new application."
+                )
+            elif driver.status == DriverStatus.suspended:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Your driver account has been suspended. Please contact SafeGo administration."
+                )
 
     token = create_token_for_user(user)
     role_val = user.role.value if hasattr(user.role, 'value') else user.role
@@ -155,6 +177,23 @@ async def get_me(current_user: User = Depends(get_current_user)):
     return _user_to_response(current_user)
 
 
+@router.put("/me", response_model=UserResponse)
+async def update_me(payload: UserUpdate, current_user: User = Depends(get_current_user)):
+    if payload.full_name is not None:
+        current_user.full_name = payload.full_name
+    if payload.phone is not None:
+        current_user.phone = payload.phone
+    if payload.gender is not None:
+        current_user.gender = payload.gender
+    if payload.preferred_mode is not None:
+        current_user.preferred_mode = payload.preferred_mode
+    if payload.is_elder is not None:
+        current_user.is_elder = payload.is_elder
+    
+    await current_user.save()
+    return _user_to_response(current_user)
+
+
 def _user_to_response(user: User) -> dict:
     """Helper to convert a Beanie User document to a response dict."""
     return {
@@ -166,6 +205,7 @@ def _user_to_response(user: User) -> dict:
         "preferred_mode": user.preferred_mode.value if user.preferred_mode and hasattr(user.preferred_mode, "value") else user.preferred_mode,
         "gender": user.gender.value if user.gender and hasattr(user.gender, "value") else user.gender,
         "profile_photo": user.profile_photo,
+        "is_elder": getattr(user, "is_elder", False),
         "is_active": user.is_active,
         "is_verified": user.is_verified,
         "created_at": user.created_at,

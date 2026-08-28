@@ -372,3 +372,96 @@
 .rating__label--delay4 { transition-delay: 0.2s !important; }
 .rating__label--delay5 { transition-delay: 0.25s !important; }
 
+/* ==========================================================================
+   SENIOR / ELDER VISION MODE SYSTEM
+   High contrast, enlarged typography, large tap targets, and enhanced clarity
+   ========================================================================== */
+
+html.elder-mode {
+  font-size: 116%; /* Scales rem units up by 16% */
+}
+
+.elder-mode body {
+  letter-spacing: 0.015em;
+  font-weight: 500;
+}
+
+.elder-mode p,
+.elder-mode span,
+.elder-mode label,
+.elder-mode h1,
+.elder-mode h2,
+.elder-mode h3,
+.elder-mode h4,
+.elder-mode h5,
+.elder-mode h6 {
+  line-height: 1.55;
+}
+
+/* Ensure large touch targets for elderly riders */
+.elder-mode button:not(.btn-compact),
+.elder-mode a.btn,
+.elder-mode input,
+.elder-mode select,
+.elder-mode textarea {
+  min-height: 3.25rem !important;
+}
+
+/* High contrast & enlarged text utilities */
+.elder-mode .text-xs {
+  font-size: 0.925rem !important;
+  line-height: 1.45 !important;
+}
+
+.elder-mode .text-\[10px\],
+.elder-mode .text-\[11px\] {
+  font-size: 0.85rem !important;
+  line-height: 1.4 !important;
+}
+
+.elder-mode .text-\[9px\],
+.elder-mode .text-\[8px\] {
+  font-size: 0.775rem !important;
+}
+
+.elder-mode .text-sm {
+  font-size: 1.075rem !important;
+}
+
+.elder-mode .text-base {
+  font-size: 1.225rem !important;
+}
+
+.elder-mode .text-lg {
+  font-size: 1.375rem !important;
+}
+
+.elder-mode .text-xl {
+  font-size: 1.6rem !important;
+}
+
+.elder-mode .text-2xl {
+  font-size: 1.95rem !important;
+}
+
+.elder-mode .text-3xl {
+  font-size: 2.35rem !important;
+}
+
+.elder-mode .text-4xl {
+  font-size: 2.85rem !important;
+}
+
+.elder-mode .text-muted-foreground {
+  color: hsl(var(--foreground) / 0.82) !important; /* Richer, more legible contrast */
+}
+
+.elder-mode .border-border {
+  border-color: hsl(var(--foreground) / 0.22) !important;
+}
+
+.elder-mode .glass-card {
+  border-width: 1.5px !important;
+  border-color: hsl(var(--foreground) / 0.18) !important;
+}
+

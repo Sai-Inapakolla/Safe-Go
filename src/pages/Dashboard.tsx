@@ -13,6 +13,7 @@ import {
   Accessibility, Mic, Check, Trash2, Loader2, Plus, X, Eye, EyeOff
 } from "lucide-react";
 import { useVoiceAssistant } from "@/contexts/VoiceAssistantContext";
+import { useElderMode } from "@/contexts/ElderModeContext";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -46,6 +47,7 @@ const Dashboard = () => {
   const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
+  const { isElderMode, toggleElderMode } = useElderMode();
   const [activeTab, setActiveTab] = useState("Dashboard");
 
   useEffect(() => {
@@ -1394,6 +1396,37 @@ const Dashboard = () => {
                         </select>
                       </div>
                     )}
+                  </div>
+                </div>
+              </section>
+
+              {/* Accessibility & Vision Preferences */}
+              <section>
+                <h4 className="flex items-center gap-2 text-lg font-bold text-foreground mb-4">
+                  <Accessibility size={20} className="text-amber-500" /> Accessibility & Vision
+                </h4>
+                <div className="rounded-2xl border border-border bg-background shadow-sm overflow-hidden divide-y divide-border">
+                  <div className="p-5 flex justify-between items-center hover:bg-secondary/50 transition-colors">
+                    <div className="pr-4">
+                      <div className="flex items-center gap-2">
+                        <h5 className="font-semibold text-foreground">Senior / Elder Vision Mode</h5>
+                        {isElderMode && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-0.5">Enlarges typography, emphasizes high contrast, and increases button touch targets for effortless reading.</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={isElderMode}
+                        onChange={(e) => toggleElderMode(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
                   </div>
                 </div>
               </section>

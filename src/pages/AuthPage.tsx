@@ -12,6 +12,7 @@ import {
   updatePassword
 } from "firebase/auth";
 import { Check, ShieldCheck, ArrowRight, KeyRound } from "lucide-react";
+import { useElderMode } from "@/contexts/ElderModeContext";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -19,6 +20,7 @@ const AuthPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const isLogin = location.pathname === "/login";
+  const { setElderMode } = useElderMode();
 
   const [role, setRole] = useState<"passenger" | "driver" | "admin">("passenger");
 
@@ -39,6 +41,7 @@ const AuthPage = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isElderSignup, setIsElderSignup] = useState(false);
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -203,6 +206,19 @@ const AuthPage = () => {
             const finalRole = (data.role === "admin" || email.includes("admin")) ? "admin" : data.role;
             localStorage.setItem("userRole", finalRole);
             
+            // Sync user preferences like senior vision mode
+            try {
+              const meRes = await fetch(`${API_URL}/api/auth/me`, {
+                headers: { Authorization: `Bearer ${data.access_token}` }
+              });
+              if (meRes.ok) {
+                const meData = await meRes.json();
+                if (meData.is_elder) {
+                  setElderMode(true);
+                }
+              }
+            } catch {}
+
             setLoading(false);
             if (finalRole === "admin") navigate("/admin");
             else if (finalRole === "driver") navigate("/driver");
@@ -238,7 +254,8 @@ const AuthPage = () => {
         body: JSON.stringify({ 
           role,
           full_name: fullName,
-          phone: phone
+          phone: phone,
+          is_elder: isElderSignup
         })
       });
 
@@ -254,6 +271,34 @@ const AuthPage = () => {
       localStorage.removeItem("safego_declined_rides");
       const finalRole = (data.role === "admin" || email.includes("admin")) ? "admin" : data.role;
       localStorage.setItem("userRole", finalRole);
+
+      // If user registered with elder mode enabled, apply it immediately
+      if (!isLogin && isElderSignup) {
+        setElderMode(true);
+        try {
+          await fetch(`${API_URL}/api/auth/me`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${data.access_token}`
+            },
+            body: JSON.stringify({ is_elder: true })
+          });
+        } catch {}
+      } else if (isLogin) {
+        // Sync preferences on login
+        try {
+          const meRes = await fetch(`${API_URL}/api/auth/me`, {
+            headers: { Authorization: `Bearer ${data.access_token}` }
+          });
+          if (meRes.ok) {
+            const meData = await meRes.json();
+            if (meData.is_elder) {
+              setElderMode(true);
+            }
+          }
+        } catch {}
+      }
 
       if (finalRole === "admin") {
         navigate("/admin");
@@ -580,6 +625,47 @@ const AuthPage = () => {
                         {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
+                  </div>
+                )}
+
+                {/* Senior / Elder Vision Mode Onboarding Option */}
+                {!isLogin && role === "passenger" && (
+                  <div
+                    onClick={() => setIsElderSignup(!isElderSignup)}
+                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 select-none ${
+                      isElderSignup
+                        ? "bg-amber-500/10 border-amber-500/40 text-foreground shadow-sm"
+                        : "bg-background/50 border-border/80 text-muted-foreground hover:border-amber-500/30"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`h-9 w-9 rounded-xl flex items-center justify-center font-black text-xs transition-colors shrink-0 ${
+                          isElderSignup ? "bg-amber-500 text-white" : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        A+
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                          Senior / Elder Vision Mode
+                          {isElderSignup && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                              Active
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Enable larger fonts, bold text & high contrast readability
+                        </p>
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={isElderSignup}
+                      onChange={(e) => setIsElderSignup(e.target.checked)}
+                      className="h-4 w-4 rounded accent-amber-500 cursor-pointer shrink-0"
+                    />
                   </div>
                 )}
 

@@ -51,6 +51,8 @@ class DocumentType(str, enum.Enum):
     drivers_license = "drivers_license"
     vehicle_registration = "vehicle_registration"
     nbi_clearance = "nbi_clearance"
+    vehicle_insurance = "vehicle_insurance"
+    medical_certificate = "medical_certificate"
 
 
 class DocumentStatus(str, enum.Enum):
@@ -90,6 +92,7 @@ class User(Document):
     preferred_mode: Optional[RideMode] = RideMode.normal
     gender: Optional[Gender] = Gender.male
     profile_photo: Optional[str] = None
+    is_elder: bool = False
     is_active: bool = True
     is_verified: bool = False
     created_at: datetime = Field(default_factory=_utcnow)

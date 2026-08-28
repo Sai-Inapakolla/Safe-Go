@@ -10,6 +10,7 @@ async def register_user(
     password: str,
     role: str = "passenger",
     gender: str = "male",
+    is_elder: bool = False,
 ) -> User:
     """Create a new user in the database."""
     existing_email = await User.find_one(User.email == email)
@@ -27,6 +28,7 @@ async def register_user(
         hashed_password=hash_password(password),
         role=UserRole(role),
         gender=gender,
+        is_elder=is_elder,
     )
     await user.insert()
     return user

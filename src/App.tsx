@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import { VoiceAssistantProvider } from "./contexts/VoiceAssistantContext";
+import { ElderModeProvider } from "./contexts/ElderModeContext";
 import { FloatingAssistant } from "./components/FloatingAssistant";
 import { ThemeProvider } from "./components/ThemeProvider";
 
@@ -47,40 +48,42 @@ const PageLoader = () => (
 
 const App = () => (
   <ThemeProvider defaultTheme="light" storageKey="safego-ui-theme">
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner position="top-right" expand={true} richColors closeButton />
-        <BrowserRouter>
-          <ScrollToTop />
-          <VoiceAssistantProvider>
-            {/* <FloatingAssistant /> */}
-            <Suspense fallback={<PageLoader />}>
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/home" element={<Home />} />
-                <Route path="/login" element={<AuthPage />} />
-                <Route path="/signup" element={<AuthPage />} />
-                <Route path="/book" element={<ProtectedRoute><BookingPage /></ProtectedRoute>} />
-                <Route path="/book/:mode" element={<ProtectedRoute><BookingPage /></ProtectedRoute>} />
-                <Route path="/booking" element={<ProtectedRoute><BookingPage /></ProtectedRoute>} />
-                <Route path="/booking/:mode" element={<ProtectedRoute><BookingPage /></ProtectedRoute>} />
-                <Route path="/ride/tracking" element={<ProtectedRoute><RideTracking /></ProtectedRoute>} />
-                <Route path="/safety" element={<Safety />} />
-                <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-                <Route path="/driver" element={<ProtectedRoute allowedRoles={["driver", "admin"]}><DriverPortal /></ProtectedRoute>} />
-                <Route path="/admin" element={<ProtectedRoute allowedRoles={["admin"]}><AdminDashboard /></ProtectedRoute>} />
-                <Route path="/drive-with-us" element={<DriveWithUs />} />
-                <Route path="/apply-driver" element={<ApplyDriver />} />
-                <Route path="/pwd-mode" element={<ProtectedRoute><PWDMode /></ProtectedRoute>} />
-                <Route path="/about" element={<About />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Suspense>
-          </VoiceAssistantProvider>
-        </BrowserRouter>
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ElderModeProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner position="top-right" expand={true} richColors closeButton />
+          <BrowserRouter>
+            <ScrollToTop />
+            <VoiceAssistantProvider>
+              {/* <FloatingAssistant /> */}
+              <Suspense fallback={<PageLoader />}>
+                <Routes>
+                  <Route path="/" element={<Home />} />
+                  <Route path="/home" element={<Home />} />
+                  <Route path="/login" element={<AuthPage />} />
+                  <Route path="/signup" element={<AuthPage />} />
+                  <Route path="/book" element={<ProtectedRoute><BookingPage /></ProtectedRoute>} />
+                  <Route path="/book/:mode" element={<ProtectedRoute><BookingPage /></ProtectedRoute>} />
+                  <Route path="/booking" element={<ProtectedRoute><BookingPage /></ProtectedRoute>} />
+                  <Route path="/booking/:mode" element={<ProtectedRoute><BookingPage /></ProtectedRoute>} />
+                  <Route path="/ride/tracking" element={<ProtectedRoute><RideTracking /></ProtectedRoute>} />
+                  <Route path="/safety" element={<Safety />} />
+                  <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                  <Route path="/driver" element={<ProtectedRoute allowedRoles={["driver", "admin"]}><DriverPortal /></ProtectedRoute>} />
+                  <Route path="/admin" element={<ProtectedRoute allowedRoles={["admin"]}><AdminDashboard /></ProtectedRoute>} />
+                  <Route path="/drive-with-us" element={<DriveWithUs />} />
+                  <Route path="/apply-driver" element={<ApplyDriver />} />
+                  <Route path="/pwd-mode" element={<ProtectedRoute><PWDMode /></ProtectedRoute>} />
+                  <Route path="/about" element={<About />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Suspense>
+            </VoiceAssistantProvider>
+          </BrowserRouter>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ElderModeProvider>
   </ThemeProvider>
 );
 

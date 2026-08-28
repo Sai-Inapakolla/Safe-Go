@@ -15,6 +15,7 @@ class UserRegister(BaseModel):
     confirm_password: str = Field(..., min_length=6)
     role: str = Field(default="passenger")
     gender: str = Field(default="male")
+    is_elder: Optional[bool] = False
 
 
 class UserLogin(BaseModel):
@@ -52,6 +53,7 @@ class UserResponse(BaseModel):
     preferred_mode: Optional[str] = None
     gender: Optional[str] = None
     profile_photo: Optional[str] = None
+    is_elder: Optional[bool] = False
     is_active: bool
     is_verified: bool
     created_at: Optional[datetime] = None
@@ -65,6 +67,7 @@ class UserUpdate(BaseModel):
     phone: Optional[str] = None
     gender: Optional[str] = None
     preferred_mode: Optional[str] = None
+    is_elder: Optional[bool] = None
 
 
 class UserBrief(BaseModel):
@@ -123,6 +126,21 @@ class DriverApplication(BaseModel):
     preferred_mode: str = "standard"
 
 
+class DriverDocumentResponse(BaseModel):
+    id: str = Field(..., alias="_id")
+    driver_id: str
+    document_type: str
+    file_url: Optional[str] = None
+    status: str
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
 class DriverResponse(BaseModel):
     id: str = Field(..., alias="_id")
     user_id: str
@@ -142,6 +160,7 @@ class DriverResponse(BaseModel):
     updated_at: Optional[datetime] = None
     user: Optional[UserResponse] = None
     vehicle: Optional[VehicleResponse] = None
+    documents: Optional[List[DriverDocumentResponse]] = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -165,21 +184,6 @@ class DriverEarnings(BaseModel):
 
 class DriverOnlineStatus(BaseModel):
     is_online: bool
-
-
-class DriverDocumentResponse(BaseModel):
-    id: str = Field(..., alias="_id")
-    driver_id: str
-    document_type: str
-    file_url: Optional[str] = None
-    status: str
-    reviewed_by: Optional[str] = None
-    reviewed_at: Optional[datetime] = None
-    notes: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class DocumentUpload(BaseModel):
@@ -462,6 +466,7 @@ class AdminUserCreate(BaseModel):
     position: Optional[str] = None
     department: Optional[str] = None
     gender: str = "male"
+    is_elder: bool = False
     is_active: bool = True
     is_verified: bool = False
 
@@ -474,6 +479,7 @@ class AdminUserUpdate(BaseModel):
     position: Optional[str] = None
     department: Optional[str] = None
     gender: Optional[str] = None
+    is_elder: Optional[bool] = None
     is_active: Optional[bool] = None
     is_verified: Optional[bool] = None
 
