@@ -321,9 +321,28 @@ const AdminDashboard = () => {
 
   const checkHealth = async () => {
     try {
-      const res = await fetch(`${API_URL}/`);
-      setIsBackendAlive(res.ok);
-    } catch (err) { setIsBackendAlive(false); }
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(`${API_URL}/`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        setIsBackendAlive(true);
+        return;
+      }
+    } catch {}
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(`/api/modes`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        setIsBackendAlive(true);
+        return;
+      }
+    } catch {}
+
+    setIsBackendAlive(false);
   };
 
   const fetchCurrentUser = async () => {
