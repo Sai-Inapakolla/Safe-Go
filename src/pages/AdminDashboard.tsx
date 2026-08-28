@@ -271,7 +271,7 @@ const AdminDashboard = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [fluxRange, setFluxRange] = useState('1H');
   const [fleetGenderFilter, setFleetGenderFilter] = useState<'all' | 'male' | 'female'>('all');
-  const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'admin' | 'staff' | 'driver'>('all');
+  const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'admin' | 'staff' | 'driver' | 'passenger'>('all');
 
   const getFluxData = () => {
     switch (fluxRange) {
@@ -1286,7 +1286,7 @@ const AdminDashboard = () => {
 
                   {/* ROLE ARCHITECTURE FILTER */}
                   <div className="flex bg-slate-100 p-1 rounded-xl">
-                    {(['all', 'admin', 'staff', 'driver'] as const).map((r) => (
+                    {(['all', 'admin', 'staff', 'driver', 'passenger'] as const).map((r) => (
                       <button
                         key={r}
                         onClick={() => setUserRoleFilter(r)}
@@ -1322,8 +1322,8 @@ const AdminDashboard = () => {
                   <tbody className="divide-y divide-slate-50">
                     {isSearching && usersList.length === 0 ? (
                       <tr><td colSpan={4} className="px-8 py-20 text-center"><Loader2 className="animate-spin mx-auto text-primary" size={32} /></td></tr>
-                    ) : usersList.filter(u => u.role?.toLowerCase() !== 'passenger').filter(u => userRoleFilter === 'all' || u.role?.toLowerCase() === userRoleFilter).length > 0 ? (
-                      usersList.filter(u => u.role?.toLowerCase() !== 'passenger').filter(u => userRoleFilter === 'all' || u.role?.toLowerCase() === userRoleFilter).map((u) => (
+                    ) : usersList.filter(u => userRoleFilter === 'all' || u.role?.toLowerCase() === userRoleFilter).length > 0 ? (
+                      usersList.filter(u => userRoleFilter === 'all' || u.role?.toLowerCase() === userRoleFilter).map((u) => (
                         <tr key={u._id} className="hover:bg-slate-50/30 transition-colors group">
                           <td className="px-8 py-5">
                             <div className="flex items-center gap-4">
