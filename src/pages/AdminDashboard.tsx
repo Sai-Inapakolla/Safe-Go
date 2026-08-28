@@ -602,10 +602,10 @@ const AdminDashboard = () => {
     checkHealth();
     fetchStats();
     fetchCurrentUser();
-    if (activeTab === "users") fetchUsers();
-    if (activeTab === "drivers" || activeTab === "driver-requests") { fetchDrivers(); }
-    if (activeTab === "live-rides") fetchLiveRides();
-    if (activeTab === "alerts") fetchSOS();
+    fetchUsers();
+    fetchDrivers();
+    fetchLiveRides();
+    fetchSOS();
 
     // LIVE INTER-TAB SYNCHRONIZATION
     // This allows the admin to see SOS/Bookings made in other tabs immediately

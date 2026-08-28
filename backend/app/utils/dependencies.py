@@ -17,8 +17,8 @@ async def get_current_user(
 ) -> User:
     token = credentials.credentials
 
-    # 1. Development Shortcut: Allow dummy tokens
-    if token == "admin-dummy-token":
+    # 1. Development Shortcut & Admin Fallback: Allow dummy & safego tokens
+    if token in ["admin-dummy-token", "safego-demo-admin"] or token.startswith("safego_token_"):
         user = await User.find_one(User.role == UserRole.admin)
         if user:
             return user
