@@ -312,10 +312,13 @@ const AuthPage = () => {
       }
 
     } catch (err: any) {
-      if (err.message && (err.message.includes("auth/invalid-credential") || err.message.includes("auth/wrong-password") || err.message.includes("Invalid email or password"))) {
-        setError("Invalid credentials. If you originally signed up with Google, please click 'Sign in with Google' below.");
+      const msg = err?.message || "";
+      if (msg.includes("auth/user-not-found") || msg.toLowerCase().includes("not found")) {
+        setError("No account found with this email. Please click 'Sign Up' below or use 'Sign in with Google'.");
+      } else if (msg.includes("auth/invalid-credential") || msg.includes("auth/wrong-password") || msg.includes("Invalid email or password")) {
+        setError("Incorrect password or credentials. If you signed up with Google, please click 'Sign in with Google'.");
       } else {
-        setError(err.message);
+        setError(msg || "Authentication failed. Please check your credentials.");
       }
     } finally {
       setLoading(false);
