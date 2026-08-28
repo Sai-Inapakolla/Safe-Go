@@ -1421,25 +1421,6 @@ const BookingPage = () => {
   const [selectedDriver, setSelectedDriver] = useState<any>(null);
   const [askStatus, setAskStatus] = useState<"idle" | "asking" | "accepted" | "rejected">("idle");
 
-  const handleAutoSelectNearestCab = () => {
-    const firstActive = activeDrivers && activeDrivers.length > 0 ? activeDrivers[0] : null;
-    const defaultDriver = firstActive ? {
-      driver_id: firstActive._id,
-      name: firstActive.user?.full_name || "Vihaan Gupta",
-      rating: firstActive.average_rating || 4.9,
-      price: rideDetails.fare || 250,
-      eta: 2
-    } : {
-      driver_id: "default-driver-1",
-      name: mode.id === "pink" ? "Priya Singh" : "Vihaan Gupta",
-      rating: 4.9,
-      price: rideDetails.fare || 250,
-      eta: 2
-    };
-    setSelectedDriver(defaultDriver);
-    return defaultDriver;
-  };
-
   useEffect(() => {
     let interval: any;
     if (askStatus === "asking") {
@@ -2067,10 +2048,6 @@ const BookingPage = () => {
     setTimeout(() => {
       handleConfirmRide(defaultDriverObj);
     }, 150);
-  };
-
-  const handleAskDriver = () => {
-    handleAutoSelectNearestCab(selectedDriver);
   };
 
   const handleConfirmRide = async (overrideDriver?: any) => {
