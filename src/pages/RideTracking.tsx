@@ -4,6 +4,7 @@ import { SOSButton } from "@/components/SOSButton";
 import { ArrowLeft, Phone, MessageCircle, Share2, Star, ShieldCheck, Navigation } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { getApiUrl } from "@/lib/api";
 
 declare global { interface Window { L: any } }
 
@@ -20,7 +21,7 @@ const RideTracking = () => {
   const [distanceKm, setDistanceKm] = useState<number | null>(null);
   const [safetyPrediction, setSafetyPrediction] = useState<string>("Stable");
 
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+  const API_URL = getApiUrl();
 
   // Smooth animation helper
   const animateMarkerTo = (marker: any, targetLat: number, targetLng: number, duration: number = 350) => {

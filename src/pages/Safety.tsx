@@ -10,8 +10,9 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { getApiUrl } from "@/lib/api";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = getApiUrl();
 
 const Safety = () => {
     const revealRef = useScrollReveal();

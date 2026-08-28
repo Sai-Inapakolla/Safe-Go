@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { getApiUrl } from "@/lib/api";
 
 interface ElderModeContextType {
   isElderMode: boolean;
@@ -9,7 +10,7 @@ interface ElderModeContextType {
 
 const ElderModeContext = createContext<ElderModeContextType | undefined>(undefined);
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = getApiUrl();
 
 export const ElderModeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isElderMode, setIsElderMode] = useState<boolean>(() => {

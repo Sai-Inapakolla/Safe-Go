@@ -1,6 +1,7 @@
 import { ShieldAlert, X, Phone, User as UserIcon, CheckCircle2 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { getApiUrl } from "@/lib/api";
 
 export interface Contact {
   _id?: string;
@@ -25,7 +26,7 @@ export const SOSButton = ({ onTrigger, contacts = [], testerPhone = "+9194909697
   const [isDispatching, setIsDispatching] = useState(false);
 
   const handleClose = useCallback(async () => {
-    const API_URL = import.meta.env.VITE_API_URL || "";
+    const API_URL = getApiUrl();
     const token = localStorage.getItem("token");
 
     if (activeSosId) {
@@ -107,7 +108,7 @@ export const SOSButton = ({ onTrigger, contacts = [], testerPhone = "+9194909697
     }
 
     const userId = storedUser?.id || storedUser?._id || "USER_EMERGENCY_PASSENGER";
-    const API_URL = import.meta.env.VITE_API_URL || "";
+    const API_URL = getApiUrl();
 
     const triggerBackendSOS = async (latitude: number, longitude: number) => {
       const generatedLocalId = "SOS_" + Math.floor(Math.random() * 10000);
@@ -213,7 +214,7 @@ export const SOSButton = ({ onTrigger, contacts = [], testerPhone = "+9194909697
 
   const handleDispatchAuthorities = async () => {
     setIsDispatching(true);
-    const API_URL = import.meta.env.VITE_API_URL || "";
+    const API_URL = getApiUrl();
     const token = localStorage.getItem("token");
 
     if (activeSosId) {

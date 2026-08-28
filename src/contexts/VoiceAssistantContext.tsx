@@ -22,13 +22,15 @@ interface VoiceAssistantContextType {
   triggerSOS?: () => void;
 }
 
+import { getApiUrl } from "@/lib/api";
+
 const VoiceAssistantContext = createContext<VoiceAssistantContextType | undefined>(undefined);
 
 // GEMINI CONFIG (REST VERSION)
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
 
-const API_BASE = import.meta.env.VITE_API_URL || "";
+const API_BASE = getApiUrl();
 const VOICE_API_URL = `${API_BASE}/api/voice`;
 
 // ---------------------------------------------------------------------------

@@ -18,9 +18,28 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
 import { useRef } from "react";
+import { getApiUrl } from "@/lib/api";
+
+const DEFAULT_PILOT = {
+  id: "drv_me",
+  full_name: "SafeGo Pilot",
+  phone: "+91 98201 44556",
+  email: "driver@safego.ph",
+  license_number: "IND-MH02-2023-8821",
+  status: "approved",
+  is_online: true,
+  rating: 4.95,
+  total_rides: 42,
+  today_rides: 4,
+  today_earnings: 1450,
+  vehicle: {
+    make: "Toyota",
+    model: "Innova Crysta",
+    plate_number: "MH 02 AB 1234",
+    color: "Silver"
+  }
+};
 
 // ───────── Types ─────────
 type TabKey = "dashboard" | "rides" | "history" | "documents" | "earnings" | "settings";
@@ -903,13 +922,12 @@ const DriverPortal = () => {
   useEffect(() => {
     localStorage.setItem("safego_driver_active_tab", activeTab);
   }, [activeTab]);
-  // ─── Restore cached data from localStorage for instant display on refresh ───
   const [driver, setDriver] = useState<any>(() => {
     try {
       const c = localStorage.getItem("safego_driver_profile");
       if (c) return JSON.parse(c);
     } catch {}
-    return null;
+    return DEFAULT_PILOT;
   });
   const [activeRide, setActiveRide] = useState<any>(() => {
     try {
@@ -980,7 +998,7 @@ const DriverPortal = () => {
   const [otpError, setOtpError] = useState<string | null>(null);
   const [otpFailedAttempts, setOtpFailedAttempts] = useState<number>(0);
 
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+  const API_URL = getApiUrl();
 
   const handleVerifyOtp = async (rideId: string, inputOtp: string) => {
     const cleanInput = (inputOtp || "").trim();
@@ -1298,13 +1316,17 @@ const DriverPortal = () => {
         return res.json();
       };
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+
       const [profile, available, historyData, activityData, docsData] = await Promise.all([
-        fetch(`${API_URL}/api/drivers/me`, { headers: { "Authorization": `Bearer ${token}` } }).then(handleResponse),
-        fetch(`${API_URL}/api/drivers/me/available-rides`, { headers: { "Authorization": `Bearer ${token}` } }).then(handleResponse),
-        fetch(`${API_URL}/api/drivers/me/history`, { headers: { "Authorization": `Bearer ${token}` } }).then(handleResponse),
-        fetch(`${API_URL}/api/drivers/me/activity`, { headers: { "Authorization": `Bearer ${token}` } }).then(handleResponse),
-        fetch(`${API_URL}/api/drivers/me/documents`, { headers: { "Authorization": `Bearer ${token}` } }).then(handleResponse).catch(() => null),
+        fetch(`${API_URL}/api/drivers/me`, { signal: controller.signal, headers: { "Authorization": `Bearer ${token}` } }).then(handleResponse).catch(() => null),
+        fetch(`${API_URL}/api/drivers/me/available-rides`, { signal: controller.signal, headers: { "Authorization": `Bearer ${token}` } }).then(handleResponse).catch(() => []),
+        fetch(`${API_URL}/api/drivers/me/history`, { signal: controller.signal, headers: { "Authorization": `Bearer ${token}` } }).then(handleResponse).catch(() => []),
+        fetch(`${API_URL}/api/drivers/me/activity`, { signal: controller.signal, headers: { "Authorization": `Bearer ${token}` } }).then(handleResponse).catch(() => []),
+        fetch(`${API_URL}/api/drivers/me/documents`, { signal: controller.signal, headers: { "Authorization": `Bearer ${token}` } }).then(handleResponse).catch(() => null),
       ]);
+      clearTimeout(timeoutId);
 
       // Sync Cloudinary documents if present
       if (docsData && Array.isArray(docsData) && docsData.length > 0) {
@@ -1395,13 +1417,18 @@ const DriverPortal = () => {
         }
       });
 
-      const updatedProfile = {
-        ...profile,
-        today_rides: (profile.today_rides || 0) + additionalRidesCount,
-        today_earnings: (profile.today_earnings || 0) + additionalEarnings,
-        total_rides: (profile.total_rides || 0) + additionalRidesCount
-      };
-      setDriver(updatedProfile);
+      if (profile) {
+        const updatedProfile = {
+          ...profile,
+          today_rides: (profile.today_rides || 0) + additionalRidesCount,
+          today_earnings: (profile.today_earnings || 0) + additionalEarnings,
+          total_rides: (profile.total_rides || 0) + additionalRidesCount
+        };
+        setDriver(updatedProfile);
+        try {
+          localStorage.setItem("safego_driver_profile", JSON.stringify(updatedProfile));
+        } catch (e) {}
+      }
 
       // Prepend/Modify historyData
       let initialHistory = mapRides(historyData);

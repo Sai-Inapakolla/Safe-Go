@@ -5,8 +5,9 @@ import { useState } from "react";
 import { ArrowRight, Car, User, FileText, CheckCircle, ShieldCheck, UploadCloud, Shield, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { getApiUrl } from "@/lib/api";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = getApiUrl();
 
 const ApplyDriver = () => {
     const revealRef = useScrollReveal();

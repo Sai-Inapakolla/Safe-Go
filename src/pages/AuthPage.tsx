@@ -13,8 +13,9 @@ import {
 } from "firebase/auth";
 import { Check, ShieldCheck, ArrowRight, KeyRound } from "lucide-react";
 import { useElderMode } from "@/contexts/ElderModeContext";
+import { getApiUrl } from "@/lib/api";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = getApiUrl();
 
 const AuthPage = () => {
   const location = useLocation();

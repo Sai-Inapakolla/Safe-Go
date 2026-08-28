@@ -14,8 +14,9 @@ import {
 } from "lucide-react";
 import { useVoiceAssistant } from "@/contexts/VoiceAssistantContext";
 import { useElderMode } from "@/contexts/ElderModeContext";
+import { getApiUrl } from "@/lib/api";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = getApiUrl();
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", to: "/dashboard" },

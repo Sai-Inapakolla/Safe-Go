@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigation, MapPin, Compass, Locate, AlertCircle, ShieldAlert, Phone } from "lucide-react";
+import { getApiUrl } from "@/lib/api";
 
 declare global {
   interface Window {
@@ -42,7 +43,7 @@ export const DriverNavigationMap = ({
   const [nextInstruction, setNextInstruction] = useState<string>("In 300m, turn right onto Waghodia Main Road");
   const [mapLoaded, setMapLoaded] = useState(false);
 
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+  const API_URL = getApiUrl();
 
   // Load Leaflet CSS & JS dynamically if not loaded
   useEffect(() => {
