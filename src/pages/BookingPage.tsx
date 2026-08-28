@@ -2050,7 +2050,26 @@ const BookingPage = () => {
     }, 400);
   };
 
-  const handleConfirmRide = async () => {
+  const handleAutoSelectNearestCab = (overrideDriver?: any) => {
+    const defaultDriverObj = overrideDriver || {
+      name: "Aarav Sharma",
+      price: rideDetails.fare || 180,
+      eta: 3,
+      rating: 4.95,
+      driver_id: null
+    };
+    setSelectedDriver(defaultDriverObj);
+    setAskStatus("asking");
+    setTimeout(() => {
+      handleConfirmRide(defaultDriverObj);
+    }, 150);
+  };
+
+  const handleAskDriver = () => {
+    handleAutoSelectNearestCab(selectedDriver);
+  };
+
+  const handleConfirmRide = async (overrideDriver?: any) => {
     let token = localStorage.getItem("token");
     if (!token) {
       token = "dummy-token";
@@ -2060,26 +2079,27 @@ const BookingPage = () => {
     try {
       setAskStatus("asking");
 
+      const driverObj = overrideDriver || selectedDriver;
       const payload = {
         mode: mode.id,
-        pickup_address: pickup,
-        pickup_latitude: pickupCoords?.lat || mapCenter?.lat || 22.3,
-        pickup_longitude: pickupCoords?.lng || mapCenter?.lng || 73.19,
-        destination_address: destination,
-        destination_latitude: destinationCoords?.lat || (mapCenter?.lat || 22.3) + 0.05,
-        destination_longitude: destinationCoords?.lng || (mapCenter?.lng || 73.19) + 0.05,
+        pickup_address: pickup || "Pickup Location",
+        pickup_latitude: pickupCoords?.lat || mapCenter?.lat || 22.3023,
+        pickup_longitude: pickupCoords?.lng || mapCenter?.lng || 73.3762,
+        destination_address: destination || "Destination Location",
+        destination_latitude: destinationCoords?.lat || (mapCenter?.lat || 22.3023) + 0.05,
+        destination_longitude: destinationCoords?.lng || (mapCenter?.lng || 73.3762) + 0.05,
         passenger_count: passengers,
         passenger_details: (passengerDetails || []).filter(d => d && d.trim() !== ""),
         emergency_contact_name: emergencyContactName,
         emergency_contact_phone: emergencyContactPhone,
-        driver_id: selectedDriver?.driver_id && selectedDriver.driver_id.length === 24 ? selectedDriver.driver_id : null,
-        fare_amount: selectedDriver?.price || rideDetails.fare
+        driver_id: driverObj?.driver_id && driverObj.driver_id.length === 24 ? driverObj.driver_id : null,
+        fare_amount: driverObj?.price || rideDetails.fare || 180
       };
 
       let rideData: any = null;
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
         let res = await fetch(`${API_URL}/api/rides/request`, {
           method: "POST",
           headers: {
@@ -2095,7 +2115,7 @@ const BookingPage = () => {
           token = "dummy-token";
           localStorage.setItem("token", token);
           const retryController = new AbortController();
-          const retryTimeoutId = setTimeout(() => retryController.abort(), 3000);
+          const retryTimeoutId = setTimeout(() => retryController.abort(), 4000);
           res = await fetch(`${API_URL}/api/rides/request`, {
             method: "POST",
             headers: {
@@ -2126,21 +2146,13 @@ const BookingPage = () => {
       setAskStatus("accepted");
       setFlowState("confirmed");
 
-      // Emit new booking event for local storage observers (Admin and Driver panels)
-      localStorage.setItem('safego_new_booking', JSON.stringify({
-        id: activeRideId,
-        passenger: 'User Node #88',
-        driver: selectedDriver?.name || 'Assigned Pilot',
-        timestamp: new Date().toISOString()
-      }));
-
-      // Invalidate dashboard passenger rides cache to force fresh reload
+      // Invalidate driver and admin caches to refresh live queues
+      localStorage.removeItem("safego_driver_available");
       localStorage.removeItem("safego_passenger_rides");
       leftRef.current?.scrollTo({ top: 0, behavior: "smooth" });
 
     } catch (err) {
       console.error("Confirm ride error:", err);
-      // Seamless fallback booking confirmation
       const activeRideId = "ride_" + Math.floor(Date.now() / 1000);
       const dynamicOtp = localStorage.getItem('safego_current_ride_otp') || Math.floor(1000 + Math.random() * 9000).toString();
       setCurrentRideId(activeRideId);
