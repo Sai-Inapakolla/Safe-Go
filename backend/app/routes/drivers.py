@@ -1,19 +1,22 @@
-from __future__ import annotations
-
-from typing import List
+import uuid
+import asyncio
+from typing import List, Optional
 from datetime import datetime, timezone
 
 from beanie import PydanticObjectId
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 
-from app.models import User, Driver, Vehicle, DriverDocument, Ride, RideStatus, UserRole, DocumentStatus, Rating, DriverStatus
+from app.models import (
+    User, Driver, Vehicle, DriverDocument, Ride, RideStatus, UserRole,
+    DocumentStatus, DocumentType, Rating, DriverStatus
+)
 from app.schemas import (
     DriverRegister, DriverApplication, DriverResponse, DriverEarnings, DriverOnlineStatus,
     DriverDocumentResponse, DocumentUpload, RideResponse,
 )
 from app.services.driver_service import create_driver_profile
+from app.services.cloudinary_service import upload_driver_document
 from app.utils.dependencies import get_current_user, get_current_driver
-import asyncio
 
 router = APIRouter(prefix="/api/drivers", tags=["drivers"])
 
@@ -50,6 +53,7 @@ async def get_active_drivers(current_user: User = Depends(get_current_user)):
 async def _driver_dict(driver: Driver) -> dict:
     user = await User.get(driver.user_id)
     vehicle = await Vehicle.find_one(Vehicle.driver_id == driver.id)
+    docs = await DriverDocument.find(DriverDocument.driver_id == driver.id).to_list()
     return {
         "_id": str(driver.id), "user_id": str(driver.user_id),
         "license_number": driver.license_number, "status": driver.status.value,
@@ -72,6 +76,7 @@ async def _driver_dict(driver: Driver) -> dict:
                     "is_wheelchair_accessible": vehicle.is_wheelchair_accessible,
                     "is_approved": vehicle.is_approved,
                     "created_at": vehicle.created_at} if vehicle else None,
+        "documents": [_doc_dict(d) for d in docs],
     }
 
 
@@ -143,64 +148,257 @@ async def register_driver(payload: DriverRegister, current_user: User = Depends(
     return await _driver_dict(driver)
 
 
+async def _ensure_driver_documents(driver_id: PydanticObjectId) -> List[DriverDocument]:
+    """Ensure that document slots exist for all document types for this driver."""
+    existing_docs = await DriverDocument.find(DriverDocument.driver_id == driver_id).to_list()
+    existing_types = {d.document_type for d in existing_docs}
+    for doc_type in DocumentType:
+        if doc_type not in existing_types:
+            new_doc = DriverDocument(
+                driver_id=driver_id,
+                document_type=doc_type,
+                status=DocumentStatus.upload_required,
+            )
+            await new_doc.insert()
+            existing_docs.append(new_doc)
+    return existing_docs
+
+
 @router.post("/apply", response_model=DriverResponse, status_code=201)
 async def apply_as_driver(payload: DriverApplication):
+    clean_email = payload.email.strip().lower()
+    clean_phone = payload.phone.strip()
+    
     # Check if user already exists
-    existing_user = await User.find_one(User.email == payload.email)
-    if existing_user and existing_user.role == UserRole.driver:
-        raise HTTPException(status_code=400, detail="You are already registered as a driver")
-
+    existing_user = await User.find_one(User.email == clean_email)
     if existing_user:
-        # Update role to driver and sync profile info from application
+        existing_driver = await Driver.find_one(Driver.user_id == existing_user.id)
+        if existing_driver and existing_driver.status == DriverStatus.approved:
+            raise HTTPException(status_code=400, detail="You are already an active approved driver on SafeGo")
+        
+        # Update user profile info
         existing_user.role = UserRole.driver
         existing_user.full_name = payload.full_name
-        existing_user.phone = payload.phone
+        existing_user.phone = clean_phone
+        existing_user.is_verified = False
         await existing_user.save()
         user = existing_user
     else:
-        # Create new user
         from app.utils.security import hash_password
         user = User(
             full_name=payload.full_name,
-            email=payload.email,
-            phone=payload.phone,
+            email=clean_email,
+            phone=clean_phone,
             role=UserRole.driver,
             gender=payload.gender,
-            hashed_password=hash_password("SafeGo@2025"), # Temporary password
+            hashed_password=hash_password("SafeGo@2025"),
             is_active=True,
             is_verified=False
         )
         await user.insert()
     
-    # Create driver profile (pending)
-    from app.models import DriverStatus
-    driver = Driver(
-        user_id=user.id,
-        license_number=payload.license_number,
-        status=DriverStatus.pending,
-        is_online=False,
-        average_rating=5.0,
-        total_rides=0,
-        today_rides=0,
-        today_earnings=0.0,
-        acceptance_rate=100.0,
-        certified_modes=[payload.preferred_mode] if payload.preferred_mode != "standard" else ["normal"]
-    )
-    await driver.insert()
+    # Unique license number handling
+    clean_license = payload.license_number.strip() if payload.license_number else f"DL-{uuid.uuid4().hex[:8].upper()}"
+    existing_license = await Driver.find_one(Driver.license_number == clean_license)
+    if existing_license and existing_license.user_id != user.id:
+        clean_license = f"DL-{uuid.uuid4().hex[:8].upper()}"
+
+    # Create/Update driver profile (status: pending)
+    driver = await Driver.find_one(Driver.user_id == user.id)
+    if not driver:
+        driver = Driver(
+            user_id=user.id,
+            license_number=clean_license,
+            status=DriverStatus.pending,
+            is_online=False,
+            average_rating=5.0,
+            total_rides=0,
+            today_rides=0,
+            today_earnings=0.0,
+            acceptance_rate=100.0,
+            certified_modes=[payload.preferred_mode] if payload.preferred_mode != "standard" else ["normal"]
+        )
+        await driver.insert()
+    else:
+        driver.license_number = clean_license
+        driver.status = DriverStatus.pending
+        driver.is_online = False
+        driver.certified_modes = [payload.preferred_mode] if payload.preferred_mode != "standard" else ["normal"]
+        driver.updated_at = datetime.now(timezone.utc)
+        await driver.save()
     
-    # Create vehicle
-    vehicle = Vehicle(
-        driver_id=driver.id,
-        make=payload.vehicle.make,
-        model=payload.vehicle.model,
-        year=payload.vehicle.year,
-        color=payload.vehicle.color,
-        plate_number=payload.vehicle.plate_number,
-        is_wheelchair_accessible=payload.vehicle.is_wheelchair_accessible,
-        is_approved=False
-    )
-    await vehicle.insert()
+    # Unique plate number handling
+    clean_plate = payload.vehicle.plate_number.strip().upper() if payload.vehicle.plate_number else f"PLT-{uuid.uuid4().hex[:6].upper()}"
+    existing_veh = await Vehicle.find_one(Vehicle.plate_number == clean_plate)
+    if existing_veh and existing_veh.driver_id != driver.id:
+        clean_plate = f"PLT-{uuid.uuid4().hex[:6].upper()}"
+
+    # Create/Update vehicle
+    vehicle = await Vehicle.find_one(Vehicle.driver_id == driver.id)
+    if not vehicle:
+        vehicle = Vehicle(
+            driver_id=driver.id,
+            make=payload.vehicle.make,
+            model=payload.vehicle.model,
+            year=payload.vehicle.year,
+            color=payload.vehicle.color,
+            plate_number=clean_plate,
+            is_wheelchair_accessible=payload.vehicle.is_wheelchair_accessible,
+            is_approved=False
+        )
+        await vehicle.insert()
+    else:
+        vehicle.make = payload.vehicle.make
+        vehicle.model = payload.vehicle.model
+        vehicle.year = payload.vehicle.year
+        vehicle.color = payload.vehicle.color
+        vehicle.plate_number = clean_plate
+        vehicle.is_wheelchair_accessible = payload.vehicle.is_wheelchair_accessible
+        vehicle.is_approved = False
+        await vehicle.save()
     
+    # Seed document slots
+    await _ensure_driver_documents(driver.id)
+    
+    return await _driver_dict(driver)
+
+
+@router.post("/apply-with-docs", response_model=DriverResponse, status_code=201)
+async def apply_as_driver_with_docs(
+    full_name: str = Form(...),
+    email: str = Form(...),
+    phone: str = Form(...),
+    gender: str = Form("male"),
+    license_number: Optional[str] = Form(None),
+    preferred_mode: str = Form("normal"),
+    make: str = Form("Toyota"),
+    model_year: str = Form("Camry 2021"),
+    color: str = Form("Silver"),
+    plate_number: str = Form("ABC-1234"),
+    license_file: Optional[UploadFile] = File(None),
+    vehicle_reg_file: Optional[UploadFile] = File(None),
+    nbi_file: Optional[UploadFile] = File(None),
+):
+    """Driver onboarding endpoint that handles profile info and uploads verification files directly to Cloudinary."""
+    vehicle_year = 2023
+    vehicle_model = model_year
+    parts = model_year.split()
+    if parts and parts[-1].isdigit():
+        vehicle_year = int(parts[-1])
+        vehicle_model = " ".join(parts[:-1]) or model_year
+
+    clean_email = email.strip().lower()
+    clean_phone = phone.strip()
+
+    existing_user = await User.find_one(User.email == clean_email)
+    if existing_user:
+        existing_driver = await Driver.find_one(Driver.user_id == existing_user.id)
+        if existing_driver and existing_driver.status == DriverStatus.approved:
+            raise HTTPException(status_code=400, detail="You are already an active approved driver on SafeGo")
+
+        existing_user.role = UserRole.driver
+        existing_user.full_name = full_name
+        existing_user.phone = clean_phone
+        existing_user.is_verified = False
+        await existing_user.save()
+        user = existing_user
+    else:
+        from app.utils.security import hash_password
+        user = User(
+            full_name=full_name,
+            email=clean_email,
+            phone=clean_phone,
+            role=UserRole.driver,
+            gender=gender,
+            hashed_password=hash_password("SafeGo@2025"),
+            is_active=True,
+            is_verified=False,
+        )
+        await user.insert()
+
+    # Unique license number handling
+    clean_license = license_number.strip() if license_number else f"DL-{uuid.uuid4().hex[:8].upper()}"
+    existing_license = await Driver.find_one(Driver.license_number == clean_license)
+    if existing_license and existing_license.user_id != user.id:
+        clean_license = f"DL-{uuid.uuid4().hex[:8].upper()}"
+
+    driver = await Driver.find_one(Driver.user_id == user.id)
+    if not driver:
+        driver = Driver(
+            user_id=user.id,
+            license_number=clean_license,
+            status=DriverStatus.pending,
+            is_online=False,
+            average_rating=5.0,
+            total_rides=0,
+            today_rides=0,
+            today_earnings=0.0,
+            acceptance_rate=100.0,
+            certified_modes=[preferred_mode] if preferred_mode != "standard" else ["normal"],
+        )
+        await driver.insert()
+    else:
+        driver.license_number = clean_license
+        driver.status = DriverStatus.pending
+        driver.is_online = False
+        driver.certified_modes = [preferred_mode] if preferred_mode != "standard" else ["normal"]
+        driver.updated_at = datetime.now(timezone.utc)
+        await driver.save()
+
+    # Unique plate number handling
+    clean_plate = plate_number.strip().upper() if plate_number else f"PLT-{uuid.uuid4().hex[:6].upper()}"
+    existing_veh = await Vehicle.find_one(Vehicle.plate_number == clean_plate)
+    if existing_veh and existing_veh.driver_id != driver.id:
+        clean_plate = f"PLT-{uuid.uuid4().hex[:6].upper()}"
+
+    vehicle = await Vehicle.find_one(Vehicle.driver_id == driver.id)
+    if not vehicle:
+        vehicle = Vehicle(
+            driver_id=driver.id,
+            make=make,
+            model=vehicle_model,
+            year=vehicle_year,
+            color=color,
+            plate_number=clean_plate,
+            is_wheelchair_accessible=(preferred_mode == "pwd"),
+            is_approved=False,
+        )
+        await vehicle.insert()
+    else:
+        vehicle.make = make
+        vehicle.model = vehicle_model
+        vehicle.year = vehicle_year
+        vehicle.color = color
+        vehicle.plate_number = clean_plate
+        vehicle.is_wheelchair_accessible = (preferred_mode == "pwd")
+        vehicle.is_approved = False
+        await vehicle.save()
+
+    docs = await _ensure_driver_documents(driver.id)
+
+    # Process and upload files directly to Cloudinary
+    file_mapping = {
+        DocumentType.drivers_license: license_file,
+        DocumentType.vehicle_registration: vehicle_reg_file,
+        DocumentType.nbi_clearance: nbi_file,
+    }
+
+    for doc in docs:
+        up_file = file_mapping.get(doc.document_type)
+        if up_file and up_file.filename:
+            file_bytes = await up_file.read()
+            if len(file_bytes) > 0:
+                res = await upload_driver_document(
+                    file_bytes=file_bytes,
+                    filename=up_file.filename,
+                    driver_id=str(driver.id),
+                    doc_type=doc.document_type.value,
+                )
+                doc.file_url = res["secure_url"]
+                doc.status = DocumentStatus.pending
+                doc.updated_at = datetime.now(timezone.utc)
+                await doc.save()
+
     return await _driver_dict(driver)
 
 
@@ -217,6 +415,7 @@ async def _get_or_create_driver(user_id) -> Driver:
             certified_modes=["normal", "pink", "pwd", "premium", "elderly"]
         )
         await driver.insert()
+    await _ensure_driver_documents(driver.id)
     return driver
 
 
@@ -309,15 +508,21 @@ async def decline_ride(ride_id: str, current_user: User = Depends(get_current_dr
 @router.get("/me/documents", response_model=List[DriverDocumentResponse])
 async def list_documents(current_user: User = Depends(get_current_driver)):
     driver = await _get_or_create_driver(current_user.id)
-    docs = await DriverDocument.find(DriverDocument.driver_id == driver.id).to_list()
+    docs = await _ensure_driver_documents(driver.id)
     return [_doc_dict(d) for d in docs]
 
 
 @router.put("/me/documents/{doc_id}/upload", response_model=DriverDocumentResponse)
 async def upload_document(doc_id: str, payload: DocumentUpload, current_user: User = Depends(get_current_driver)):
+    """Update document with an existing URL."""
     driver = await _get_or_create_driver(current_user.id)
+    try:
+        doc_obj_id = PydanticObjectId(doc_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid document ID format")
+
     doc = await DriverDocument.find_one(
-        DriverDocument.id == PydanticObjectId(doc_id),
+        DriverDocument.id == doc_obj_id,
         DriverDocument.driver_id == driver.id,
     )
     if not doc:
@@ -327,6 +532,106 @@ async def upload_document(doc_id: str, payload: DocumentUpload, current_user: Us
     doc.updated_at = datetime.now(timezone.utc)
     await doc.save()
     return _doc_dict(doc)
+
+
+@router.post("/me/documents/{doc_id}/upload-file", response_model=DriverDocumentResponse)
+async def upload_document_file(
+    doc_id: str,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_driver),
+):
+    """Upload a document binary file directly to Cloudinary and attach to driver record."""
+    driver = await _get_or_create_driver(current_user.id)
+    try:
+        doc_obj_id = PydanticObjectId(doc_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid document ID format")
+
+    doc = await DriverDocument.find_one(
+        DriverDocument.id == doc_obj_id,
+        DriverDocument.driver_id == driver.id,
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Validate content type and size
+    allowed_types = ["image/jpeg", "image/png", "image/webp", "image/jpg", "application/pdf"]
+    if file.content_type and file.content_type.lower() not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type: {file.content_type}. Allowed types: JPEG, PNG, WEBP, PDF."
+        )
+
+    file_bytes = await file.read()
+    if len(file_bytes) > 10 * 1024 * 1024:  # 10 MB limit
+        raise HTTPException(status_code=400, detail="File exceeds maximum size of 10MB")
+    if len(file_bytes) == 0:
+        raise HTTPException(status_code=400, detail="File is empty")
+
+    upload_res = await upload_driver_document(
+        file_bytes=file_bytes,
+        filename=file.filename or f"{doc.document_type.value}.jpg",
+        driver_id=str(driver.id),
+        doc_type=doc.document_type.value,
+    )
+
+    doc.file_url = upload_res["secure_url"]
+    doc.status = DocumentStatus.pending
+    doc.updated_at = datetime.now(timezone.utc)
+    await doc.save()
+
+    return _doc_dict(doc)
+
+
+@router.post("/me/documents/upload-by-type", response_model=DriverDocumentResponse)
+async def upload_document_by_type(
+    document_type: str = Form(...),
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_driver),
+):
+    """Upload a document by document_type name (e.g. 'drivers_license') to Cloudinary."""
+    driver = await _get_or_create_driver(current_user.id)
+    docs = await _ensure_driver_documents(driver.id)
+    
+    # Match document type
+    matched_doc = None
+    for d in docs:
+        if d.document_type.value == document_type or d.document_type.name == document_type:
+            matched_doc = d
+            break
+            
+    if not matched_doc:
+        # Check if valid DocumentType enum
+        try:
+            dtype_enum = DocumentType(document_type)
+            matched_doc = DriverDocument(
+                driver_id=driver.id,
+                document_type=dtype_enum,
+                status=DocumentStatus.upload_required,
+            )
+            await matched_doc.insert()
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"Invalid document type: {document_type}")
+
+    file_bytes = await file.read()
+    if len(file_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File exceeds maximum size of 10MB")
+    if len(file_bytes) == 0:
+        raise HTTPException(status_code=400, detail="File is empty")
+
+    upload_res = await upload_driver_document(
+        file_bytes=file_bytes,
+        filename=file.filename or f"{matched_doc.document_type.value}.jpg",
+        driver_id=str(driver.id),
+        doc_type=matched_doc.document_type.value,
+    )
+
+    matched_doc.file_url = upload_res["secure_url"]
+    matched_doc.status = DocumentStatus.pending
+    matched_doc.updated_at = datetime.now(timezone.utc)
+    await matched_doc.save()
+
+    return _doc_dict(matched_doc)
 
 
 @router.get("/me/activity", response_model=List[dict])

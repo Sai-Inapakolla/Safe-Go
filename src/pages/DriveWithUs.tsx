@@ -253,11 +253,17 @@ const DriveWithUs = () => {
                         </p>
 
                         <div className="mt-10 flex flex-wrap items-center gap-4">
+                            <Link
+                                to="/apply-driver"
+                                className="inline-flex items-center gap-2 rounded-2xl bg-primary px-8 py-4 font-bold text-primary-foreground shadow-xl shadow-primary/20 transition-all hover:brightness-110 hover:scale-[1.02] active:scale-[0.98]"
+                            >
+                                Apply as Driver <ArrowRight size={18} />
+                            </Link>
                             <a
                                 href="#requirements"
                                 className="inline-flex items-center gap-2 rounded-2xl border-2 border-border bg-background/50 px-8 py-4 font-bold text-foreground backdrop-blur-sm transition-all hover:border-primary/30 hover:bg-primary/5 shadow-lg shadow-black/5"
                             >
-                                Review Fleet Protocols <ArrowRight size={18} className="text-primary" />
+                                Review Fleet Protocols
                             </a>
                         </div>
 

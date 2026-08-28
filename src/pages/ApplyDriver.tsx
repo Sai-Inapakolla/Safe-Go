@@ -86,41 +86,44 @@ const ApplyDriver = () => {
         setIsSubmitting(true);
         
         try {
-            const vehicleYear = parseInt(formData.model_year.split(" ").pop() || "2023") || 2023;
-            const vehicleModel = formData.model_year.split(" ").slice(0, -1).join(" ") || formData.model_year;
+            const formDataPayload = new FormData();
+            formDataPayload.append("full_name", formData.full_name);
+            formDataPayload.append("email", formData.email);
+            formDataPayload.append("phone", formData.phone);
+            formDataPayload.append("gender", formData.gender);
+            formDataPayload.append("license_number", formData.license_number || "PENDING-" + Math.random().toString(36).substr(2, 9).toUpperCase());
+            formDataPayload.append("preferred_mode", formData.preferred_mode);
+            formDataPayload.append("make", formData.make || "Toyota");
+            formDataPayload.append("model_year", formData.model_year);
+            formDataPayload.append("color", formData.color);
+            formDataPayload.append("plate_number", formData.plate_number);
 
-            const payload = {
-                full_name: formData.full_name,
-                email: formData.email,
-                phone: formData.phone,
-                gender: formData.gender,
-                license_number: formData.license_number || "PENDING-" + Math.random().toString(36).substr(2, 9).toUpperCase(),
-                preferred_mode: formData.preferred_mode,
-                vehicle: {
-                    make: formData.make || "Toyota",
-                    model: vehicleModel || "Vios",
-                    year: vehicleYear,
-                    color: formData.color,
-                    plate_number: formData.plate_number,
-                    is_wheelchair_accessible: formData.preferred_mode === 'pwd'
-                }
-            };
+            if (files[0]) formDataPayload.append("license_file", files[0]);
+            if (files[1]) formDataPayload.append("vehicle_reg_file", files[1]);
+            if (files[2]) formDataPayload.append("nbi_file", files[2]);
 
-            const response = await fetch(`${API_URL}/api/drivers/apply`, {
+            const response = await fetch(`${API_URL}/api/drivers/apply-with-docs`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
+                body: formDataPayload
             });
 
             if (response.ok) {
-                toast.success("Application submitted successfully", {
+                try {
+                    localStorage.setItem('safego_new_driver_application', JSON.stringify({
+                        full_name: formData.full_name,
+                        email: formData.email,
+                        timestamp: Date.now()
+                    }));
+                } catch {}
+
+                toast.success("Application & documents submitted successfully!", {
                     position: "top-right",
-                    description: "Our onboarding team will contact you within 24 hours.",
+                    description: "Your application is now visible in the Admin Portal for verification.",
                     style: { background: "#10b981", color: "#ffffff", border: "none" },
                 });
                 navigate("/drive-with-us");
             } else {
-                const error = await response.json();
+                const error = await response.json().catch(() => ({}));
                 toast.error("Submission failed", {
                     description: error.detail || "Please check your information and try again."
                 });

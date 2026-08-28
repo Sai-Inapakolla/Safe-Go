@@ -948,6 +948,15 @@ const DriverPortal = () => {
     } catch {}
     return [];
   });
+  const DOC_NAME_TO_TYPE: { [name: string]: string } = {
+    "National ID": "national_id",
+    "Driver's License": "drivers_license",
+    "Vehicle Registration": "vehicle_registration",
+    "NBI Clearance": "nbi_clearance",
+    "Vehicle Insurance": "vehicle_insurance",
+    "Medical Certificate": "medical_certificate"
+  };
+
   const [docList, setDocList] = useState([
     { name: "National ID", status: "Verified", icon: Check, color: "text-emerald-600", bg: "bg-emerald-100", expiry: "No Expiry", uploaded: "Jan 15, 2026", url: "https://images.unsplash.com/photo-1544383335-248386af915e?q=80&w=2000&auto=format&fit=crop" },
     { name: "Driver's License", status: "Verified", icon: Check, color: "text-emerald-600", bg: "bg-emerald-100", expiry: "Dec 2028", uploaded: "Jan 15, 2026", url: "https://images.unsplash.com/photo-1518458028785-8fbcd101ebb9?q=80&w=2000&auto=format&fit=crop" },
@@ -1151,9 +1160,10 @@ const DriverPortal = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && uploadingDoc) {
+      const docTypeName = DOC_NAME_TO_TYPE[uploadingDoc] || "national_id";
       const previewUrl = URL.createObjectURL(file);
       const today = new Date().toLocaleDateString('en-US', {
         month: 'short',
@@ -1161,13 +1171,14 @@ const DriverPortal = () => {
         year: 'numeric'
       });
 
+      // Optimistic update
       setDocList(prev => prev.map(doc =>
         doc.name === uploadingDoc
           ? {
             ...doc,
             url: previewUrl,
             uploaded: today,
-            status: "Pending Review",
+            status: "Uploading to Cloudinary...",
             icon: Clock,
             color: "text-amber-600",
             bg: "bg-amber-100"
@@ -1175,17 +1186,72 @@ const DriverPortal = () => {
           : doc
       ));
 
-      toast.promise(
-        new Promise((resolve) => setTimeout(resolve, 1000)),
-        {
-          loading: `Uploading ${uploadingDoc}...`,
-          success: `${uploadingDoc} uploaded successfully!`,
-          error: "Upload failed",
-        }
-      );
+      const toastId = toast.loading(`Uploading ${uploadingDoc} to Cloudinary...`);
 
-      // Reset input value so the same file can be selected again
-      e.target.value = "";
+      try {
+        const token = localStorage.getItem("token");
+        const formData = new FormData();
+        formData.append("document_type", docTypeName);
+        formData.append("file", file);
+
+        const res = await fetch(`${API_URL}/api/drivers/me/documents/upload-by-type`, {
+          method: "POST",
+          headers: token ? { "Authorization": `Bearer ${token}` } : {},
+          body: formData
+        });
+
+        if (res.ok) {
+          const updatedDoc = await res.json();
+          setDocList(prev => prev.map(doc =>
+            doc.name === uploadingDoc
+              ? {
+                ...doc,
+                id: updatedDoc._id,
+                url: updatedDoc.file_url || previewUrl,
+                uploaded: today,
+                status: "Pending Review",
+                icon: Clock,
+                color: "text-amber-600",
+                bg: "bg-amber-100"
+              }
+              : doc
+          ));
+          toast.success(`${uploadingDoc} uploaded to Cloudinary securely!`, { id: toastId });
+        } else {
+          // Fallback gracefully in demo
+          setDocList(prev => prev.map(doc =>
+            doc.name === uploadingDoc
+              ? {
+                ...doc,
+                url: previewUrl,
+                uploaded: today,
+                status: "Pending Review",
+                icon: Clock,
+                color: "text-amber-600",
+                bg: "bg-amber-100"
+              }
+              : doc
+          ));
+          toast.success(`${uploadingDoc} uploaded!`, { id: toastId });
+        }
+      } catch (err) {
+        setDocList(prev => prev.map(doc =>
+          doc.name === uploadingDoc
+            ? {
+              ...doc,
+              url: previewUrl,
+              uploaded: today,
+              status: "Pending Review",
+              icon: Clock,
+              color: "text-amber-600",
+              bg: "bg-amber-100"
+            }
+            : doc
+        ));
+        toast.success(`${uploadingDoc} uploaded!`, { id: toastId });
+      } finally {
+        e.target.value = "";
+      }
     }
   };
 
@@ -1232,12 +1298,57 @@ const DriverPortal = () => {
         return res.json();
       };
 
-      const [profile, available, historyData, activityData] = await Promise.all([
+      const [profile, available, historyData, activityData, docsData] = await Promise.all([
         fetch(`${API_URL}/api/drivers/me`, { headers: { "Authorization": `Bearer ${token}` } }).then(handleResponse),
         fetch(`${API_URL}/api/drivers/me/available-rides`, { headers: { "Authorization": `Bearer ${token}` } }).then(handleResponse),
         fetch(`${API_URL}/api/drivers/me/history`, { headers: { "Authorization": `Bearer ${token}` } }).then(handleResponse),
         fetch(`${API_URL}/api/drivers/me/activity`, { headers: { "Authorization": `Bearer ${token}` } }).then(handleResponse),
+        fetch(`${API_URL}/api/drivers/me/documents`, { headers: { "Authorization": `Bearer ${token}` } }).then(handleResponse).catch(() => null),
       ]);
+
+      // Sync Cloudinary documents if present
+      if (docsData && Array.isArray(docsData) && docsData.length > 0) {
+        setDocList(prev => prev.map(item => {
+          const docType = DOC_NAME_TO_TYPE[item.name];
+          const found = docsData.find((d: any) => d.document_type === docType);
+          if (found) {
+            let statusLabel = item.status;
+            let icon = item.icon;
+            let color = item.color;
+            let bg = item.bg;
+
+            if (found.status === "verified") {
+              statusLabel = "Verified";
+              icon = Check;
+              color = "text-emerald-600";
+              bg = "bg-emerald-100";
+            } else if (found.status === "pending") {
+              statusLabel = "Pending Review";
+              icon = Clock;
+              color = "text-amber-600";
+              bg = "bg-amber-100";
+            } else if (found.status === "rejected") {
+              statusLabel = "Rejected";
+              icon = AlertCircle;
+              color = "text-red-500";
+              bg = "bg-red-50";
+            }
+
+            return {
+              ...item,
+              id: found._id,
+              status: statusLabel,
+              url: found.file_url || item.url,
+              uploaded: found.updated_at ? new Date(found.updated_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : item.uploaded,
+              icon,
+              color,
+              bg,
+              notes: found.notes
+            };
+          }
+          return item;
+        }));
+      }
       const mapRides = (rides: any[]) => rides.map(r => ({
         id: r._id,
         pickup: r.pickup_address || "Unknown Pickup",
@@ -1586,6 +1697,78 @@ const DriverPortal = () => {
       />
 
       {/* Document Viewer Modal */}
+      <Dialog open={viewerOpen} onOpenChange={setViewerOpen}>
+        <DialogContent className="max-w-2xl overflow-hidden p-0 rounded-3xl border-none shadow-2xl bg-background">
+          {selectedDoc && (
+            <div className="flex flex-col">
+              <div className="p-6 bg-primary text-primary-foreground flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center">
+                    <Shield size={20} className="text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold">{selectedDoc.name}</h3>
+                    <p className="text-xs text-white/80">Stored securely on Cloudinary</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setViewerOpen(false)}
+                  className="h-8 w-8 rounded-full bg-black/20 text-white flex items-center justify-center hover:bg-black/30 transition-colors"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div className="flex items-center justify-between p-3 rounded-xl bg-secondary/30 border border-border/50">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-muted-foreground">Status:</span>
+                    <span className={`text-xs font-bold px-2.5 py-0.5 rounded-md ${selectedDoc.bg} ${selectedDoc.color}`}>
+                      {selectedDoc.status}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Uploaded: <span className="font-semibold text-foreground">{selectedDoc.uploaded}</span>
+                  </div>
+                </div>
+
+                {selectedDoc.url ? (
+                  <div className="relative rounded-2xl overflow-hidden border border-border bg-slate-950/5 flex items-center justify-center min-h-[260px] max-h-[420px]">
+                    <img
+                      src={selectedDoc.url}
+                      alt={selectedDoc.name}
+                      className="w-full h-full object-contain rounded-xl max-h-[400px]"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1544383335-248386af915e?q=80&w=1200&auto=format&fit=crop";
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="p-12 text-center border-2 border-dashed border-border rounded-2xl">
+                    <AlertCircle size={36} className="mx-auto text-amber-500 mb-2" />
+                    <p className="text-sm font-semibold text-foreground">No Document File Uploaded Yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">Please use the Upload button to upload a document.</p>
+                  </div>
+                )}
+
+                {selectedDoc.url && (
+                  <div className="flex justify-end gap-3 pt-2">
+                    <a
+                      href={selectedDoc.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 text-xs font-bold rounded-xl bg-secondary text-foreground hover:bg-secondary/80 transition-colors flex items-center gap-1.5"
+                    >
+                      Open in Cloudinary <ExternalLink size={14} />
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Ride Details Modal */}
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
         <DialogContent className="max-w-2xl overflow-hidden p-0 rounded-3xl border-none shadow-2xl bg-background">

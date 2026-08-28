@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     SARVAM_API_KEY: str = ""
     SARVAM_LANGUAGE: str = "en-IN"
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
+    CLOUDINARY_URL: str = ""
+    CLOUDINARY_FOLDER: str = "safego/driver_documents"
 
 
     @property
