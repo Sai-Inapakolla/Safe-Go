@@ -45,7 +45,7 @@ const RideTracking = () => {
   };
 
   useEffect(() => {
-    // Fetch initial ride details
+    // Fetch and poll ride details
     const fetchRide = async () => {
       const token = localStorage.getItem("token");
       if (!token || !id) return;
@@ -64,6 +64,8 @@ const RideTracking = () => {
       }
     };
     fetchRide();
+    const interval = setInterval(fetchRide, 3000);
+    return () => clearInterval(interval);
   }, [id]);
 
   useEffect(() => {

@@ -97,6 +97,19 @@ async def request_ride(payload: RideRequest, current_user: User = Depends(get_cu
     return _ride_dict(ride, driver_brief)
 
 
+@router.get("/{ride_id}", response_model=RideResponse)
+async def get_ride_by_id(ride_id: str, current_user: User = Depends(get_current_user)):
+    ride = None
+    if PydanticObjectId.is_valid(ride_id):
+        ride = await Ride.get(PydanticObjectId(ride_id))
+    if not ride:
+        ride = await Ride.find_one(Ride.passenger_id == current_user.id)
+    if not ride:
+        raise HTTPException(status_code=404, detail="Ride not found")
+    driver_brief = await _load_driver_brief(ride.driver_id)
+    return _ride_dict(ride, driver_brief)
+
+
 @router.post("/{ride_id}/confirm", response_model=RideResponse)
 async def confirm_ride(ride_id: str, current_user: User = Depends(get_current_passenger)):
     ride = await Ride.find_one(Ride.id == PydanticObjectId(ride_id), Ride.passenger_id == current_user.id)

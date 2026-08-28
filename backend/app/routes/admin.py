@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+import asyncio
 from datetime import datetime, timezone
 from typing import List, Optional
 from beanie import PydanticObjectId
@@ -51,24 +50,62 @@ def _format_dt(dt) -> Optional[str]:
     return dt.isoformat()
 
 
-def _ride_dict(r: Ride) -> dict:
-    return {"_id": str(r.id), "passenger_id": str(r.passenger_id), "driver_id": str(r.driver_id) if r.driver_id else None,
-            "mode": r.mode.value if hasattr(r.mode, "value") else r.mode,
-            "status": r.status.value if hasattr(r.status, "value") else r.status,
-            "pickup_address": r.pickup_address,
-            "pickup_latitude": r.pickup_latitude, "pickup_longitude": r.pickup_longitude,
-            "destination_address": r.destination_address, "destination_latitude": r.destination_latitude,
-            "destination_longitude": r.destination_longitude, "distance_km": r.distance_km,
-            "duration_minutes": r.duration_minutes, "fare_amount": r.fare_amount, "safety_score": r.safety_score,
-            "route_polyline": r.route_polyline, 
-            "scheduled_at": _format_dt(r.scheduled_at), 
-            "started_at": _format_dt(r.started_at),
-            "completed_at": _format_dt(r.completed_at), 
-            "cancelled_at": _format_dt(r.cancelled_at), 
-            "cancel_reason": r.cancel_reason,
-            "created_at": _format_dt(r.created_at), 
-            "updated_at": _format_dt(r.updated_at), 
-            "driver": None}
+async def _ride_dict(r: Ride) -> dict:
+    driver_brief = None
+    if r.driver_id:
+        driver = await Driver.get(r.driver_id)
+        if driver:
+            d_user = await User.get(driver.user_id)
+            vehicle = await Vehicle.find_one(Vehicle.driver_id == driver.id)
+            driver_brief = {
+                "_id": str(driver.id),
+                "average_rating": driver.average_rating,
+                "user": {"full_name": d_user.full_name, "phone": d_user.phone} if d_user else None,
+                "vehicle": {"make": vehicle.make, "model": vehicle.model, "plate_number": vehicle.plate_number} if vehicle else None
+            }
+            
+    passenger = None
+    if r.passenger_id:
+        p_user = await User.get(r.passenger_id)
+        if p_user:
+            passenger = {
+                "_id": str(p_user.id),
+                "full_name": p_user.full_name,
+                "phone": p_user.phone,
+                "email": p_user.email
+            }
+
+    return {
+        "_id": str(r.id),
+        "passenger_id": str(r.passenger_id),
+        "passenger_name": passenger["full_name"] if passenger else "Guest User",
+        "passenger_phone": passenger["phone"] if passenger else None,
+        "driver_id": str(r.driver_id) if r.driver_id else None,
+        "driver_name": driver_brief["user"]["full_name"] if (driver_brief and driver_brief.get("user")) else None,
+        "mode": r.mode.value if hasattr(r.mode, "value") else r.mode,
+        "status": r.status.value if hasattr(r.status, "value") else r.status,
+        "pickup_address": r.pickup_address,
+        "pickup_latitude": r.pickup_latitude,
+        "pickup_longitude": r.pickup_longitude,
+        "destination_address": r.destination_address,
+        "destination_latitude": r.destination_latitude,
+        "destination_longitude": r.destination_longitude,
+        "distance_km": r.distance_km,
+        "duration_minutes": r.duration_minutes,
+        "fare_amount": r.fare_amount,
+        "safety_score": r.safety_score,
+        "route_polyline": r.route_polyline,
+        "scheduled_at": _format_dt(r.scheduled_at),
+        "started_at": _format_dt(r.started_at),
+        "completed_at": _format_dt(r.completed_at),
+        "cancelled_at": _format_dt(r.cancelled_at),
+        "cancel_reason": r.cancel_reason,
+        "created_at": _format_dt(r.created_at),
+        "updated_at": _format_dt(r.updated_at),
+        "driver": driver_brief,
+        "passenger": passenger,
+        "otp": getattr(r, "otp", None) or f"{(abs(hash(str(r.id))) % 9000) + 1000}",
+    }
 
 
 async def _driver_dict(driver: Driver) -> dict:
@@ -292,7 +329,7 @@ async def review_document(driver_id: str, doc_id: str, payload: DocumentReview, 
 async def get_live_rides(admin: User = Depends(get_current_admin)):
     # Return last 15 rides in the system so completed ones show up as well during demo
     rides = await Ride.find().sort(-Ride.created_at).limit(15).to_list()
-    return [_ride_dict(r) for r in rides]
+    return await asyncio.gather(*[_ride_dict(r) for r in rides])
 
 
 @router.get("/rides", response_model=List[RideResponse])
@@ -305,7 +342,7 @@ async def get_all_rides(status: Optional[str] = Query(None), mode: Optional[str]
     if mode:
         query["mode"] = mode
     rides = await Ride.find(query).sort(-Ride.created_at).skip((page - 1) * per_page).limit(per_page).to_list()
-    return [_ride_dict(r) for r in rides]
+    return await asyncio.gather(*[_ride_dict(r) for r in rides])
 
 
 @router.get("/sos-alerts", response_model=List[SOSResponse])
