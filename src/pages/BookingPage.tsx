@@ -1122,8 +1122,12 @@ const BookingPage = () => {
   const [flowState, setFlowState] = useState<"booking" | "confirmed" | "review">("booking");
 
   // Emergency Contact & SOS Threat Alert States
-  const [emergencyContactName, setEmergencyContactName] = useState(() => localStorage.getItem("safego_emergency_name") || "Mother (Primary Contact)");
-  const [emergencyContactPhone, setEmergencyContactPhone] = useState(() => localStorage.getItem("safego_emergency_phone") || "+91 98765 43210");
+  const [emergencyContactName, setEmergencyContactName] = useState(() => {
+    return localStorage.getItem("safego_emergency_name") || "Primary Emergency Contact";
+  });
+  const [emergencyContactPhone, setEmergencyContactPhone] = useState(() => {
+    return localStorage.getItem("safego_emergency_phone") || localStorage.getItem("admin_phone") || "+919042862878";
+  });
   const [sosModalOpen, setSosModalOpen] = useState(false);
   const [sosDispatching, setSosDispatching] = useState(false);
   const [sosSentSuccess, setSosSentSuccess] = useState(false);
@@ -1135,7 +1139,7 @@ const BookingPage = () => {
     if (emergencyContactPhone) localStorage.setItem("safego_emergency_phone", emergencyContactPhone);
   }, [emergencyContactName, emergencyContactPhone]);
 
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+  const API_URL = getApiUrl();
 
   const handleTriggerThreatSOS = async () => {
     setSosDispatching(true);
@@ -3300,16 +3304,28 @@ const BookingPage = () => {
                     </p>
                   </div>
 
-                  <div className="p-4 rounded-2xl bg-secondary/50 border border-border/60 text-left space-y-2.5 text-xs font-semibold">
-                    <div className="flex items-center justify-between text-muted-foreground">
-                      <span className="text-[10px] uppercase font-bold tracking-wider">Emergency Contact</span>
-                      <span className="text-foreground font-bold">{emergencyContactName}</span>
+                  <div className="p-4 rounded-2xl bg-secondary/50 border border-border/60 text-left space-y-3 text-xs font-semibold">
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Emergency Contact Name</label>
+                      <input
+                        type="text"
+                        value={emergencyContactName}
+                        onChange={(e) => setEmergencyContactName(e.target.value)}
+                        placeholder="e.g. Admin / Mother / Police"
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs font-bold outline-none focus:border-rose-500"
+                      />
                     </div>
-                    <div className="flex items-center justify-between text-muted-foreground">
-                      <span className="text-[10px] uppercase font-bold tracking-wider">Phone</span>
-                      <span className="text-foreground font-bold">{emergencyContactPhone}</span>
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Emergency Phone Number (Target)</label>
+                      <input
+                        type="tel"
+                        value={emergencyContactPhone}
+                        onChange={(e) => setEmergencyContactPhone(e.target.value)}
+                        placeholder="e.g. +91 90428 62878"
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs font-bold outline-none focus:border-rose-500 text-rose-600 dark:text-rose-400"
+                      />
                     </div>
-                    <div className="flex items-center justify-between text-muted-foreground">
+                    <div className="flex items-center justify-between text-muted-foreground pt-1 border-t border-border/40">
                       <span className="text-[10px] uppercase font-bold tracking-wider">Live Position</span>
                       <span className="text-rose-500 font-bold truncate max-w-[180px]">{pickup || "Current Location"}</span>
                     </div>
