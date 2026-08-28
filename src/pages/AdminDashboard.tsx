@@ -16,9 +16,11 @@ import {
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 
+import { getApiUrl } from "@/lib/api";
+
 type AdminTab = "dashboard" | "users" | "drivers" | "driver-requests" | "live-rides" | "alerts" | "settings";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+let API_URL = getApiUrl();
 
 const navGroups = [
   {
@@ -310,6 +312,35 @@ const AdminDashboard = () => {
   });
 
   const navigate = useNavigate();
+
+  const [backendUrlInput, setBackendUrlInput] = useState(getApiUrl());
+  const [isSavingUrl, setIsSavingUrl] = useState(false);
+
+  const handleSaveBackendUrl = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingUrl(true);
+    const clean = backendUrlInput.trim().replace(/\/$/, "");
+    try {
+      const res = await fetch(`${clean}/`);
+      if (res.ok) {
+        localStorage.setItem("safego_backend_url", clean);
+        API_URL = clean;
+        toast.success("Connected to Cloud Backend Matrix Node!");
+        checkHealth();
+        fetchStats();
+        fetchUsers();
+        fetchDrivers();
+        fetchLiveRides();
+        fetchSOS();
+      } else {
+        toast.error(`Backend returned HTTP ${res.status}. Please verify.`);
+      }
+    } catch (err) {
+      toast.error("Could not reach backend URL. Ensure HTTPS and CORS are enabled on your cloud backend.");
+    } finally {
+      setIsSavingUrl(false);
+    }
+  };
 
   // SaaS PERMISSION CHECK
   const canPerformAction = (action: 'write' | 'delete' | 'manage') => {
@@ -2228,6 +2259,49 @@ const AdminDashboard = () => {
               </div>
 
               <div className="grid gap-10 lg:grid-cols-2">
+                <Card className="lg:col-span-2 p-10 space-y-6 border-slate-200 bg-gradient-to-br from-white to-slate-50 shadow-xl">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-5">
+                      <div className="h-16 w-16 rounded-[2rem] bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-md">
+                        <Globe size={32} />
+                      </div>
+                      <div>
+                        <h3 className="text-2xl font-black text-slate-900">Cloud Backend Gateway URL</h3>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Live MongoDB & FastAPI Connectivity Endpoint</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-slate-200 self-start sm:self-auto shadow-sm">
+                      <div className={`h-2.5 w-2.5 rounded-full ${isBackendAlive ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,1)]' : 'bg-red-500'}`} />
+                      <span className={`text-[11px] font-black uppercase tracking-wider ${isBackendAlive ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {isBackendAlive ? 'Matrix Synced' : 'Disconnected'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleSaveBackendUrl} className="flex flex-col sm:flex-row gap-4 pt-2">
+                    <div className="flex-1 relative">
+                      <input
+                        type="url"
+                        value={backendUrlInput}
+                        onChange={(e) => setBackendUrlInput(e.target.value)}
+                        placeholder="https://your-backend.onrender.com"
+                        className="w-full h-16 pl-6 pr-6 rounded-2xl bg-white border border-slate-200 font-bold text-sm text-slate-800 shadow-inner focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={isSavingUrl}
+                      className="h-16 px-8 rounded-2xl bg-slate-900 text-white font-black text-xs uppercase tracking-widest hover:bg-primary transition-all shadow-xl flex items-center justify-center gap-3 shrink-0 disabled:opacity-50"
+                    >
+                      {isSavingUrl ? <Loader2 size={18} className="animate-spin" /> : <Wifi size={18} />}
+                      {isSavingUrl ? "Verifying..." : "Connect & Save"}
+                    </button>
+                  </form>
+                  <p className="text-xs text-slate-400 font-medium leading-relaxed">
+                    Enter your deployed Render or Cloud backend URL (e.g. <code className="bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-mono">https://safego-backend.onrender.com</code>). All real database queries for users, drivers, live rides, and distress alerts will immediately route to your live MongoDB Atlas cluster.
+                  </p>
+                </Card>
+
                 <Card
                   className="p-10 space-y-10 border-slate-100 hover:border-primary/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
                   onClick={() => toast.info("Price Logic Selected", { description: "You are now editing the Matrix Pricing parameters." })}
