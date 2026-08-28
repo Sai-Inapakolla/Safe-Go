@@ -5,10 +5,12 @@ This directory contains the FastAPI-powered backend codebase for the SafeGo Ride
 ## 🚀 Quick Start
 
 1. **Configure Environment**:
+   SafeGo uses a single unified `.env` file at the root of the repository:
    ```bash
+   # From the repository root
    cp .env.example .env
    ```
-   Add your MongoDB connection string (`MONGO_URI`) and optional Twilio API keys.
+   Configure your MongoDB connection string (`DATABASE_URL`), JWT secret, Twilio credentials, and Cloudinary settings in the root `.env`.
 
 2. **Initialize Database**:
    Ensure MongoDB is running locally or that your Atlas connection string is active.

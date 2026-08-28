@@ -3,10 +3,12 @@ import os
 import sys
 import io
 import unittest
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
-# Load environment
+# Load environment (supports root and backend locations)
+load_dotenv(dotenv_path=find_dotenv(usecwd=True))
 load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 

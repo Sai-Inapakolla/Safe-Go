@@ -7,8 +7,8 @@ import { Users, Code, Layout, Database, Shield, Zap, Heart } from "lucide-react"
 
 const team = [
   {
-    name: "Laya",
-    role: "Team Leader & Backend Architect",
+    name: "Laya K Shajan",
+    role: "Team Leader & Backend Developer",
     desc: "Orchestrating the vision and ensuring high-performance server-side logic for seamless reliability.",
     icon: Shield,
     color: "bg-pink-500",
@@ -16,8 +16,8 @@ const team = [
     delay: "delay-100"
   },
   {
-    name: "Madhan",
-    role: "Full-Stack Designer",
+    name: "Madhan Senthilkumar",
+    role: "AI & ML Developer",
     desc: "Bridging the gap between robust backend systems and beautiful, intuitive frontend interfaces.",
     icon: Zap,
     color: "bg-teal-500",
@@ -25,8 +25,8 @@ const team = [
     delay: "delay-200"
   },
   {
-    name: "Harshitha Reddy",
-    role: "Frontend Specialist",
+    name: "Harshitha Reddy Muramreddy",
+    role: "Frontend Developer",
     desc: "Crafting the pixel-perfect, high-fidelity UI/UX that makes SafeGo a premium experience.",
     icon: Layout,
     color: "bg-purple-500",
@@ -43,8 +43,8 @@ const team = [
     delay: "delay-400"
   },
   {
-    name: "Pallavi",
-    role: "Project Structure Planner",
+    name: "Pallavi Jakkula",
+    role: "Project Structure Planner & UI/UX Designer",
     desc: "Defining the architectural roadmap and ensuring the codebase remains organized and scalable.",
     icon: Code,
     color: "bg-amber-500",

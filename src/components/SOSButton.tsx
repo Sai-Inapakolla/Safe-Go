@@ -84,6 +84,7 @@ export const SOSButton = ({ onTrigger, contacts = [], testerPhone = "+9194909697
     let currentRideId: string | null = null;
     let token: string | null = null;
     let storedUser: any = null;
+    let primaryContact: Contact | null = contacts.find(c => c.is_primary) || (contacts.length > 0 ? contacts[0] : null);
 
     try {
       currentDest = localStorage.getItem("safego_current_booking_destination") || currentDest;
@@ -91,6 +92,16 @@ export const SOSButton = ({ onTrigger, contacts = [], testerPhone = "+9194909697
       token = localStorage.getItem("token");
       const userRaw = localStorage.getItem("safego_user");
       if (userRaw) storedUser = JSON.parse(userRaw);
+
+      if (!primaryContact) {
+        const localStored = localStorage.getItem("local_emergency_contacts");
+        if (localStored) {
+          const parsed = JSON.parse(localStored);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            primaryContact = parsed.find((c: any) => c.is_primary) || parsed[0];
+          }
+        }
+      }
     } catch {
       // localStorage may fail in restricted/private modes
     }
@@ -113,6 +124,8 @@ export const SOSButton = ({ onTrigger, contacts = [], testerPhone = "+9194909697
               latitude: latitude,
               longitude: longitude,
               location_address: currentDest,
+              emergency_contact_phone: primaryContact?.phone || undefined,
+              emergency_contact_name: primaryContact?.name || undefined,
               severity: "critical"
             })
           });
@@ -134,6 +147,8 @@ export const SOSButton = ({ onTrigger, contacts = [], testerPhone = "+9194909697
           }
         } else {
           // Guest mode SOS
+          const targetContactPhone = primaryContact?.phone || testerPhone;
+          const targetContactName = primaryContact?.name || "Trusted Emergency Contact";
           const guestResponse = await fetch(`${API_URL}/api/safety/public-sos`, {
             method: "POST",
             headers: {
@@ -143,8 +158,8 @@ export const SOSButton = ({ onTrigger, contacts = [], testerPhone = "+9194909697
               latitude: latitude,
               longitude: longitude,
               location_address: currentDest,
-              emergency_contact_phone: testerPhone,
-              emergency_contact_name: "Tester Emergency Responder",
+              emergency_contact_phone: targetContactPhone,
+              emergency_contact_name: targetContactName,
               severity: "critical"
             })
           });

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from dotenv import load_dotenv
-load_dotenv()  # Ensure all os.environ.get() calls resolve .env values
+from dotenv import find_dotenv, load_dotenv
+load_dotenv(dotenv_path=find_dotenv(usecwd=True))  # Ensure all os.environ.get() calls resolve .env values
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

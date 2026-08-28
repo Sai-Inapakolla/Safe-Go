@@ -1,10 +1,11 @@
 import os
 import sys
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 import firebase_admin
 from firebase_admin import credentials, auth
 
 # Load environment variables
+load_dotenv(dotenv_path=find_dotenv(usecwd=True))
 load_dotenv()
 
 def seed_firebase_admin():
