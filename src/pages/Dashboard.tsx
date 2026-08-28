@@ -645,10 +645,10 @@ const Dashboard = () => {
         <SafeGoLogo size={22} className="px-2" />
         <div className="mt-6 flex items-center gap-3 px-2">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
-            {profile.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'JD'}
+            {profile?.name ? profile.name.split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'JD'}
           </div>
           <div>
-            <p className="font-display text-sm font-bold">Good morning, {profile.name.split(' ')[0] || 'User'}</p>
+            <p className="font-display text-sm font-bold">Good morning, {profile?.name ? profile.name.split(' ')[0] : 'User'}</p>
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">Passenger</span>
           </div>
         </div>
@@ -710,7 +710,7 @@ const Dashboard = () => {
           <>
             {/* Stats */}
             <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <StatsCard icon={Car} value={myRides.length.toString()} label="Total Rides" />
+              <StatsCard icon={Car} value={String(myRides?.length || 0)} label="Total Rides" />
               <StatsCard icon={Shield} value="92%" label="Safety Score" iconColor="hsl(var(--teal))" />
               <StatsCard icon={Star} value="Pink" label="Most Used Mode" iconColor="hsl(var(--pink))" iconBg="hsl(var(--pink-light))" />
               <StatsCard icon={TrendingUp} value="8" label="This Month" />
@@ -811,7 +811,7 @@ const Dashboard = () => {
                         <td className="px-4 py-3">
                           <span className="rounded-full px-2.5 py-1 text-xs font-medium bg-secondary text-foreground">{r.mode}</span>
                         </td>
-                        <td className="px-4 py-3 text-foreground">{r.route || `${r.pickup_address?.substring(0, 15)}... → ${r.destination_address?.substring(0, 15)}...`}</td>
+                        <td className="px-4 py-3 text-foreground">{r.route || `${(r.pickup_address || "Pickup").substring(0, 15)}... → ${(r.destination_address || "Drop-off").substring(0, 15)}...`}</td>
                         <td className="px-4 py-3 text-muted-foreground">{r.created_at ? new Date(r.created_at).toLocaleDateString() : "Today"}</td>
                         <td className="px-4 py-3 text-foreground">{r.driver?.user?.full_name || "Searching..."}</td>
                         <td className="px-4 py-3">
@@ -1023,7 +1023,7 @@ const Dashboard = () => {
                           </div>
                           <div>
                             <span className="font-bold text-foreground block">{notif.title}</span>
-                            <span className="text-[10px] text-muted-foreground font-mono">NOTIF-{notif._id.substring(0, 4).toUpperCase()}</span>
+                            <span className="text-[10px] text-muted-foreground font-mono">NOTIF-{String(notif._id || notif.id || '0000').substring(0, 4).toUpperCase()}</span>
                           </div>
                         </div>
                         <div className="text-right">
@@ -1163,7 +1163,7 @@ const Dashboard = () => {
                 <div className="rounded-2xl border border-border bg-background p-6 shadow-sm">
                   <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center mb-6 border-b border-border pb-6">
                     <div className="h-20 w-20 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-2xl shrink-0">
-                      {profile.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'JD'}
+                      {profile?.name ? profile.name.split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'JD'}
                     </div>
                     <div className="flex-1">
                       <h5 className="font-semibold text-foreground text-lg">{profile.name || 'User'}</h5>
