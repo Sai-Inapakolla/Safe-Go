@@ -5,7 +5,7 @@ from beanie import PydanticObjectId
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.models import User, Driver, Vehicle, Ride, SOSAlert, DriverDocument, UserRole, DriverStatus, RideStatus, RideMode, SOSStatus, DocumentStatus
+from app.models import User, Driver, Vehicle, Ride, SOSAlert, DriverDocument, UserRole, DriverStatus, RideStatus, RideMode, SOSStatus, DocumentStatus, Gender
 from app.schemas import (
     AdminStats, RidesByMode, SafetyScoreStat, DriverApproval, DocumentReview,
     UserResponse, DriverResponse, RideResponse, SOSResponse, DriverDocumentResponse,
@@ -81,7 +81,7 @@ async def _ride_dict(r: Ride) -> dict:
         "passenger_name": passenger["full_name"] if passenger else "Guest User",
         "passenger_phone": passenger["phone"] if passenger else None,
         "driver_id": str(r.driver_id) if r.driver_id else None,
-        "driver_name": driver_brief["user"]["full_name"] if (driver_brief and driver_brief.get("user")) else None,
+        "driver_name": driver_brief["user"]["full_name"] if (isinstance(driver_brief, dict) and isinstance(driver_brief.get("user"), dict)) else None,
         "mode": r.mode.value if hasattr(r.mode, "value") else r.mode,
         "status": r.status.value if hasattr(r.status, "value") else r.status,
         "pickup_address": r.pickup_address,
@@ -212,7 +212,7 @@ async def get_all_drivers(status: Optional[str] = Query(None), q: Optional[str] 
         user_ids = [u.id for u in matching_users]
         query["user_id"] = {"$in": user_ids}
         
-    drivers = await Driver.find(query).sort(-Driver.created_at).skip((page - 1) * per_page).limit(per_page).to_list()
+    drivers = await Driver.find(query).sort("-created_at").skip((page - 1) * per_page).limit(per_page).to_list()
     # Parallelize the dossier assembly to avoid N+1 bottleneck
     return await asyncio.gather(*[_driver_dict(d) for d in drivers])
 
@@ -239,7 +239,7 @@ async def get_driver_dossier(driver_id: str, admin: User = Depends(get_current_a
     data["documents"] = [_doc_dict(d) for d in docs]
     
     # Get recent rides
-    rides = await Ride.find(Ride.driver_id == driver.id).sort(-Ride.created_at).limit(10).to_list()
+    rides = await Ride.find(Ride.driver_id == driver.id).sort("-created_at").limit(10).to_list()
     data["recent_rides"] = [_ride_dict(r) for r in rides]
     
     return data
@@ -328,7 +328,7 @@ async def review_document(driver_id: str, doc_id: str, payload: DocumentReview, 
 @router.get("/rides/live", response_model=List[RideResponse])
 async def get_live_rides(admin: User = Depends(get_current_admin)):
     # Return last 15 rides in the system so completed ones show up as well during demo
-    rides = await Ride.find().sort(-Ride.created_at).limit(15).to_list()
+    rides = await Ride.find().sort("-created_at").limit(15).to_list()
     return await asyncio.gather(*[_ride_dict(r) for r in rides])
 
 
@@ -341,7 +341,7 @@ async def get_all_rides(status: Optional[str] = Query(None), mode: Optional[str]
         query["status"] = status
     if mode:
         query["mode"] = mode
-    rides = await Ride.find(query).sort(-Ride.created_at).skip((page - 1) * per_page).limit(per_page).to_list()
+    rides = await Ride.find(query).sort("-created_at").skip((page - 1) * per_page).limit(per_page).to_list()
     return await asyncio.gather(*[_ride_dict(r) for r in rides])
 
 
@@ -350,7 +350,7 @@ async def get_sos_alerts(status: Optional[str] = Query(None), admin: User = Depe
     query = {}
     if status:
         query["status"] = status
-    alerts = await SOSAlert.find(query).sort(-SOSAlert.created_at).to_list()
+    alerts = await SOSAlert.find(query).sort("-created_at").to_list()
     return [_sos_dict(a) for a in alerts]
 
 
@@ -405,7 +405,7 @@ async def get_all_users(role: Optional[str] = Query(None), q: Optional[str] = Qu
         ]
     
     # Get all matching users
-    users = await User.find(query).sort(-User.created_at).to_list()
+    users = await User.find(query).sort("-created_at").to_list()
     
     # Batch load driver profiles to prevent N+1 sequential database queries
     driver_user_ids = [u.id for u in users if u.role == UserRole.driver]
@@ -519,7 +519,7 @@ async def update_user(user_id: str, payload: AdminUserUpdate, admin: User = Depe
     if payload.department is not None:
         user.department = payload.department
     if payload.gender is not None:
-        user.gender = payload.gender
+        user.gender = Gender(payload.gender) if payload.gender else None
     if payload.is_active is not None:
         user.is_active = payload.is_active
     if payload.is_verified is not None:

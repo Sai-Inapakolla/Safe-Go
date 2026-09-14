@@ -22,7 +22,7 @@ type AdminTab = "dashboard" | "users" | "drivers" | "driver-requests" | "live-ri
 
 let API_URL = getApiUrl();
 
-const navGroups = [
+const navGroups: { label: string; items: { id: AdminTab; label: string; icon: any }[] }[] = [
   {
     label: "Core Matrix",
     items: [

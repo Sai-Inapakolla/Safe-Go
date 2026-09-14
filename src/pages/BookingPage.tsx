@@ -12,6 +12,7 @@ import {
   ShieldAlert, Phone, Siren, Radio, Copy, ShieldCheck, Lock, Search, Target
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { toast } from "sonner";
 import { getApiUrl } from "@/lib/api";
 
 // ─── Simulated nearby cabs ───────────────────────────────────────────────────
@@ -43,7 +44,7 @@ const generateNearbyCabs = (lat: number, lng: number, mode: string = "normal", d
 
   return Array.from({ length: maxLimit }, (_, i) => {
     const dbDriver = filteredDbDrivers[i];
-    
+
     // Check if dbDriver has exact pinpoint coordinates from backend DB
     let cabLat = Number(dbDriver?.current_latitude ?? dbDriver?.latitude ?? dbDriver?.lat);
     let cabLng = Number(dbDriver?.current_longitude ?? dbDriver?.longitude ?? dbDriver?.lng);
@@ -564,8 +565,8 @@ const MapPanel = ({
 
       if (hasTargetChanged) {
         prevTargetRef.current = { lat: activeTarget.lat, lng: activeTarget.lng };
-        const currentZoom = (mapInstanceRef.current.getZoom && Number.isFinite(mapInstanceRef.current.getZoom())) 
-          ? mapInstanceRef.current.getZoom() 
+        const currentZoom = (mapInstanceRef.current.getZoom && Number.isFinite(mapInstanceRef.current.getZoom()))
+          ? mapInstanceRef.current.getZoom()
           : 15;
         try {
           if (mapInstanceRef.current.panTo) {
@@ -680,7 +681,7 @@ const MapPanel = ({
             address = data.display_name;
           }
         }
-      } catch (err) {}
+      } catch (err) { }
 
       const L = window.L;
       if (L) {
@@ -942,11 +943,10 @@ const MapPanel = ({
                   setPinTargetMode("pickup");
                 }
               }}
-              className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-xl backdrop-blur-md border ${
-                isPinpointMode && pinTargetMode === "pickup"
+              className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-xl backdrop-blur-md border ${isPinpointMode && pinTargetMode === "pickup"
                   ? "bg-emerald-600 text-white border-emerald-400 ring-4 ring-emerald-500/20 animate-pulse"
                   : "bg-card/90 text-foreground border-border/60 hover:bg-secondary"
-              }`}
+                }`}
             >
               <Target size={14} className={isPinpointMode && pinTargetMode === "pickup" ? "animate-spin" : ""} />
               {isPinpointMode && pinTargetMode === "pickup" ? "Cancel Pickup" : "📍 Set Pickup on Map"}
@@ -961,11 +961,10 @@ const MapPanel = ({
                   setPinTargetMode("destination");
                 }
               }}
-              className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-xl backdrop-blur-md border ${
-                isPinpointMode && pinTargetMode === "destination"
+              className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-xl backdrop-blur-md border ${isPinpointMode && pinTargetMode === "destination"
                   ? "bg-red-500 text-white border-red-400 ring-4 ring-red-500/20 animate-pulse"
                   : "bg-card/90 text-foreground border-border/60 hover:bg-secondary"
-              }`}
+                }`}
             >
               <Target size={14} className={isPinpointMode && pinTargetMode === "destination" ? "animate-spin" : ""} />
               {isPinpointMode && pinTargetMode === "destination" ? "Cancel Dest" : "🎯 Set Destination on Map"}
@@ -984,9 +983,8 @@ const MapPanel = ({
 
       {/* Floating Banner when Pinpoint Mode is Active */}
       {isPinpointMode && (
-        <div className={`absolute top-28 sm:top-20 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-5 py-2.5 rounded-full text-white shadow-2xl text-xs font-bold tracking-wide animate-bounce pointer-events-none max-w-[90vw] ${
-          pinTargetMode === "pickup" ? "bg-emerald-600" : "bg-red-500"
-        }`}>
+        <div className={`absolute top-28 sm:top-20 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-5 py-2.5 rounded-full text-white shadow-2xl text-xs font-bold tracking-wide animate-bounce pointer-events-none max-w-[90vw] ${pinTargetMode === "pickup" ? "bg-emerald-600" : "bg-red-500"
+          }`}>
           <MapPin size={15} className="shrink-0" />
           <span>Click anywhere on the map to set exact {pinTargetMode === "pickup" ? "Pickup Location" : "Destination"}</span>
         </div>
@@ -1139,7 +1137,156 @@ const BookingPage = () => {
     if (emergencyContactPhone) localStorage.setItem("safego_emergency_phone", emergencyContactPhone);
   }, [emergencyContactName, emergencyContactPhone]);
 
+  // SafeGo Pink Mode Gender & Accompanied Policy Enforcement States
+  const [userGender, setUserGender] = useState<string>(() => {
+    return localStorage.getItem("safego_user_gender") || "female";
+  });
+  const [femaleCompanionName, setFemaleCompanionName] = useState<string>("");
+  const [isAccompaniedDeclared, setIsAccompaniedDeclared] = useState<boolean>(false);
+  const [userPenaltyBalance, setUserPenaltyBalance] = useState<number>(() => {
+    const p = localStorage.getItem("safego_penalty_balance");
+    return p ? Number(p) : 0;
+  });
+
+  // Dedicated Ride Cancellation & Pink Mode Policy Violation Modal State
+  const [cancellationModalOpen, setCancellationModalOpen] = useState<boolean>(false);
+  const [cancellationData, setCancellationData] = useState<{
+    type: "pink_mode_violation" | "otp_failure" | "driver_cancelled" | "general";
+    title: string;
+    reason: string;
+    violationType?: string;
+    penalty: number;
+    driverCompensation?: number;
+    driverName?: string;
+    notes?: string;
+    timestamp?: number;
+  } | null>(null);
+
+  const handleRideCancellation = (cancelData?: any) => {
+    // Clear ride tracking keys
+    localStorage.removeItem("safego_current_ride_cancelled");
+    localStorage.removeItem("safego_current_ride_id");
+    localStorage.removeItem("safego_current_ride_otp");
+    localStorage.removeItem("safego_active_driver_ride");
+    localStorage.removeItem("safego_accepted_rides");
+    localStorage.removeItem("safego_ride_accepted_event");
+    localStorage.removeItem("safego_current_ride_status");
+
+    let finalData: any = cancelData;
+    if (!finalData) {
+      try {
+        const stored = localStorage.getItem("safego_cancellation_data");
+        if (stored) finalData = JSON.parse(stored);
+      } catch (_) {}
+    }
+
+    if (!finalData) {
+      finalData = {
+        type: "general",
+        title: "Ride Cancelled",
+        reason: "Your ride was cancelled by the pilot.",
+        penalty: 0,
+        driverCompensation: 0
+      };
+    }
+
+    // Refresh penalty balance state if penalty was applied
+    if (finalData.penalty && finalData.penalty > 0) {
+      const updatedBal = Number(localStorage.getItem("safego_penalty_balance") || finalData.penalty);
+      setUserPenaltyBalance(updatedBal);
+    }
+
+    // Persist to local passenger rides history
+    try {
+      const cancelledRideRecord = {
+        _id: finalData.rideId || ("ride_cancel_" + Date.now()),
+        id: finalData.rideId || ("ride_cancel_" + Date.now()),
+        mode: mode ? mode.charAt(0).toUpperCase() + mode.slice(1) : "Pink",
+        pickup_address: pickup || "Pickup Location",
+        destination_address: destination || "Destination",
+        route: `${pickup || "Pickup Location"} → ${destination || "Destination"}`,
+        status: "cancelled",
+        cancel_reason: finalData.reason || finalData.notes || "Trip cancelled by safety pilot",
+        is_penalty_applied: Boolean(finalData.penalty && finalData.penalty > 0),
+        penalty_amount: finalData.penalty || 0,
+        penalty_reason: finalData.reason || finalData.notes || "Pink Mode Safety Policy Violation",
+        driver_compensation_amount: finalData.driverCompensation || 0,
+        fare_amount: selectedDriver?.price || rideDetails.fare || 418,
+        driver: {
+          user: {
+            full_name: finalData.driverName || selectedDriver?.name || "Priya Singh (Safety Pilot)"
+          }
+        },
+        created_at: new Date().toISOString(),
+        cancelled_at: new Date().toISOString(),
+        rating: 0
+      };
+
+      const existingRaw = localStorage.getItem("safego_passenger_rides") || localStorage.getItem("safego_rides");
+      let existingList: any[] = [];
+      if (existingRaw) {
+        try {
+          const parsed = JSON.parse(existingRaw);
+          if (Array.isArray(parsed)) existingList = parsed;
+        } catch (_) {}
+      }
+
+      // Prepend or update
+      const filtered = existingList.filter(r => r._id !== cancelledRideRecord._id && r.id !== cancelledRideRecord.id);
+      const updatedList = [cancelledRideRecord, ...filtered];
+      localStorage.setItem("safego_passenger_rides", JSON.stringify(updatedList));
+      localStorage.setItem("safego_rides", JSON.stringify(updatedList));
+    } catch (e) {
+      console.warn("Failed to persist cancelled ride to local history:", e);
+    }
+
+    setFlowState("booking");
+    setAskStatus("idle");
+    setIsSimulatingTravel(false);
+    setCurrentRideId(null);
+    setCancellationData(finalData);
+    setCancellationModalOpen(true);
+
+    if (finalData.type === "pink_mode_violation") {
+      toast.error(`Ride Cancelled: Pink Mode Policy Violation. ₹${finalData.penalty || 750} fine charged.`, {
+        duration: 8000,
+        icon: <ShieldAlert className="text-white" size={18} />
+      });
+    } else if (finalData.type === "otp_failure") {
+      toast.error("Ride cancelled due to 3 invalid OTP verification attempts.", { duration: 5000 });
+    } else {
+      toast.info("Your ride has been cancelled by the driver.", { duration: 5000 });
+    }
+  };
+
   const API_URL = getApiUrl();
+
+  // Sync user profile & gender from backend
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+      try {
+        const res = await fetch(`${API_URL}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const userData = await res.json();
+          if (userData.gender) {
+            setUserGender(userData.gender);
+            localStorage.setItem("safego_user_gender", userData.gender);
+          }
+          if (userData.penalty_balance !== undefined) {
+            setUserPenaltyBalance(userData.penalty_balance);
+            localStorage.setItem("safego_penalty_balance", String(userData.penalty_balance));
+          }
+        }
+      } catch (err) {
+        console.warn("Could not sync user profile:", err);
+      }
+    };
+    fetchUserProfile();
+  }, [API_URL]);
 
   const handleTriggerThreatSOS = async () => {
     setSosDispatching(true);
@@ -1192,7 +1339,7 @@ const BookingPage = () => {
     try {
       localStorage.setItem("safego_new_sos", JSON.stringify({
         id: alertObj.id,
-        userId: user?.full_name || 'Passenger',
+        userId: localStorage.getItem("safego_user_name") || localStorage.getItem("userId") || 'Passenger',
         destination: destination || pickup || 'Current Location',
         timestamp: new Date().toISOString()
       }));
@@ -1233,9 +1380,21 @@ const BookingPage = () => {
 
   useEffect(() => {
     const restoreActiveRide = async () => {
+      const activeRideId = localStorage.getItem("safego_current_ride_id");
       const completedEvent = localStorage.getItem("safego_ride_completed_event");
       const currentRideStatus = localStorage.getItem("safego_current_ride_status");
-      if (completedEvent || currentRideStatus === "completed") {
+
+      if (completedEvent && activeRideId) {
+        try {
+          const parsed = JSON.parse(completedEvent);
+          if (parsed && parsed.rideId === activeRideId) {
+            setFlowState("review");
+            return;
+          }
+        } catch (_) { }
+      }
+
+      if (currentRideStatus === "completed" && activeRideId) {
         setFlowState("review");
         return;
       }
@@ -1244,7 +1403,7 @@ const BookingPage = () => {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 2000);
-        const res = await fetch(`${API_URL}/api/rides/active`, {
+        const res = await fetch(`${API_URL}/api/rides/latest`, {
           headers: {
             "Authorization": `Bearer ${token}`
           },
@@ -1253,35 +1412,58 @@ const BookingPage = () => {
         clearTimeout(timeoutId);
         if (res.ok) {
           const ride = await res.json();
-          if (ride && (ride.status === "matched" || ride.status === "driver_arriving" || ride.status === "in_progress" || ride.status === "searching" || ride.status === "pending")) {
-            setPickup(ride.pickup_address || "");
-            setDestination(ride.destination_address || "");
-            if (ride.pickup_latitude && ride.pickup_longitude) {
-              setPickupCoords({ lat: ride.pickup_latitude, lng: ride.pickup_longitude });
-              setMapCenter({ lat: ride.pickup_latitude, lng: ride.pickup_longitude });
+          if (ride) {
+            if (ride.status === "cancelled") {
+              const lastDismissed = localStorage.getItem("safego_last_dismissed_cancelled_ride");
+              if (lastDismissed !== ride._id) {
+                const isViolation = Boolean(ride.is_penalty_applied || (ride.cancel_reason && ride.cancel_reason.toLowerCase().includes("violation")));
+                handleRideCancellation({
+                  rideId: ride._id || ride.id,
+                  type: isViolation ? "pink_mode_violation" : "driver_cancelled",
+                  title: isViolation ? "Pink Mode Safety Policy Violation" : "Ride Cancelled by Driver",
+                  reason: ride.penalty_reason || ride.cancel_reason || "Driver cancelled the ride upon arrival.",
+                  penalty: ride.penalty_amount || (isViolation ? 750 : 0),
+                  driverCompensation: ride.driver_compensation_amount || 200,
+                  driverName: ride.driver?.user?.full_name || "Female Safety Pilot",
+                  notes: ride.penalty_reason || ride.cancel_reason,
+                  timestamp: Date.now()
+                });
+                return;
+              }
+            } else if (ride.status === "completed") {
+              localStorage.setItem("safego_current_ride_status", "completed");
+              setFlowState("review");
+              return;
+            } else if (ride.status === "matched" || ride.status === "driver_arriving" || ride.status === "in_progress" || ride.status === "searching" || ride.status === "pending") {
+              setPickup(ride.pickup_address || "");
+              setDestination(ride.destination_address || "");
+              if (ride.pickup_latitude && ride.pickup_longitude) {
+                setPickupCoords({ lat: ride.pickup_latitude, lng: ride.pickup_longitude });
+                setMapCenter({ lat: ride.pickup_latitude, lng: ride.pickup_longitude });
+              }
+              if (ride.destination_latitude && ride.destination_longitude) {
+                setDestinationCoords({ lat: ride.destination_latitude, lng: ride.destination_longitude });
+              }
+              setCurrentRideId(ride._id);
+              if (ride.otp) {
+                setRideOtp(ride.otp);
+                localStorage.setItem('safego_current_ride_otp', ride.otp);
+              }
+              setIsOtpVerified(ride.is_otp_verified || false);
+              localStorage.setItem('safego_current_ride_id', ride._id);
+              if (ride.driver) {
+                setSelectedDriver({
+                  driver_id: ride.driver._id || ride.driver.id,
+                  name: ride.driver.user?.full_name || "Driver",
+                  rating: ride.driver.average_rating || 5.0,
+                  price: ride.fare_amount || 0,
+                  eta: 3
+                });
+              }
+              setFlowState("confirmed");
+              setAskStatus("accepted");
+              return;
             }
-            if (ride.destination_latitude && ride.destination_longitude) {
-              setDestinationCoords({ lat: ride.destination_latitude, lng: ride.destination_longitude });
-            }
-            setCurrentRideId(ride._id);
-            if (ride.otp) {
-              setRideOtp(ride.otp);
-              localStorage.setItem('safego_current_ride_otp', ride.otp);
-            }
-            setIsOtpVerified(ride.is_otp_verified || false);
-            localStorage.setItem('safego_current_ride_id', ride._id);
-            if (ride.driver) {
-              setSelectedDriver({
-                driver_id: ride.driver._id || ride.driver.id,
-                name: ride.driver.user?.full_name || "Driver",
-                rating: ride.driver.average_rating || 5.0,
-                price: ride.fare_amount || 0,
-                eta: 3
-              });
-            }
-            setFlowState("confirmed");
-            setAskStatus("accepted");
-            return;
           }
         }
       } catch (err) {
@@ -1292,32 +1474,60 @@ const BookingPage = () => {
       try {
         const acceptedEvent = localStorage.getItem("safego_ride_accepted_event");
         const activeDriverRide = localStorage.getItem("safego_active_driver_ride");
-        if (acceptedEvent || activeDriverRide) {
+        if (activeRideId && (acceptedEvent || activeDriverRide)) {
           const parsed = activeDriverRide ? JSON.parse(activeDriverRide) : null;
-          if (parsed && parsed.status === "in_progress") {
-            setIsOtpVerified(true);
+          if (parsed && (parsed.id === activeRideId || parsed._id === activeRideId)) {
+            if (parsed.status === "in_progress") {
+              setIsOtpVerified(true);
+            }
+            setFlowState("confirmed");
+            setAskStatus("accepted");
           }
-          setFlowState("confirmed");
-          setAskStatus("accepted");
         }
-      } catch (e) {}
+      } catch (e) { }
     };
 
     restoreActiveRide();
   }, [API_URL]);
 
   useEffect(() => {
+    // 1. Fast interval check for cross-window / localStorage cancellation flags
     const checkCancelled = setInterval(() => {
-      if (localStorage.getItem("safego_current_ride_cancelled") === "true") {
-        localStorage.removeItem("safego_current_ride_cancelled");
-        localStorage.removeItem("safego_current_ride_id");
-        localStorage.removeItem("safego_current_ride_otp");
-        setFlowState("booking");
-        setAskStatus("idle");
-        alert("Security Notice: Your ride was automatically cancelled due to 3 invalid OTP verification attempts.");
+      if (localStorage.getItem("safego_current_ride_cancelled") === "true" || localStorage.getItem("safego_ride_cancelled_event")) {
+        let cancelInfo: any = null;
+        try {
+          const stored = localStorage.getItem("safego_cancellation_data") || localStorage.getItem("safego_ride_cancelled_event");
+          if (stored) cancelInfo = typeof stored === "string" ? JSON.parse(stored) : stored;
+        } catch (_) {}
+        handleRideCancellation(cancelInfo);
       }
-    }, 1000);
-    return () => clearInterval(checkCancelled);
+    }, 500);
+
+    // 2. Cross-tab storage event listener
+    const handleStorageChange = (e: StorageEvent) => {
+      if ((e.key === "safego_current_ride_cancelled" && e.newValue === "true") || e.key === "safego_ride_cancelled_event") {
+        let cancelInfo: any = null;
+        try {
+          const stored = localStorage.getItem("safego_cancellation_data") || e.newValue;
+          if (stored) cancelInfo = typeof stored === "string" ? JSON.parse(stored) : stored;
+        } catch (_) {}
+        handleRideCancellation(cancelInfo);
+      }
+    };
+
+    // 3. Same-tab instant CustomEvent listener
+    const handleCustomCancellation = (e: any) => {
+      handleRideCancellation(e.detail);
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("safego_ride_cancelled", handleCustomCancellation);
+
+    return () => {
+      clearInterval(checkCancelled);
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("safego_ride_cancelled", handleCustomCancellation);
+    };
   }, []);
 
   const handleUseCurrentLocation = () => {
@@ -1425,6 +1635,17 @@ const BookingPage = () => {
     let interval: any;
     if (askStatus === "asking") {
       interval = setInterval(async () => {
+        // Fast local cancellation check
+        if (localStorage.getItem("safego_current_ride_cancelled") === "true" || localStorage.getItem("safego_ride_cancelled_event")) {
+          let cancelInfo: any = null;
+          try {
+            const stored = localStorage.getItem("safego_cancellation_data") || localStorage.getItem("safego_ride_cancelled_event");
+            if (stored) cancelInfo = typeof stored === "string" ? JSON.parse(stored) : stored;
+          } catch (_) {}
+          handleRideCancellation(cancelInfo);
+          return;
+        }
+
         const token = localStorage.getItem("token");
         if (!token) return;
         try {
@@ -1454,14 +1675,61 @@ const BookingPage = () => {
                   });
                 }
               } else if (ride.status === "cancelled") {
-                setAskStatus("rejected");
+                const isViolation = Boolean(
+                  ride.is_penalty_applied ||
+                  (ride.cancel_reason && (
+                    ride.cancel_reason.toLowerCase().includes("violation") ||
+                    ride.cancel_reason.toLowerCase().includes("policy") ||
+                    ride.cancel_reason.toLowerCase().includes("male")
+                  ))
+                );
+                handleRideCancellation({
+                  rideId: ride._id || ride.id,
+                  type: isViolation ? "pink_mode_violation" : "driver_cancelled",
+                  title: isViolation ? "Pink Mode Safety Policy Violation" : "Ride Cancelled",
+                  reason: ride.penalty_reason || ride.cancel_reason || "Ride request was declined or cancelled.",
+                  penalty: ride.penalty_amount || (isViolation ? 750 : 0),
+                  driverCompensation: ride.driver_compensation_amount || 200,
+                  driverName: ride.driver?.user?.full_name || "Driver",
+                  timestamp: Date.now()
+                });
               }
             }
+          } else if (res.status === 404) {
+            // Check latest ride endpoint for cancellation
+            try {
+              const latestRes = await fetch(`${API_URL}/api/rides/latest`, {
+                headers: { "Authorization": `Bearer ${token}` }
+              });
+              if (latestRes.ok) {
+                const latestRide = await latestRes.json();
+                if (latestRide && latestRide.status === "cancelled") {
+                  const isViolation = Boolean(
+                    latestRide.is_penalty_applied ||
+                    (latestRide.cancel_reason && (
+                      latestRide.cancel_reason.toLowerCase().includes("violation") ||
+                      latestRide.cancel_reason.toLowerCase().includes("policy") ||
+                      latestRide.cancel_reason.toLowerCase().includes("male")
+                    ))
+                  );
+                  handleRideCancellation({
+                    rideId: latestRide._id || latestRide.id,
+                    type: isViolation ? "pink_mode_violation" : "driver_cancelled",
+                    title: isViolation ? "Pink Mode Safety Policy Violation" : "Ride Cancelled",
+                    reason: latestRide.penalty_reason || latestRide.cancel_reason || "Ride request was declined or cancelled.",
+                    penalty: latestRide.penalty_amount || (isViolation ? 750 : 0),
+                    driverCompensation: latestRide.driver_compensation_amount || 200,
+                    driverName: latestRide.driver?.user?.full_name || "Driver",
+                    timestamp: Date.now()
+                  });
+                }
+              }
+            } catch (_) {}
           }
         } catch (e) {
           console.error("Poll error", e);
         }
-      }, 2000);
+      }, 1500);
     }
     return () => clearInterval(interval);
   }, [askStatus, API_URL]);
@@ -1470,17 +1738,34 @@ const BookingPage = () => {
     let interval: any;
     if (flowState === "confirmed") {
       interval = setInterval(async () => {
-        // Cross-tab & local storage completion check
-        const completedEvent = localStorage.getItem("safego_ride_completed_event");
-        const currentRideStatus = localStorage.getItem("safego_current_ride_status");
-        if (completedEvent || currentRideStatus === "completed") {
-          setFlowState("review");
+        const activeRideId = currentRideId || localStorage.getItem("safego_current_ride_id");
+
+        // Fast local cancellation check
+        if (localStorage.getItem("safego_current_ride_cancelled") === "true" || localStorage.getItem("safego_ride_cancelled_event")) {
+          let cancelInfo: any = null;
+          try {
+            const stored = localStorage.getItem("safego_cancellation_data") || localStorage.getItem("safego_ride_cancelled_event");
+            if (stored) cancelInfo = typeof stored === "string" ? JSON.parse(stored) : stored;
+          } catch (_) {}
+          handleRideCancellation(cancelInfo);
           return;
         }
 
-        const token = localStorage.getItem("token");
-        const activeRideId = currentRideId || localStorage.getItem("safego_current_ride_id");
+        // Cross-tab & local storage completion check (strictly scoped to current active ride)
+        const completedEvent = localStorage.getItem("safego_ride_completed_event");
+        if (completedEvent && activeRideId) {
+          try {
+            const parsed = JSON.parse(completedEvent);
+            if (parsed && parsed.rideId === activeRideId) {
+              localStorage.removeItem("safego_ride_completed_event");
+              localStorage.setItem("safego_current_ride_status", "completed");
+              setFlowState("review");
+              return;
+            }
+          } catch (_) { }
+        }
 
+        const token = localStorage.getItem("token");
         if (!token) return;
         try {
           const res = await fetch(`${API_URL}/api/rides/active`, {
@@ -1494,27 +1779,71 @@ const BookingPage = () => {
               if (ride.status === "completed") {
                 localStorage.setItem("safego_current_ride_status", "completed");
                 setFlowState("review");
+              } else if (ride.status === "cancelled") {
+                const isViolation = Boolean(
+                  ride.is_penalty_applied ||
+                  (ride.cancel_reason && (
+                    ride.cancel_reason.toLowerCase().includes("violation") ||
+                    ride.cancel_reason.toLowerCase().includes("policy") ||
+                    ride.cancel_reason.toLowerCase().includes("male")
+                  ))
+                );
+                handleRideCancellation({
+                  rideId: ride._id || ride.id,
+                  type: isViolation ? "pink_mode_violation" : "driver_cancelled",
+                  title: isViolation ? "Pink Mode Safety Policy Violation" : "Ride Cancelled by Driver",
+                  reason: ride.penalty_reason || ride.cancel_reason || "Driver cancelled the ride.",
+                  penalty: ride.penalty_amount || (isViolation ? 750 : 0),
+                  driverCompensation: ride.driver_compensation_amount || 200,
+                  driverName: ride.driver?.user?.full_name || "Female Safety Pilot",
+                  notes: ride.penalty_reason || ride.cancel_reason,
+                  timestamp: Date.now()
+                });
               }
             }
-          } else if (res.status === 404 && activeRideId) {
-            // Fallback: check specific ride status if active endpoint returns 404 after completion
+          } else if (res.status === 404) {
+            // Active ride is no longer in progress — query latest ride to inspect cancellation reason or completion
             try {
-              const specificRes = await fetch(`${API_URL}/api/rides/${activeRideId}`, {
+              const latestRes = await fetch(`${API_URL}/api/rides/latest`, {
                 headers: { "Authorization": `Bearer ${token}` }
               });
-              if (specificRes.ok) {
-                const specificRide = await specificRes.json();
-                if (specificRide && specificRide.status === "completed") {
-                  localStorage.setItem("safego_current_ride_status", "completed");
-                  setFlowState("review");
+              if (latestRes.ok) {
+                const latestRide = await latestRes.json();
+                if (latestRide) {
+                  if (latestRide.status === "cancelled") {
+                    const isViolation = Boolean(
+                      latestRide.is_penalty_applied ||
+                      (latestRide.cancel_reason && (
+                        latestRide.cancel_reason.toLowerCase().includes("violation") ||
+                        latestRide.cancel_reason.toLowerCase().includes("policy") ||
+                        latestRide.cancel_reason.toLowerCase().includes("male")
+                      ))
+                    );
+                    handleRideCancellation({
+                      rideId: latestRide._id || latestRide.id,
+                      type: isViolation ? "pink_mode_violation" : "driver_cancelled",
+                      title: isViolation ? "Pink Mode Safety Policy Violation" : "Ride Cancelled by Driver",
+                      reason: latestRide.penalty_reason || latestRide.cancel_reason || "Driver cancelled the ride upon arrival.",
+                      penalty: latestRide.penalty_amount || (isViolation ? 750 : 0),
+                      driverCompensation: latestRide.driver_compensation_amount || 200,
+                      driverName: latestRide.driver?.user?.full_name || "Female Safety Pilot",
+                      notes: latestRide.penalty_reason || latestRide.cancel_reason,
+                      timestamp: Date.now()
+                    });
+                    return;
+                  } else if (latestRide.status === "completed") {
+                    localStorage.setItem("safego_current_ride_status", "completed");
+                    setFlowState("review");
+                    return;
+                  }
                 }
               }
-            } catch (e) {}
+            } catch (_) {}
           }
         } catch (e) {
           // ignore
         }
-      }, 2000);
+      }, 1500);
     }
     return () => clearInterval(interval);
   }, [flowState, API_URL, currentRideId]);
@@ -1591,7 +1920,7 @@ const BookingPage = () => {
             return;
           }
         }
-      } catch (e) {}
+      } catch (e) { }
 
       try {
         const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(val)}&limit=8&lang=en`);
@@ -1669,7 +1998,7 @@ const BookingPage = () => {
             return;
           }
         }
-      } catch (e) {}
+      } catch (e) { }
 
       try {
         const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(val)}&limit=8&lang=en`);
@@ -1788,6 +2117,9 @@ const BookingPage = () => {
     setChatOpen(false);
     setTriggerRoute({ from: pickup, to: destination });
 
+    let finalPickupCoords = pickupCoords;
+    let finalDestCoords = destinationCoords;
+
     try {
       const LOCAL_GEOCODE_MAP: Record<string, { lat: number, lng: number }> = {
         "waghodia": { lat: 22.3023, lng: 73.3762 },
@@ -1823,13 +2155,10 @@ const BookingPage = () => {
               return { lat: data[0].lat, lng: data[0].lng };
             }
           }
-        } catch (e) {}
+        } catch (e) { }
 
         return null;
       };
-
-      let finalPickupCoords = pickupCoords;
-      let finalDestCoords = destinationCoords;
 
       // Automatically resolve coordinates if user typed and hit Enter without selecting
       if (!finalPickupCoords) {
@@ -1838,7 +2167,7 @@ const BookingPage = () => {
         } else {
           finalPickupCoords = await resolveLocalCoords(pickup);
         }
-        
+
         if (!finalPickupCoords) {
           try {
             const controller = new AbortController();
@@ -1882,7 +2211,7 @@ const BookingPage = () => {
           finalPickupCoords = { lat: 22.3023, lng: 73.3762 }; // Waghodia default fallback
         }
       }
-      
+
       // Resolve Destination Coordinates
       finalDestCoords = await resolveLocalCoords(destination);
 
@@ -1927,9 +2256,9 @@ const BookingPage = () => {
 
       if (!finalDestCoords) {
         // Fallback relative to pickup point in local city area (5km local trip)
-        finalDestCoords = { 
-          lat: (finalPickupCoords?.lat || 22.3023) + 0.025, 
-          lng: (finalPickupCoords?.lng || 73.3762) + 0.025 
+        finalDestCoords = {
+          lat: (finalPickupCoords?.lat || 22.3023) + 0.025,
+          lng: (finalPickupCoords?.lng || 73.3762) + 0.025
         };
       }
 
@@ -2051,17 +2380,51 @@ const BookingPage = () => {
   };
 
   const handleConfirmRide = async (overrideDriver?: any) => {
+    // 1. Pink Mode Policy Checks
+    if (mode.id === "pink" && userGender === "male") {
+      if (passengers === 1) {
+        toast.error("Solo male booking is strictly restricted in Pink Mode! Please switch to Normal Mode.", {
+          duration: 5000,
+          icon: <ShieldAlert size={18} className="text-red-500" />
+        });
+        setAskStatus("idle");
+        return;
+      }
+      if (!femaleCompanionName.trim()) {
+        toast.error("Please enter the accompanying female passenger's full name to proceed with Pink Mode.", {
+          duration: 5000
+        });
+        setAskStatus("idle");
+        return;
+      }
+      if (!isAccompaniedDeclared) {
+        toast.error("Please check and accept the Mandatory Accompanied Female Safety Declaration.", {
+          duration: 5000
+        });
+        setAskStatus("idle");
+        return;
+      }
+    }
+
     let token = localStorage.getItem("token");
     if (!token) {
       token = "dummy-token";
       localStorage.setItem("token", token);
     }
 
+    // Clear stale completion or cancellation flags from prior rides
+    localStorage.removeItem("safego_ride_completed_event");
+    localStorage.removeItem("safego_current_ride_status");
+    localStorage.removeItem("safego_current_ride_cancelled");
+    localStorage.removeItem("safego_ride_accepted_event");
+    localStorage.removeItem("safego_active_driver_ride");
+    setIsOtpVerified(false);
+
     try {
       setAskStatus("asking");
 
       const driverObj = overrideDriver || selectedDriver;
-      const payload = {
+      const payload: any = {
         mode: mode.id,
         pickup_address: pickup || "Pickup Location",
         pickup_latitude: pickupCoords?.lat || mapCenter?.lat || 22.3023,
@@ -2076,6 +2439,13 @@ const BookingPage = () => {
         driver_id: driverObj?.driver_id && driverObj.driver_id.length === 24 ? driverObj.driver_id : null,
         fare_amount: driverObj?.price || rideDetails.fare || 180
       };
+
+      if (mode.id === "pink") {
+        payload.has_female_passenger_declared = userGender === "male" ? isAccompaniedDeclared : true;
+        if (userGender === "male") {
+          payload.female_passenger_name = femaleCompanionName.trim();
+        }
+      }
 
       let rideData: any = null;
       try {
@@ -2123,6 +2493,7 @@ const BookingPage = () => {
       setRideOtp(dynamicOtp);
       localStorage.setItem('safego_current_ride_id', activeRideId);
       localStorage.setItem('safego_current_ride_otp', dynamicOtp);
+      localStorage.setItem('safego_current_ride_status', 'confirmed');
 
       setAskStatus("accepted");
       setFlowState("confirmed");
@@ -2140,6 +2511,7 @@ const BookingPage = () => {
       setRideOtp(dynamicOtp);
       localStorage.setItem('safego_current_ride_id', activeRideId);
       localStorage.setItem('safego_current_ride_otp', dynamicOtp);
+      localStorage.setItem('safego_current_ride_status', 'confirmed');
       setAskStatus("accepted");
       setFlowState("confirmed");
       leftRef.current?.scrollTo({ top: 0, behavior: "smooth" });
@@ -2187,27 +2559,31 @@ const BookingPage = () => {
     }
 
     try {
-      const saved = localStorage.getItem("safego_rides");
-      if (saved) {
-        const ridesList = JSON.parse(saved);
-        if (ridesList.length > 0) {
-          for (let i = 0; i < ridesList.length; i++) {
-            if (ridesList[i].status === "In Progress") {
-              ridesList[i].status = "Completed";
-              ridesList[i].rating = rating || 0;
-              break;
-            }
-          }
-          localStorage.setItem("safego_rides", JSON.stringify(ridesList));
-        }
-      }
+      const newCompletedRide = {
+        _id: currentRideId || `ride_${Date.now()}`,
+        id: currentRideId || `ride_${Date.now()}`,
+        mode: mode.id,
+        pickup_address: pickup || "Pickup Location",
+        destination_address: destination || "Destination Location",
+        route: `${pickup || "Pickup"} → ${destination || "Drop-off"}`,
+        driver: { user: { full_name: selectedDriver?.name || "Assigned Driver" } },
+        fare: selectedDriver?.price ? `₹${selectedDriver.price}` : (rideDetails.fare ? `₹${rideDetails.fare}` : "₹180"),
+        status: "completed",
+        rating: rating || 5,
+        created_at: new Date().toISOString()
+      };
+
+      const rawPassenger = localStorage.getItem("safego_passenger_rides") || localStorage.getItem("safego_rides");
+      const existingRides = rawPassenger ? JSON.parse(rawPassenger) : [];
+      const updatedRides = [newCompletedRide, ...(Array.isArray(existingRides) ? existingRides : [])];
+      localStorage.setItem("safego_passenger_rides", JSON.stringify(updatedRides));
+      localStorage.setItem("safego_rides", JSON.stringify(updatedRides));
     } catch (_) { }
 
     try {
-      localStorage.removeItem("safego_passenger_rides");
       localStorage.removeItem("safego_ride_accepted_event");
       localStorage.removeItem("safego_active_driver_ride");
-    } catch (_) {}
+    } catch (_) { }
 
     localStorage.removeItem('safego_current_ride_id');
     localStorage.removeItem('safego_current_ride_otp');
@@ -2539,15 +2915,130 @@ const BookingPage = () => {
                     </div>
                   </div>
                 )}
+                {/* Outstanding Penalty Warning Banner */}
+                {userPenaltyBalance > 0 && (
+                  <div className="mt-4 rounded-[2rem] border-2 border-red-500/40 bg-red-500/10 p-5 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex items-start gap-3.5">
+                      <div className="p-2.5 rounded-2xl bg-red-500/20 text-red-600 dark:text-red-400 shrink-0">
+                        <AlertCircle size={22} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-black uppercase tracking-widest text-red-600 dark:text-red-400">
+                            Outstanding Policy Penalty
+                          </h4>
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-500 text-white">
+                            ₹{userPenaltyBalance} Fine
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-semibold text-red-700/90 dark:text-red-300/80 mt-1 leading-relaxed">
+                          Your account has an unpaid penalty from a prior SafeGo Pink Mode policy violation. Please settle this in your Dashboard.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {mode.id === "pink" && (
                   <div className="flex flex-col gap-4">
-                    <div className="mt-4 rounded-[2rem] border border-pink-500/20 bg-card p-6 premium-shadow animate-in fade-in slide-in-from-bottom-2 duration-400 transition-all hover:-translate-y-1">
+                    {/* 1. MALE PASSENGER ENFORCEMENT PROTOCOLS */}
+                    {userGender === "male" && (
+                      <>
+                        {passengers === 1 ? (
+                          /* SOLO MALE PASSENGER RESTRICTION */
+                          <div className="mt-4 rounded-[2rem] border-2 border-rose-500 bg-rose-500/10 dark:bg-rose-950/30 p-6 space-y-4 animate-in fade-in zoom-in-95 duration-400">
+                            <div className="flex items-start gap-3.5">
+                              <div className="p-3 rounded-2xl bg-rose-500 text-white shrink-0 shadow-lg shadow-rose-500/30">
+                                <ShieldAlert size={26} />
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between">
+                                  <h4 className="text-sm font-black uppercase tracking-wider text-rose-600 dark:text-rose-400">
+                                    Pink Mode Restriction: Solo Male Booking Prohibited
+                                  </h4>
+                                  <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-600 text-white">
+                                    Policy Restricted
+                                  </span>
+                                </div>
+                                <p className="text-xs font-semibold text-rose-800 dark:text-rose-200 mt-2 leading-relaxed">
+                                  SafeGo Pink Mode is exclusively reserved for women passengers and verified female drivers. Solo male passengers are strictly prohibited from booking Pink Mode.
+                                </p>
+                                <div className="mt-3 p-3.5 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-[11px] font-bold text-rose-900 dark:text-rose-200">
+                                  ⚠️ <strong>Strict Enforcement:</strong> If booked ahead of instructions, the driver will cancel the ride upon arrival, and an immediate penalty of <strong className="underline decoration-rose-500 decoration-2">₹500 to ₹2,000</strong> will be levied on your account.
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => navigate("/book/normal")}
+                              className="w-full py-3.5 px-4 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-xl shadow-rose-600/25 active:scale-95 cursor-pointer"
+                            >
+                              <Car size={16} /> Switch to SafeGo Normal Mode (Standard Fleet)
+                            </button>
+                          </div>
+                        ) : (
+                          /* MANDATORY ACCOMPANIED FEMALE DECLARATION (PASSENGERS >= 2) */
+                          <div className="mt-4 rounded-[2.2rem] border-2 border-pink-500/50 bg-pink-500/5 dark:bg-pink-950/20 p-6 space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-400">
+                            <div className="flex items-start gap-3">
+                              <div className="p-2.5 rounded-2xl bg-pink-500 text-white shrink-0 shadow-md shadow-pink-500/20">
+                                <ShieldCheck size={22} />
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between">
+                                  <h4 className="text-xs font-black uppercase tracking-wider text-pink-600 dark:text-pink-400">
+                                    Mandatory Accompanied Female Policy
+                                  </h4>
+                                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-pink-500/20 text-pink-600 dark:text-pink-300 border border-pink-500/30">
+                                    Mandatory Required
+                                  </span>
+                                </div>
+                                <p className="text-[11px] font-medium text-muted-foreground mt-1 leading-relaxed">
+                                  Male passengers may only book Pink Mode when traveling alongside verified female passenger(s). You must disclose the primary female companion and accept the legal policy.
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Companion Name Field */}
+                            <div className="space-y-1.5 pt-2 border-t border-pink-500/20">
+                              <label className="text-[10px] font-black uppercase tracking-widest text-pink-600 dark:text-pink-400 ml-1 flex items-center gap-1.5">
+                                <Users size={12} /> Primary Accompanying Female Passenger Name *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={femaleCompanionName}
+                                onChange={(e) => setFemaleCompanionName(e.target.value)}
+                                placeholder="Enter full name of accompanying female passenger..."
+                                className="w-full rounded-xl border border-pink-500/40 bg-background px-4 py-3 text-xs font-bold outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20 transition-all text-foreground placeholder:text-muted-foreground/60"
+                              />
+                            </div>
+
+                            {/* Mandatory Checkbox Declaration */}
+                            <label className={`flex items-start gap-3 p-3.5 rounded-2xl border transition-all cursor-pointer ${isAccompaniedDeclared ? "border-pink-500 bg-pink-500/10 shadow-sm" : "border-border bg-background/60 hover:bg-secondary/40"}`}>
+                              <input
+                                type="checkbox"
+                                checked={isAccompaniedDeclared}
+                                onChange={(e) => setIsAccompaniedDeclared(e.target.checked)}
+                                className="mt-0.5 accent-pink-600 h-4 w-4 rounded cursor-pointer shrink-0"
+                              />
+                              <div className="text-[11px] font-semibold text-foreground/90 leading-relaxed select-none">
+                                <span className="font-black text-pink-600 dark:text-pink-400">Mandatory Safety Declaration: </span>
+                                I certify that a female traveler will be present and boarding this ride. I understand that if no female passenger is present upon driver arrival, the driver will immediately cancel the ride and a <strong className="text-rose-600 dark:text-rose-400">penalty of ₹500 to ₹2,000 (Standard: ₹750)</strong> will be automatically charged to my account.
+                              </div>
+                            </label>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* Standard Pink Mode Safety Preferences */}
+                    <div className="mt-2 rounded-[2rem] border border-pink-500/20 bg-card p-6 premium-shadow animate-in fade-in slide-in-from-bottom-2 duration-400 transition-all hover:-translate-y-1">
                       <h3 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
                         <Shield size={16} className="text-pink-500" /> {t('booking.safety_preferences', 'Pink Mode Safety Preferences')}
                       </h3>
                       <div className="grid grid-cols-1 gap-2">
                         {[
-                          { key: "pink_female", fallback: "Prefer Verified Female Driver" },
+                          { key: "pink_female", fallback: "Exclusively Verified Female Operator" },
                           { key: "pink_share", fallback: "Auto-Share Live Location & Route with Emergency Contact" },
                           { key: "pink_sos", fallback: "Enable One-Tap Threat SOS & Admin Dispatch" }
                         ].map((n, i) => (
@@ -2588,19 +3079,6 @@ const BookingPage = () => {
                               className="w-full rounded-xl border border-border bg-secondary/50 dark:bg-white/5 px-4 py-2.5 text-xs font-semibold outline-none focus:border-pink-500 transition-colors dark:text-white"
                             />
                           </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="rounded-[2rem] border border-amber-200/50 bg-amber-50/50 dark:bg-amber-950/20 p-5 animate-in fade-in zoom-in-95 duration-500">
-                      <div className="flex gap-3">
-                        <div className="flex-shrink-0 mt-0.5">
-                          <AlertCircle size={18} className="text-amber-600 dark:text-amber-500" />
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-black uppercase tracking-widest text-amber-700 dark:text-amber-400 mb-1">{t('booking.pink_mode_policy_title', 'Important Pink Mode Policy')}</h4>
-                          <p className="text-[11px] font-medium leading-relaxed text-amber-800/80 dark:text-amber-200/60">
-                            {t('booking.pink_mode_policy_desc', 'Pink Mode is a female-focused safety service. If male passengers accompany the traveler, the driver reserves the right to cancel the ride on the spot if they feel uncomfortable. Please ensure all travelers are disclosed.')}
-                          </p>
                         </div>
                       </div>
                     </div>
@@ -2649,11 +3127,11 @@ const BookingPage = () => {
                     {/* PREMIUM REDESIGNED AI INTELLIGENCE CARD */}
                     <div className="rounded-[2.5rem] bg-gradient-to-b from-card via-card/95 to-card/90 border border-border/40 p-8 relative overflow-hidden transition-all duration-300 hover:-translate-y-1 premium-shadow">
                       {/* Subtle, glowing radial ambient lighting matched to the active mode's color */}
-                      <div 
+                      <div
                         className="absolute -right-20 -top-20 w-80 h-80 rounded-full blur-[100px] opacity-10 transition-all duration-700 pointer-events-none"
                         style={{ backgroundColor: mode.accent }}
                       />
-                      
+
                       <div className="absolute top-0 right-0 p-4 opacity-[0.03] dark:opacity-[0.05] pointer-events-none">
                         <Shield size={140} style={{ color: mode.accent }} />
                       </div>
@@ -2718,7 +3196,7 @@ const BookingPage = () => {
                               <div className="flex items-center gap-3 mt-1">
                                 <div className="text-2xl font-black text-foreground tracking-tight">₹{rideDetails.fare.toLocaleString()}</div>
                                 {rideDetails.surgeMultiplier > 1.0 && (
-                                  <div 
+                                  <div
                                     className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-[0.1em] border animate-pulse shadow-sm"
                                     style={{
                                       backgroundColor: `${mode.accent}15`,
@@ -2731,7 +3209,7 @@ const BookingPage = () => {
                                   </div>
                                 )}
                                 {mode.id === "pwd" && (
-                                  <div 
+                                  <div
                                     className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-[0.1em] border shadow-sm"
                                     style={{
                                       backgroundColor: `${mode.accent}15`,
@@ -2813,24 +3291,22 @@ const BookingPage = () => {
                         </div>
                         <div className="h-4 w-px bg-border/40" />
                         <div className="flex items-center gap-3">
-                          <Zap 
-                            size={16} 
-                            className={`animate-pulse ${
-                              rideDetails.aiPrediction === 'Stable' 
-                                ? 'text-emerald-500' 
-                                : rideDetails.aiPrediction === 'Cautious' 
-                                ? 'text-amber-500' 
-                                : 'text-rose-500'
-                            }`} 
+                          <Zap
+                            size={16}
+                            className={`animate-pulse ${rideDetails.aiPrediction === 'Stable'
+                                ? 'text-emerald-500'
+                                : rideDetails.aiPrediction === 'Cautious'
+                                  ? 'text-amber-500'
+                                  : 'text-rose-500'
+                              }`}
                           />
-                          <span 
-                            className={`text-xs font-black uppercase tracking-[0.1em] ${
-                              rideDetails.aiPrediction === 'Stable' 
-                                ? 'text-emerald-600 dark:text-emerald-400' 
-                                : rideDetails.aiPrediction === 'Cautious' 
-                                ? 'text-amber-600 dark:text-amber-400' 
-                                : 'text-rose-600 dark:text-rose-400'
-                            }`}
+                          <span
+                            className={`text-xs font-black uppercase tracking-[0.1em] ${rideDetails.aiPrediction === 'Stable'
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : rideDetails.aiPrediction === 'Cautious'
+                                  ? 'text-amber-600 dark:text-amber-400'
+                                  : 'text-rose-600 dark:text-rose-400'
+                              }`}
                           >
                             {t('booking.ai_prediction_label', 'AI: {{prediction}}', { prediction: t(`booking.prediction_${rideDetails.aiPrediction.toLowerCase().replace(' ', '_')}`, rideDetails.aiPrediction) })}
                           </span>
@@ -2854,10 +3330,30 @@ const BookingPage = () => {
                               onClick={() => {
                                 handleAutoSelectNearestCab();
                               }}
-                              className="w-full py-4 px-6 rounded-2xl bg-primary text-primary-foreground font-black text-xs uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all shadow-xl shadow-primary/20 flex items-center justify-center gap-2"
+                              disabled={mode.id === "pink" && userGender === "male" && (passengers === 1 || !isAccompaniedDeclared || !femaleCompanionName.trim())}
+                              className={`w-full py-4 px-6 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${mode.id === "pink" && userGender === "male" && passengers === 1
+                                  ? "bg-rose-500/20 text-rose-500 cursor-not-allowed border border-rose-500/30"
+                                  : mode.id === "pink" && userGender === "male" && (!isAccompaniedDeclared || !femaleCompanionName.trim())
+                                    ? "bg-pink-500/20 text-pink-600 dark:text-pink-400 cursor-not-allowed border border-pink-500/30"
+                                    : "bg-primary text-primary-foreground hover:brightness-110 active:scale-95 shadow-xl shadow-primary/20"
+                                }`}
                             >
-                              <Zap size={16} className="fill-current" />
-                              {t('booking.book_nearest_now', 'AUTO-MATCH & BOOK NEAREST CAB NOW')}
+                              {mode.id === "pink" && userGender === "male" && passengers === 1 ? (
+                                <>
+                                  <ShieldAlert size={16} />
+                                  SOLO MALE BOOKING RESTRICTED IN PINK MODE
+                                </>
+                              ) : mode.id === "pink" && userGender === "male" && (!isAccompaniedDeclared || !femaleCompanionName.trim()) ? (
+                                <>
+                                  <ShieldCheck size={16} />
+                                  COMPLETE ACCOMPANYING FEMALE DECLARATION
+                                </>
+                              ) : (
+                                <>
+                                  <Zap size={16} className="fill-current" />
+                                  {t('booking.book_nearest_now', 'AUTO-MATCH & BOOK NEAREST CAB NOW')}
+                                </>
+                              )}
                             </button>
                           </div>
                         </div>
@@ -2951,12 +3447,22 @@ const BookingPage = () => {
                                   </button>
                                   <button
                                     onClick={askStatus === "accepted" ? handleConfirmRide : handleAskDriver}
-                                    disabled={askStatus === "asking"}
+                                    disabled={askStatus === "asking" || (mode.id === "pink" && userGender === "male" && (passengers === 1 || !isAccompaniedDeclared || !femaleCompanionName.trim()))}
                                     className="flex-1 group relative rounded-2xl py-4 text-xs font-black uppercase tracking-widest text-white transition-all shadow-xl hover:shadow-2xl hover:brightness-110 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden"
                                     style={{ backgroundColor: askStatus === "accepted" ? "#10b981" : askStatus === "rejected" ? "#ef4444" : mode.accent }}
                                   >
                                     <div className="flex items-center justify-center gap-2">
-                                      {askStatus === "idle" || askStatus === "rejected" ? (
+                                      {mode.id === "pink" && userGender === "male" && passengers === 1 ? (
+                                        <>
+                                          <ShieldAlert size={14} />
+                                          SOLO MALE RESTRICTED
+                                        </>
+                                      ) : mode.id === "pink" && userGender === "male" && (!isAccompaniedDeclared || !femaleCompanionName.trim()) ? (
+                                        <>
+                                          <ShieldCheck size={14} />
+                                          COMPLETE DECLARATION
+                                        </>
+                                      ) : askStatus === "idle" || askStatus === "rejected" ? (
                                         <>{t('booking.send_request', 'SEND REQUEST')}</>
                                       ) : askStatus === "asking" ? (
                                         <><Loader2 size={16} className="animate-spin" /> {t('booking.pending', 'PENDING...')}</>
@@ -3102,21 +3608,18 @@ const BookingPage = () => {
                   </div>
 
                   {/* RIDER EMERGENCY SOS WIDGET (DISPLAYED FOR ALL ONGOING RIDES) */}
-                  <div className={`mt-6 p-5 rounded-2xl border flex flex-col gap-3 transition-all ${
-                    mode.id === "pink"
+                  <div className={`mt-6 p-5 rounded-2xl border flex flex-col gap-3 transition-all ${mode.id === "pink"
                       ? "bg-rose-500/10 border-rose-500/30"
                       : "bg-red-500/10 border-red-500/30"
-                  }`}>
+                    }`}>
                     <div className="flex items-center gap-3">
-                      <div className={`h-9 w-9 rounded-xl flex items-center justify-center text-white shadow-md animate-pulse ${
-                        mode.id === "pink" ? "bg-rose-600" : "bg-red-600"
-                      }`}>
+                      <div className={`h-9 w-9 rounded-xl flex items-center justify-center text-white shadow-md animate-pulse ${mode.id === "pink" ? "bg-rose-600" : "bg-red-600"
+                        }`}>
                         <Siren size={20} />
                       </div>
                       <div>
-                        <h4 className={`text-xs font-black uppercase tracking-wider ${
-                          mode.id === "pink" ? "text-rose-600 dark:text-rose-400" : "text-red-600 dark:text-red-400"
-                        }`}>
+                        <h4 className={`text-xs font-black uppercase tracking-wider ${mode.id === "pink" ? "text-rose-600 dark:text-rose-400" : "text-red-600 dark:text-red-400"
+                          }`}>
                           {mode.id === "pink" ? "Active Ride Threat Response SOS" : "Rider Emergency SOS Alert"}
                         </h4>
                         <p className="text-[10px] text-muted-foreground font-medium">
@@ -3130,11 +3633,10 @@ const BookingPage = () => {
                         setSosSentSuccess(false);
                         setSosModalOpen(true);
                       }}
-                      className={`w-full py-3 px-4 rounded-xl text-white font-black text-xs uppercase tracking-widest shadow-lg hover:brightness-110 flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
-                        mode.id === "pink"
+                      className={`w-full py-3 px-4 rounded-xl text-white font-black text-xs uppercase tracking-widest shadow-lg hover:brightness-110 flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${mode.id === "pink"
                           ? "bg-gradient-to-r from-rose-600 via-pink-600 to-rose-600 shadow-rose-500/25"
                           : "bg-gradient-to-r from-red-600 via-rose-600 to-red-600 shadow-red-500/25"
-                      }`}
+                        }`}
                     >
                       <ShieldAlert size={16} />
                       DISPATCH EMERGENCY ALERT TO ADMIN NOW
@@ -3187,15 +3689,15 @@ const BookingPage = () => {
                     })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-4 font-medium min-h-[16px]">
-                    {rating === 5 
-                      ? t('booking.rating_excellent', 'Excellent service!') 
-                      : rating === 4 
-                      ? t('booking.rating_great', 'Great ride!') 
-                      : rating === 3 
-                      ? t('booking.rating_okay', 'It was okay.') 
-                      : rating > 0 
-                      ? t('booking.rating_poor', 'Needs improvement') 
-                      : " "}
+                    {rating === 5
+                      ? t('booking.rating_excellent', 'Excellent service!')
+                      : rating === 4
+                        ? t('booking.rating_great', 'Great ride!')
+                        : rating === 3
+                          ? t('booking.rating_okay', 'It was okay.')
+                          : rating > 0
+                            ? t('booking.rating_poor', 'Needs improvement')
+                            : " "}
                   </p>
                   <div className="w-full mt-6 text-left">
                     <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">{t('booking.leave_review_optional', 'Leave a review (optional)')}</label>
@@ -3251,6 +3753,181 @@ const BookingPage = () => {
           </div>
         )}
       </div>
+      {/* ─── RIDE CANCELLATION & PINK MODE POLICY VIOLATION MODAL ─── */}
+      <AnimatePresence>
+        {cancellationModalOpen && cancellationData && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-300">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className={`w-full max-w-lg rounded-[2.5rem] bg-card border-2 p-6 md:p-8 shadow-2xl relative overflow-hidden ${
+                cancellationData.type === "pink_mode_violation"
+                  ? "border-rose-500/60 shadow-rose-500/25"
+                  : cancellationData.type === "otp_failure"
+                  ? "border-amber-500/60 shadow-amber-500/25"
+                  : "border-border shadow-xl"
+              }`}
+            >
+              {/* Background ambient lighting */}
+              <div
+                className={`absolute -top-24 -right-24 w-48 h-48 rounded-full blur-3xl opacity-30 pointer-events-none ${
+                  cancellationData.type === "pink_mode_violation"
+                    ? "bg-rose-500"
+                    : cancellationData.type === "otp_failure"
+                    ? "bg-amber-500"
+                    : "bg-primary"
+                }`}
+              />
+
+              {cancellationData.type === "pink_mode_violation" ? (
+                <div className="text-center space-y-5">
+                  {/* Hero Badge Icon */}
+                  <div className="relative mx-auto w-20 h-20">
+                    <div className="absolute inset-0 rounded-3xl bg-rose-500/20 animate-ping opacity-60" />
+                    <div className="relative w-20 h-20 rounded-3xl bg-rose-600 text-white flex items-center justify-center shadow-xl shadow-rose-600/40 border-2 border-rose-400">
+                      <ShieldAlert size={42} />
+                    </div>
+                  </div>
+
+                  {/* Header */}
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-[10px] font-black uppercase tracking-widest mb-2">
+                      <AlertCircle size={13} /> Strict Safety Policy Enforcement
+                    </div>
+                    <h3 className="text-2xl font-black font-display text-foreground tracking-tight">
+                      Ride Cancelled: Policy Violation
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed font-medium">
+                      Your SafeGo Pink female pilot verified the boarding party upon arrival and reported a policy non-compliance.
+                    </p>
+                  </div>
+
+                  {/* Incident Callout Card */}
+                  <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/25 text-left space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-rose-600 dark:text-rose-400">
+                        Reason Reported by Pilot
+                      </span>
+                      <span className="text-[10px] font-bold text-muted-foreground">
+                        {cancellationData.driverName ? `Pilot: ${cancellationData.driverName}` : "Female Safety Pilot"}
+                      </span>
+                    </div>
+                    <div className="text-sm font-bold text-rose-950 dark:text-rose-100 flex items-start gap-2">
+                      <span className="text-rose-600 dark:text-rose-400 text-base leading-none">⚠️</span>
+                      <span>{cancellationData.reason || "Solo male passenger detected in Pink Mode upon driver arrival."}</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed pt-1.5 border-t border-rose-500/15">
+                      SafeGo Pink Mode is exclusively designated for female solo travelers or mixed passenger groups where a verified female passenger is physically present.
+                    </p>
+                  </div>
+
+                  {/* Financial Penalty Breakdown */}
+                  <div className="p-4 rounded-2xl bg-secondary/50 border border-border/70 text-left space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-muted-foreground">Policy Penalty Charged:</span>
+                      <span className="text-base font-black text-rose-600 dark:text-rose-400">
+                        ₹{cancellationData.penalty || 750}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-semibold text-muted-foreground">Pilot Inconvenience Credit:</span>
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                        +₹{cancellationData.driverCompensation || 200} (Credited to Pilot)
+                      </span>
+                    </div>
+                    <div className="pt-2 border-t border-border/50 flex items-center justify-between text-[11px]">
+                      <span className="font-semibold text-muted-foreground">Account Penalty Balance:</span>
+                      <span className="font-black text-foreground">
+                        ₹{userPenaltyBalance || cancellationData.penalty || 750}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Quick Action Buttons */}
+                  <div className="space-y-2.5 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCancellationModalOpen(false);
+                        navigate("/booking/normal", { state: { pickup, destination } });
+                      }}
+                      className="w-full py-4 px-4 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-700 hover:to-rose-800 text-white font-black text-xs uppercase tracking-widest shadow-xl shadow-rose-600/30 flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer"
+                    >
+                      <Car size={16} /> Switch to Normal Mode & Re-book Now
+                    </button>
+                    <div className="flex gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCancellationModalOpen(false);
+                          navigate("/dashboard");
+                        }}
+                        className="flex-1 py-3 rounded-xl border border-border bg-secondary/40 hover:bg-secondary text-foreground text-xs font-bold transition-all"
+                      >
+                        View in Dashboard
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCancellationModalOpen(false)}
+                        className="flex-1 py-3 rounded-xl border border-border bg-background hover:bg-secondary/40 text-muted-foreground hover:text-foreground text-xs font-bold transition-all"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : cancellationData.type === "otp_failure" ? (
+                <div className="text-center space-y-5">
+                  <div className="mx-auto w-16 h-16 rounded-3xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-500 shadow-lg shadow-amber-500/20">
+                    <Lock size={32} />
+                  </div>
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-[10px] font-black uppercase tracking-widest mb-2">
+                      <ShieldAlert size={12} /> Security PIN Mismatch
+                    </div>
+                    <h3 className="text-xl font-black font-display text-foreground tracking-tight">
+                      Ride Cancelled: 3 Failed PIN Attempts
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                      For rider and operator safety, this ride was automatically cancelled after 3 incorrect OTP entries.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCancellationModalOpen(false)}
+                    className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-black text-xs uppercase tracking-widest shadow-lg hover:brightness-110 transition-all"
+                  >
+                    Dismiss & Book New Ride
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center space-y-5">
+                  <div className="mx-auto w-16 h-16 rounded-3xl bg-primary/15 border border-primary/30 flex items-center justify-center text-primary shadow-lg">
+                    <AlertCircle size={32} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black font-display text-foreground tracking-tight">
+                      {cancellationData.title || "Ride Cancelled"}
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                      {cancellationData.reason || "The driver was unable to proceed with this ride."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCancellationModalOpen(false)}
+                    className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-black text-xs uppercase tracking-widest shadow-lg hover:brightness-110 transition-all"
+                  >
+                    Dismiss & Search New Driver
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* ─── SOS EMERGENCY THREAT DISPATCH MODAL ─── */}
       <AnimatePresence>

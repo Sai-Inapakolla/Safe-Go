@@ -92,7 +92,7 @@ def run_comprehensive_evaluation():
 
     # Set n_jobs = 1 for clean fast inference
     if hasattr(model, "n_jobs"):
-        model.n_jobs = 1
+        setattr(model, "n_jobs", 1)
 
     # 3. Model Inference on Test Dataset
     X_test_scaled = X_test.copy()
@@ -219,15 +219,15 @@ def run_comprehensive_evaluation():
     route_risk_results = []
     for sc in real_scenarios:
         label, conf = predictor.predict_safety(
-            pickup_hour=sc["pickup_hour"],
-            day_of_week=sc["day_of_week"],
-            distance_km=sc["distance_km"],
-            passenger_count=sc["passenger_count"],
-            mode=sc["mode"],
-            pickup_lat=sc["pickup_lat"],
-            pickup_lng=sc["pickup_lng"],
-            dest_lat=sc["dest_lat"],
-            dest_lng=sc["dest_lng"]
+            pickup_hour=int(sc["pickup_hour"]),
+            day_of_week=int(sc["day_of_week"]),
+            distance_km=float(sc["distance_km"]),
+            passenger_count=int(sc["passenger_count"]),
+            mode=str(sc["mode"]),
+            pickup_lat=float(sc["pickup_lat"]),
+            pickup_lng=float(sc["pickup_lng"]),
+            dest_lat=float(sc["dest_lat"]),
+            dest_lng=float(sc["dest_lng"])
         )
         route_risk_results.append({
             "scenario": sc["scenario_name"],

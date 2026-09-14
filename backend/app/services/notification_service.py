@@ -15,7 +15,7 @@ FALLBACK_VERIFIED_PHONE = "+919490969706"
 def _normalize_phone(num: str | None) -> str:
     if not num:
         return ""
-    clean = re.sub(r"[\s\-()]", "", str(num))
+    clean = re.sub(r"[\s\-()]", "", num)
     if len(clean) == 10 and clean.isdigit():
         return f"+91{clean}"
     if not clean.startswith("+") and clean.isdigit():

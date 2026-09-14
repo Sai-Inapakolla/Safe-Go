@@ -58,8 +58,27 @@ async def create_ride(
     emergency_contact_phone: Optional[str] = None,
     driver_id: Optional[str] = None,
     fare_amount: Optional[float] = None,
+    has_female_passenger_declared: bool = False,
+    female_passenger_name: Optional[str] = None,
 ) -> Ride:
-    """Create a ride request and attempt to match a driver."""
+    """Create a ride request with safety policy validation."""
+    # Strict SafeGo Pink Mode Policy Enforcement
+    if mode == "pink":
+        user = await User.get(passenger_id)
+        if user and user.gender == Gender.male:
+            if passenger_count <= 1:
+                from fastapi import HTTPException
+                raise HTTPException(
+                    status_code=400,
+                    detail="Solo male passengers are strictly prohibited from booking SafeGo Pink Mode. Please switch to Normal Mode or travel accompanied with a female companion."
+                )
+            if not has_female_passenger_declared:
+                from fastapi import HTTPException
+                raise HTTPException(
+                    status_code=400,
+                    detail="Accompanied Pink Mode booking requires explicit declaration that at least one female passenger is traveling."
+                )
+
     route_info = await get_route(pickup_latitude, pickup_longitude, destination_latitude, destination_longitude, mode)
 
     import random
@@ -91,17 +110,14 @@ async def create_ride(
         scheduled_at=scheduled_at,
         passenger_count=passenger_count,
         passenger_details=passenger_details or [],
+        has_female_passenger_declared=has_female_passenger_declared,
+        female_passenger_name=female_passenger_name,
         emergency_contact_name=emergency_contact_name,
         emergency_contact_phone=emergency_contact_phone,
         otp=generated_otp,
         is_otp_verified=False,
     )
 
-    if driver_id:
-        # If a specific driver was requested, we can store it or let any driver accept it.
-        # But we keep status as searching so the driver must manually accept.
-        pass
-        
     await ride.insert()
     return ride
 

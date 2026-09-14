@@ -56,6 +56,7 @@ class UserResponse(BaseModel):
     is_elder: Optional[bool] = False
     is_active: bool
     is_verified: bool
+    penalty_balance: Optional[float] = 0.0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -89,6 +90,7 @@ class VehicleCreate(BaseModel):
 
 class VehicleResponse(BaseModel):
     id: str = Field(..., alias="_id")
+    driver_id: str
     make: str
     model: str
     year: int
@@ -120,25 +122,10 @@ class DriverApplication(BaseModel):
     full_name: str
     email: str
     phone: str
-    gender: str
-    license_number: str
+    gender: str = "male"
+    license_number: Optional[str] = None
     vehicle: VehicleCreate
-    preferred_mode: str = "standard"
-
-
-class DriverDocumentResponse(BaseModel):
-    id: str = Field(..., alias="_id")
-    driver_id: str
-    document_type: str
-    file_url: Optional[str] = None
-    status: str
-    reviewed_by: Optional[str] = None
-    reviewed_at: Optional[datetime] = None
-    notes: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    preferred_mode: Optional[str] = "normal"
 
 
 class DriverResponse(BaseModel):
@@ -154,13 +141,28 @@ class DriverResponse(BaseModel):
     today_rides: int
     today_earnings: float
     acceptance_rate: float
-    certified_modes: Optional[List[str]] = None
+    certified_modes: List[str]
     approved_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     user: Optional[UserResponse] = None
     vehicle: Optional[VehicleResponse] = None
-    documents: Optional[List[DriverDocumentResponse]] = None
+    documents: Optional[List[DriverDocumentResponse]] = []
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class DriverDocumentResponse(BaseModel):
+    id: str = Field(..., alias="_id")
+    driver_id: str
+    document_type: str
+    file_url: Optional[str] = None
+    status: str
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -258,6 +260,8 @@ class RideRequest(BaseModel):
     scheduled_at: Optional[datetime] = None
     passenger_count: int = 1
     passenger_details: Optional[List[str]] = Field(default_factory=list)
+    has_female_passenger_declared: Optional[bool] = False
+    female_passenger_name: Optional[str] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
     driver_id: Optional[str] = None
@@ -288,6 +292,12 @@ class RideResponse(BaseModel):
     cancel_reason: Optional[str] = None
     passenger_count: int = 1
     passenger_details: Optional[List[str]] = None
+    has_female_passenger_declared: Optional[bool] = False
+    female_passenger_name: Optional[str] = None
+    penalty_amount: Optional[float] = None
+    is_penalty_applied: Optional[bool] = False
+    penalty_reason: Optional[str] = None
+    driver_compensation_amount: Optional[float] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
     otp: Optional[str] = None
@@ -299,6 +309,12 @@ class RideResponse(BaseModel):
     driver: Optional[DriverBrief] = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class ReportViolationRequest(BaseModel):
+    violation_type: str = "solo_male_pink_mode"
+    notes: Optional[str] = None
+    penalty_amount: Optional[float] = 750.0
 
 
 class RideOTPVerifyRequest(BaseModel):

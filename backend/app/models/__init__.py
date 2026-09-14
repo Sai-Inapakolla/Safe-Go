@@ -95,6 +95,7 @@ class User(Document):
     is_elder: bool = False
     is_active: bool = True
     is_verified: bool = False
+    penalty_balance: float = 0.0
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 
@@ -176,6 +177,12 @@ class Ride(Document):
     cancel_reason: Optional[str] = None
     passenger_count: int = 1
     passenger_details: Optional[List[str]] = Field(default_factory=list)
+    has_female_passenger_declared: bool = False
+    female_passenger_name: Optional[str] = None
+    penalty_amount: Optional[float] = None
+    is_penalty_applied: bool = False
+    penalty_reason: Optional[str] = None
+    driver_compensation_amount: Optional[float] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
     otp: Optional[str] = None

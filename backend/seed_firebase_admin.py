@@ -1,8 +1,8 @@
 import os
 import sys
 from dotenv import find_dotenv, load_dotenv
-import firebase_admin
-from firebase_admin import credentials, auth
+import firebase_admin  # type: ignore
+from firebase_admin import credentials, auth  # type: ignore
 
 # Load environment variables
 load_dotenv(dotenv_path=find_dotenv(usecwd=True))

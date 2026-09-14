@@ -1,7 +1,7 @@
 import random
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.models import User, UserRole
+from app.models import User, UserRole, Gender, RideMode
 from app.schemas import (
     UserRegister, UserLogin, TokenResponse, UserResponse, UserUpdate,
     FirebaseSyncRequest, SendOTPRequest, VerifyOTPRequest, SetPasswordRequest
@@ -127,12 +127,12 @@ async def login(payload: UserLogin):
 @router.post("/firebase", response_model=TokenResponse)
 async def firebase_auth(
     payload: FirebaseSyncRequest,
-    credentials: HTTPAuthorizationCredentials = Depends(verify_firebase_token)
+    decoded_token: dict = Depends(verify_firebase_token)
 ):
     """
     Handle Firebase Authentication with role selection.
     """
-    user = await get_or_create_firebase_user(credentials, role=payload.role)
+    user = await get_or_create_firebase_user(decoded_token, role=payload.role)
     
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is deactivated")
@@ -184,9 +184,9 @@ async def update_me(payload: UserUpdate, current_user: User = Depends(get_curren
     if payload.phone is not None:
         current_user.phone = payload.phone
     if payload.gender is not None:
-        current_user.gender = payload.gender
+        current_user.gender = Gender(payload.gender) if payload.gender else None
     if payload.preferred_mode is not None:
-        current_user.preferred_mode = payload.preferred_mode
+        current_user.preferred_mode = RideMode(payload.preferred_mode) if payload.preferred_mode else None
     if payload.is_elder is not None:
         current_user.is_elder = payload.is_elder
     

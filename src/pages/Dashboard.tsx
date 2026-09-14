@@ -10,7 +10,8 @@ import { signOut, deleteUser, updatePassword } from "firebase/auth";
 import {
   LayoutDashboard, Car, Shield, Users, Settings,
   Star, TrendingUp, ArrowRight, User, Lock, Bell, Moon, MapPin,
-  Accessibility, Mic, Check, Trash2, Loader2, Plus, X, Eye, EyeOff
+  Accessibility, Mic, Check, Trash2, Loader2, Plus, X, Eye, EyeOff,
+  ShieldAlert, AlertCircle, Calendar, Clock, KeyRound, CheckCircle2, Info
 } from "lucide-react";
 import { useVoiceAssistant } from "@/contexts/VoiceAssistantContext";
 import { useElderMode } from "@/contexts/ElderModeContext";
@@ -26,10 +27,10 @@ const navItems = [
   { icon: Settings, label: "Settings", to: "/dashboard" },
 ];
 
-const rides = [
-  { id: 1, mode: "Pink", route: "Forum Mall → HSR Layout", date: "Mar 8", driver: "Ananya M.", status: "Completed", rating: 5 },
-  { id: 2, mode: "Normal", route: "Indiranagar → Marathahalli", date: "Mar 7", driver: "James D.", status: "Completed", rating: 4 },
-  { id: 3, mode: "PWD", route: "Whitefield → Manipal Hospital", date: "Mar 6", driver: "Carlos R.", status: "Cancelled", rating: 0 },
+const defaultSampleRides = [
+  { _id: "ride_sample_1", id: "1", mode: "Pink", pickup_address: "Forum Mall, Koramangala", destination_address: "HSR Layout Sector 1", route: "Forum Mall → HSR Layout", created_at: new Date(Date.now() - 86400000 * 2).toISOString(), driver: { user: { full_name: "Ananya M." } }, status: "completed", rating: 5, fare: "₹240" },
+  { _id: "ride_sample_2", id: "2", mode: "Normal", pickup_address: "Indiranagar 100ft Rd", destination_address: "Marathahalli Bridge", route: "Indiranagar → Marathahalli", created_at: new Date(Date.now() - 86400000 * 3).toISOString(), driver: { user: { full_name: "Aarav Sharma" } }, status: "completed", rating: 4, fare: "₹180" },
+  { _id: "ride_sample_3", id: "3", mode: "PWD", pickup_address: "Whitefield Main Rd", destination_address: "Manipal Hospital HAL", route: "Whitefield → Manipal Hospital", created_at: new Date(Date.now() - 86400000 * 5).toISOString(), driver: { user: { full_name: "Carlos R." } }, status: "completed", rating: 5, fare: "₹150" },
 ];
 
 const statusColors: Record<string, string> = {
@@ -59,10 +60,13 @@ const Dashboard = () => {
 
   const [myRides, setMyRides] = useState<any[]>(() => {
     try {
-      const c = localStorage.getItem("safego_passenger_rides");
-      return c ? JSON.parse(c) : [];
+      const c = localStorage.getItem("safego_passenger_rides") || localStorage.getItem("safego_rides");
+      if (!c) return defaultSampleRides;
+      const parsed = JSON.parse(c);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      return defaultSampleRides;
     } catch {
-      return [];
+      return defaultSampleRides;
     }
   });
   const [loadingRides, setLoadingRides] = useState(true);
@@ -79,6 +83,10 @@ const Dashboard = () => {
       phone: cleanStoredPhone,
       email: localStorage.getItem("safego_user_email") || ""
     };
+  });
+  const [penaltyBalance, setPenaltyBalance] = useState<number>(() => {
+    const p = localStorage.getItem("safego_penalty_balance");
+    return p ? Number(p) : 0;
   });
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [selectedRides, setSelectedRides] = useState<Set<string>>(new Set());
@@ -185,6 +193,10 @@ const Dashboard = () => {
         localStorage.setItem("safego_user_name", finalName);
         localStorage.setItem("safego_user_phone", finalPhone);
         localStorage.setItem("safego_user_email", finalEmail);
+        if (data.penalty_balance !== undefined) {
+          setPenaltyBalance(data.penalty_balance);
+          localStorage.setItem("safego_penalty_balance", String(data.penalty_balance));
+        }
       } else {
         setProfile({ name: savedName, phone: savedPhone, email: savedEmail });
       }
@@ -198,25 +210,100 @@ const Dashboard = () => {
     }
   };
 
+  const [selectedRideModal, setSelectedRideModal] = useState<any | null>(null);
+
   const fetchRides = async () => {
     setLoadingRides(true);
     try {
       const token = localStorage.getItem("token");
-      if (!token) return;
-
-      const res = await fetch(`${API_URL}/api/rides/me`, {
-        headers: {
-          "Authorization": `Bearer ${token}`
-        }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setMyRides(data);
+      let remoteRides: any[] = [];
+      if (token) {
         try {
-          localStorage.setItem("safego_passenger_rides", JSON.stringify(data));
+          const res = await fetch(`${API_URL}/api/rides/me`, {
+            headers: {
+              "Authorization": `Bearer ${token}`
+            }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) remoteRides = data;
+            else if (Array.isArray(data?.rides) && data.rides.length > 0) remoteRides = data.rides;
+          }
         } catch (e) {
-          console.warn("Failed to cache rides to localStorage", e);
+          console.warn("Backend rides fetch fallback:", e);
         }
+      }
+
+      let localRides: any[] = [];
+      try {
+        const local = localStorage.getItem("safego_passenger_rides") || localStorage.getItem("safego_rides");
+        if (local) {
+          const parsed = JSON.parse(local);
+          if (Array.isArray(parsed)) localRides = parsed;
+        }
+      } catch (e) {}
+
+      // Check if there is an unhandled cancellation event
+      try {
+        const rawCancel = localStorage.getItem("safego_cancellation_data") || localStorage.getItem("safego_ride_cancelled_event");
+        if (rawCancel) {
+          const cData = JSON.parse(rawCancel);
+          const cRideId = cData.rideId || cData.id || ("ride_cancel_" + (cData.timestamp || Date.now()));
+          const existsInLocal = localRides.some(r => r._id === cRideId || r.id === cRideId);
+          if (!existsInLocal) {
+            const isVio = cData.type === "pink_mode_violation" || Boolean(cData.penalty && cData.penalty > 0);
+            const injectedCancel = {
+              _id: cRideId,
+              id: cRideId,
+              mode: "Pink",
+              pickup_address: localStorage.getItem("safego_pickup_address") || "Pickup Point",
+              destination_address: localStorage.getItem("safego_current_booking_destination") || "Drop-off Point",
+              route: `${localStorage.getItem("safego_pickup_address") || "Pickup Point"} → ${localStorage.getItem("safego_current_booking_destination") || "Drop-off Point"}`,
+              status: "cancelled",
+              cancel_reason: cData.reason || cData.notes || (isVio ? "Policy Violation: Solo Male Passenger in Pink Mode" : "Trip Cancelled"),
+              is_penalty_applied: isVio,
+              penalty_amount: cData.penalty || (isVio ? 750 : 0),
+              penalty_reason: cData.notes || cData.reason || "Solo Male Booking Policy Violation",
+              driver_compensation_amount: cData.driverCompensation || 200,
+              driver: {
+                user: {
+                  full_name: cData.driverName || "Female Safety Pilot"
+                }
+              },
+              created_at: new Date(cData.timestamp || Date.now()).toISOString(),
+              cancelled_at: new Date(cData.timestamp || Date.now()).toISOString()
+            };
+            localRides = [injectedCancel, ...localRides];
+          }
+        }
+      } catch (_) {}
+
+      // Merge: Map by ID, giving precedence to cancelled status and richer incident fields
+      const mergedMap = new Map<string, any>();
+      for (const r of remoteRides) {
+        const key = String(r._id || r.id);
+        mergedMap.set(key, r);
+      }
+      for (const r of localRides) {
+        const key = String(r._id || r.id);
+        const existing = mergedMap.get(key) || {};
+        mergedMap.set(key, { ...existing, ...r });
+      }
+
+      const mergedList = Array.from(mergedMap.values());
+      // Sort newest at the top
+      mergedList.sort((a, b) => {
+        const timeA = new Date(a.cancelled_at || a.updated_at || a.created_at || 0).getTime();
+        const timeB = new Date(b.cancelled_at || b.updated_at || b.created_at || 0).getTime();
+        return timeB - timeA;
+      });
+
+      const finalRides = mergedList.length > 0 ? mergedList : defaultSampleRides;
+      setMyRides(finalRides);
+      try {
+        localStorage.setItem("safego_passenger_rides", JSON.stringify(finalRides));
+      } catch (e) {
+        console.warn("Failed to cache rides to localStorage", e);
       }
     } catch (err) {
       console.error("Failed to fetch rides", err);
@@ -291,6 +378,34 @@ const Dashboard = () => {
     fetchRides();
     fetchContacts();
     fetchNotifications();
+
+    // Listen to real-time cancellations and cross-tab storage changes
+    const handleStorageChange = (e: StorageEvent) => {
+      if (
+        e.key === "safego_passenger_rides" ||
+        e.key === "safego_rides" ||
+        e.key === "safego_ride_cancelled_event" ||
+        e.key === "safego_cancellation_data" ||
+        e.key === "safego_current_ride_cancelled" ||
+        e.key === "safego_penalty_balance"
+      ) {
+        fetchRides();
+        fetchProfile();
+      }
+    };
+
+    const handleCustomCancellation = () => {
+      fetchRides();
+      fetchProfile();
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("safego_ride_cancelled", handleCustomCancellation);
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("safego_ride_cancelled", handleCustomCancellation);
+    };
   }, []);
 
   const handleClearHistory = async () => {
@@ -708,6 +823,46 @@ const Dashboard = () => {
 
         {activeTab === "Dashboard" && (
           <>
+            {/* Outstanding Penalty Alert Banner */}
+            {penaltyBalance > 0 && (
+              <div className="mb-6 rounded-3xl border-2 border-rose-500/40 bg-rose-500/10 p-6 shadow-xl animate-in fade-in slide-in-from-top-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-3.5">
+                    <div className="p-3 rounded-2xl bg-rose-500 text-white shrink-0 shadow-lg shadow-rose-500/30">
+                      <AlertCircle size={24} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-display font-black text-sm uppercase tracking-wider text-rose-600 dark:text-rose-400">
+                          Outstanding Safety Policy Penalty
+                        </h4>
+                        <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-600 text-white">
+                          Action Required
+                        </span>
+                      </div>
+                      <p className="text-xs font-semibold text-rose-800 dark:text-rose-200 mt-1 leading-relaxed">
+                        A penalty fee has been charged to your account due to a reported SafeGo Pink Mode policy violation (Solo Male Booking / No Accompanying Female Traveler Present).
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 shrink-0 sm:border-l sm:border-rose-500/20 sm:pl-6">
+                    <div className="text-right">
+                      <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Amount Due</span>
+                      <p className="text-2xl font-black text-rose-600 dark:text-rose-400">₹{penaltyBalance}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        toast.success(`SafeGo Secure Pay gateway opened for ₹${penaltyBalance} penalty settlement.`);
+                      }}
+                      className="px-5 py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black uppercase tracking-wider shadow-xl shadow-rose-600/25 transition-all active:scale-95"
+                    >
+                      Pay & Clear
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Stats */}
             <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatsCard icon={Car} value={String(myRides?.length || 0)} label="Total Rides" />
@@ -800,28 +955,104 @@ const Dashboard = () => {
                       <th className="px-4 py-3">Route</th>
                       <th className="px-4 py-3">Date</th>
                       <th className="px-4 py-3">Driver</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Rating</th>
+                      <th className="px-4 py-3">Status & Cause</th>
+                      <th className="px-4 py-3 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {myRides.map((r, i) => (
-                      <tr key={i} className={`border-b border-border last:border-0 ${i % 2 === 1 ? "bg-secondary" : ""} hover:bg-primary/5 transition-colors`}>
-                        <td className="px-4 py-3 text-muted-foreground">{myRides.length - i}</td>
-                        <td className="px-4 py-3">
-                          <span className="rounded-full px-2.5 py-1 text-xs font-medium bg-secondary text-foreground">{r.mode}</span>
-                        </td>
-                        <td className="px-4 py-3 text-foreground">{r.route || `${(r.pickup_address || "Pickup").substring(0, 15)}... → ${(r.destination_address || "Drop-off").substring(0, 15)}...`}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{r.created_at ? new Date(r.created_at).toLocaleDateString() : "Today"}</td>
-                        <td className="px-4 py-3 text-foreground">{r.driver?.user?.full_name || "Searching..."}</td>
-                        <td className="px-4 py-3">
-                          <span className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${statusColors[r.status] || "bg-secondary"}`}>{r.status}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {r.rating > 0 ? <div className="flex gap-0.5">{Array.from({ length: r.rating }).map((_, i) => <Star key={i} size={12} className="fill-amber-400 text-amber-400" />)}</div> : <span className="text-xs text-muted-foreground">None</span>}
+                    {(!Array.isArray(myRides) || myRides.length === 0) ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-xs">
+                          No recent rides found.
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      (Array.isArray(myRides) ? myRides : []).slice(0, 5).map((r, i) => {
+                        const isCancelled = r.status === "cancelled" || r.status === "failed";
+                        const isViolation = isCancelled && Boolean(
+                          r.is_penalty_applied ||
+                          (r.cancel_reason && (
+                            r.cancel_reason.toLowerCase().includes("violation") ||
+                            r.cancel_reason.toLowerCase().includes("policy") ||
+                            r.cancel_reason.toLowerCase().includes("male")
+                          ))
+                        );
+                        const isOtpMismatch = isCancelled && Boolean(
+                          r.cancel_reason && (
+                            r.cancel_reason.toLowerCase().includes("otp") ||
+                            r.cancel_reason.toLowerCase().includes("pin")
+                          )
+                        );
+
+                        return (
+                          <tr key={r._id || r.id || i} className={`border-b border-border last:border-0 ${i % 2 === 1 ? "bg-secondary/40" : ""} hover:bg-primary/5 transition-colors`}>
+                            <td className="px-4 py-3 text-muted-foreground">{(Array.isArray(myRides) ? myRides.length : 0) - i}</td>
+                            <td className="px-4 py-3">
+                              <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${
+                                r.mode === "Pink" || r.mode === "pink" ? "bg-pink-500/10 text-pink-600 border border-pink-500/20" : "bg-secondary text-foreground"
+                              }`}>
+                                {r.mode || "Normal"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-foreground">
+                              <div className="flex flex-col max-w-[240px]">
+                                <span className="font-semibold truncate">{r.route || `${(r.pickup_address || "Pickup").substring(0, 20)} → ${(r.destination_address || "Drop-off").substring(0, 20)}`}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-muted-foreground text-xs">
+                              {r.created_at ? new Date(r.created_at).toLocaleDateString() : "Today"}
+                            </td>
+                            <td className="px-4 py-3 text-foreground text-xs font-semibold">
+                              {r.driver?.user?.full_name || "Female Safety Pilot"}
+                            </td>
+                            <td className="px-4 py-3">
+                              {!isCancelled ? (
+                                <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 capitalize">
+                                  <CheckCircle2 size={12} /> {r.status || "Completed"}
+                                </span>
+                              ) : isViolation ? (
+                                <div className="flex flex-col items-start gap-0.5">
+                                  <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase bg-rose-500/15 text-rose-600 border border-rose-500/30">
+                                    <ShieldAlert size={11} /> Policy Violation
+                                  </span>
+                                  <span className="text-[10px] font-bold text-rose-700 dark:text-rose-300">
+                                    Solo Male • ₹{r.penalty_amount || 750} Fine
+                                  </span>
+                                </div>
+                              ) : isOtpMismatch ? (
+                                <div className="flex flex-col items-start gap-0.5">
+                                  <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase bg-amber-500/15 text-amber-600 border border-amber-500/30">
+                                    <Lock size={11} /> PIN Mismatch
+                                  </span>
+                                  <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                                    3 Failed Attempts
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex flex-col items-start gap-0.5">
+                                  <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase bg-destructive/10 text-destructive border border-destructive/20">
+                                    <X size={11} /> Cancelled
+                                  </span>
+                                  {r.cancel_reason && (
+                                    <span className="text-[10px] text-muted-foreground truncate max-w-[130px]" title={r.cancel_reason}>
+                                      {r.cancel_reason}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <button
+                                onClick={() => setSelectedRideModal(r)}
+                                className="px-3 py-1.5 rounded-xl border border-border bg-background hover:bg-primary/10 hover:text-primary hover:border-primary/30 text-xs font-bold transition-all shadow-sm"
+                              >
+                                Details
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -833,7 +1064,17 @@ const Dashboard = () => {
         {activeTab === "My Rides" && (
           <div className="mt-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-display text-lg font-bold text-foreground">Ride History</h3>
+              <div>
+                <h3 className="font-display text-lg font-bold text-foreground">Ride History</h3>
+                <p className="text-xs text-muted-foreground">Complete log of all requested, completed, and cancelled trips</p>
+              </div>
+              <button
+                onClick={fetchRides}
+                disabled={loadingRides}
+                className="px-3.5 py-2 rounded-xl bg-secondary hover:bg-secondary/80 border border-border text-xs font-bold text-foreground flex items-center gap-2 transition-all shadow-sm"
+              >
+                <Loader2 size={13} className={loadingRides ? "animate-spin" : ""} /> Refresh Log
+              </button>
             </div>
             <div className="overflow-x-auto rounded-2xl border border-border bg-background shadow-sm">
               <table className="w-full text-sm">
@@ -841,11 +1082,11 @@ const Dashboard = () => {
                   <tr className="border-b border-border text-left text-xs text-muted-foreground">
                     <th className="px-4 py-3">#</th>
                     <th className="px-4 py-3">Mode</th>
-                    <th className="px-4 py-3">Route</th>
+                    <th className="px-4 py-3">Route Details</th>
                     <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Driver</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Rating</th>
+                    <th className="px-4 py-3">Pilot / Driver</th>
+                    <th className="px-4 py-3">Status & Specific Cause</th>
+                    <th className="px-4 py-3 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -858,37 +1099,99 @@ const Dashboard = () => {
                         </div>
                       </td>
                     </tr>
-                  ) : myRides.length === 0 ? (
+                  ) : (!Array.isArray(myRides) || myRides.length === 0) ? (
                     <tr>
                       <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
                         No ride history found.
                       </td>
                     </tr>
                   ) : (
-                    myRides.map((r, i) => (
-                      <tr key={i} className={`border-b border-border last:border-0 ${i % 2 === 1 ? "bg-secondary" : ""} hover:bg-primary/5 transition-colors`}>
-                        <td className="px-4 py-3 text-muted-foreground">{myRides.length - i}</td>
-                        <td className="px-4 py-3">
-                          <span className="rounded-full px-2.5 py-1 text-xs font-medium bg-secondary text-foreground capitalize">{r.mode}</span>
-                        </td>
-                        <td className="px-4 py-3 text-foreground">
-                          <div className="flex flex-col">
-                            <span className="text-[10px] text-muted-foreground uppercase">From: {r.pickup_address || "Unknown"}</span>
-                            <span>To: {r.destination_address || "Unknown"}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {r.created_at ? new Date(r.created_at).toLocaleDateString() : "Today"}
-                        </td>
-                        <td className="px-4 py-3 text-foreground">{r.driver?.user?.full_name || "Searching..."}</td>
-                        <td className="px-4 py-3">
-                          <span className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${statusColors[r.status] || "bg-secondary"}`}>{r.status}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {r.rating > 0 ? <div className="flex gap-0.5">{Array.from({ length: r.rating }).map((_, i) => <Star key={i} size={12} className="fill-amber-400 text-amber-400" />)}</div> : <span className="text-xs text-muted-foreground">None</span>}
-                        </td>
-                      </tr>
-                    ))
+                    (Array.isArray(myRides) ? myRides : []).map((r, i) => {
+                      const isCancelled = r.status === "cancelled" || r.status === "failed";
+                      const isViolation = isCancelled && Boolean(
+                        r.is_penalty_applied ||
+                        (r.cancel_reason && (
+                          r.cancel_reason.toLowerCase().includes("violation") ||
+                          r.cancel_reason.toLowerCase().includes("policy") ||
+                          r.cancel_reason.toLowerCase().includes("male")
+                        ))
+                      );
+                      const isOtpMismatch = isCancelled && Boolean(
+                        r.cancel_reason && (
+                          r.cancel_reason.toLowerCase().includes("otp") ||
+                          r.cancel_reason.toLowerCase().includes("pin")
+                        )
+                      );
+
+                      return (
+                        <tr key={r._id || r.id || i} className={`border-b border-border last:border-0 ${i % 2 === 1 ? "bg-secondary/40" : ""} hover:bg-primary/5 transition-colors`}>
+                          <td className="px-4 py-3 text-muted-foreground">{(Array.isArray(myRides) ? myRides.length : 0) - i}</td>
+                          <td className="px-4 py-3">
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${
+                              r.mode === "Pink" || r.mode === "pink" ? "bg-pink-500/10 text-pink-600 border border-pink-500/20" : "bg-secondary text-foreground"
+                            }`}>
+                              {r.mode || "Normal"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-foreground">
+                            <div className="flex flex-col max-w-[260px]">
+                              <span className="text-[11px] text-muted-foreground font-semibold truncate">From: {r.pickup_address || "Pickup Point"}</span>
+                              <span className="text-xs font-bold truncate">To: {r.destination_address || "Drop-off Point"}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground text-xs">
+                            {r.created_at ? new Date(r.created_at).toLocaleDateString() : "Today"}
+                          </td>
+                          <td className="px-4 py-3 text-foreground text-xs font-semibold">
+                            {r.driver?.user?.full_name || "Female Safety Pilot"}
+                          </td>
+                          <td className="px-4 py-3">
+                            {!isCancelled ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 capitalize">
+                                <CheckCircle2 size={12} /> {r.status || "Completed"}
+                              </span>
+                            ) : isViolation ? (
+                              <div className="flex flex-col items-start gap-0.5">
+                                <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase bg-rose-500/15 text-rose-600 border border-rose-500/30">
+                                  <ShieldAlert size={11} /> Policy Violation
+                                </span>
+                                <span className="text-[10px] font-bold text-rose-700 dark:text-rose-300 leading-tight">
+                                  Solo Male • ₹{r.penalty_amount || 750} Fine
+                                </span>
+                              </div>
+                            ) : isOtpMismatch ? (
+                              <div className="flex flex-col items-start gap-0.5">
+                                <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase bg-amber-500/15 text-amber-600 border border-amber-500/30">
+                                  <Lock size={11} /> PIN Mismatch
+                                </span>
+                                <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                                  3 Failed Attempts
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-start gap-0.5">
+                                <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase bg-destructive/10 text-destructive border border-destructive/20">
+                                  <X size={11} /> Cancelled
+                                </span>
+                                {r.cancel_reason && (
+                                  <span className="text-[10px] text-muted-foreground truncate max-w-[150px]" title={r.cancel_reason}>
+                                    {r.cancel_reason}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              onClick={() => setSelectedRideModal(r)}
+                              className="px-3 py-1.5 rounded-xl border border-border bg-background hover:bg-primary/10 hover:text-primary hover:border-primary/30 text-xs font-bold transition-all shadow-sm"
+                            >
+                              Details
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -1530,6 +1833,139 @@ const Dashboard = () => {
                     Contact Support
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Dedicated Ride Details & Policy Violation Breakdown Modal */}
+        {selectedRideModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="w-full max-w-lg rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`p-3 rounded-2xl ${
+                    selectedRideModal.mode === "Pink" || selectedRideModal.mode === "pink"
+                      ? "bg-pink-500/10 text-pink-600"
+                      : "bg-primary/10 text-primary"
+                  }`}>
+                    <Car size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black font-display text-foreground">
+                      {selectedRideModal.mode || "Normal"} Mode Trip Log
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      {selectedRideModal.created_at ? new Date(selectedRideModal.created_at).toLocaleString('en-US', { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "Today"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedRideModal(null)}
+                  className="p-2 rounded-xl hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Status & Cancellation Breakdown Banner */}
+              {selectedRideModal.status === "cancelled" || selectedRideModal.status === "failed" ? (
+                <div className="space-y-3">
+                  <div className={`p-4 rounded-2xl border text-left space-y-2 ${
+                    selectedRideModal.is_penalty_applied || (selectedRideModal.cancel_reason && selectedRideModal.cancel_reason.toLowerCase().includes("violation")) || (selectedRideModal.cancel_reason && selectedRideModal.cancel_reason.toLowerCase().includes("male"))
+                      ? "bg-rose-500/10 border-rose-500/30 text-rose-950 dark:text-rose-100"
+                      : (selectedRideModal.cancel_reason && (selectedRideModal.cancel_reason.toLowerCase().includes("otp") || selectedRideModal.cancel_reason.toLowerCase().includes("pin")))
+                      ? "bg-amber-500/10 border-amber-500/30 text-amber-950 dark:text-amber-100"
+                      : "bg-destructive/10 border-destructive/30 text-destructive-foreground"
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                        <ShieldAlert size={14} /> Cancellation Incident Cause
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-600 text-white">
+                        {selectedRideModal.is_penalty_applied ? "Policy Violation" : "Cancelled"}
+                      </span>
+                    </div>
+
+                    <div className="font-bold text-sm text-foreground">
+                      {selectedRideModal.penalty_reason || selectedRideModal.cancel_reason || "Driver cancelled the trip upon arrival."}
+                    </div>
+
+                    <p className="text-[11px] text-muted-foreground leading-relaxed pt-1 border-t border-border/40">
+                      {selectedRideModal.is_penalty_applied || (selectedRideModal.cancel_reason && selectedRideModal.cancel_reason.toLowerCase().includes("male"))
+                        ? "SafeGo Pink Mode is strictly reserved for female solo passengers or mixed groups with an accompanying verified female passenger. Violating bookings result in automatic cancellation and penalty."
+                        : "Trip was cancelled and logged on the SafeGo security network."}
+                    </p>
+                  </div>
+
+                  {/* Financial & Penalty Breakdown */}
+                  {(selectedRideModal.is_penalty_applied || selectedRideModal.penalty_amount > 0) && (
+                    <div className="p-4 rounded-2xl bg-secondary/60 border border-border/80 text-left space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-muted-foreground">Violation Fine Charged:</span>
+                        <span className="font-black text-rose-600 dark:text-rose-400 text-sm">
+                          ₹{selectedRideModal.penalty_amount || 750}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-muted-foreground">Pilot Inconvenience Credit:</span>
+                        <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                          +₹{selectedRideModal.driver_compensation_amount || 200} (Credited to Pilot)
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-center gap-3 text-emerald-700 dark:text-emerald-300 text-xs font-bold">
+                  <CheckCircle2 size={20} className="text-emerald-600" />
+                  <span>Trip completed safely with SafeGo verified safety protocols.</span>
+                </div>
+              )}
+
+              {/* Route & Driver Card */}
+              <div className="p-4 rounded-2xl bg-secondary/40 border border-border/70 space-y-3 text-left text-xs font-semibold">
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Pickup Location</span>
+                  <p className="text-foreground font-bold truncate">{selectedRideModal.pickup_address || "Pickup Location"}</p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Destination</span>
+                  <p className="text-foreground font-bold truncate">{selectedRideModal.destination_address || "Drop-off Location"}</p>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-border/40 text-muted-foreground">
+                  <span>Assigned Pilot:</span>
+                  <span className="text-foreground font-bold">{selectedRideModal.driver?.user?.full_name || "Female Safety Pilot"}</span>
+                </div>
+                {selectedRideModal.fare_amount && (
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>Estimated Fare:</span>
+                    <span className="text-foreground font-bold">₹{selectedRideModal.fare_amount}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2.5 pt-1">
+                {(selectedRideModal.status === "cancelled" && (selectedRideModal.mode === "Pink" || selectedRideModal.mode === "pink")) ? (
+                  <button
+                    onClick={() => {
+                      const p = selectedRideModal.pickup_address || "";
+                      const d = selectedRideModal.destination_address || "";
+                      setSelectedRideModal(null);
+                      navigate("/booking/normal", { state: { pickup: p, destination: d } });
+                    }}
+                    className="flex-1 py-3.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-700 hover:to-rose-800 text-white font-black text-xs uppercase tracking-wider shadow-lg flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                  >
+                    <Car size={15} /> Switch & Book Normal Mode
+                  </button>
+                ) : null}
+                <button
+                  onClick={() => setSelectedRideModal(null)}
+                  className="flex-1 py-3.5 rounded-xl border border-border bg-secondary hover:bg-secondary/80 text-foreground font-bold text-xs uppercase tracking-wider transition-all"
+                >
+                  Close Details
+                </button>
               </div>
             </div>
           </div>

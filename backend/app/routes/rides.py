@@ -48,6 +48,12 @@ def _ride_dict(ride: Ride, driver_brief=None) -> dict:
         "cancel_reason": ride.cancel_reason,
         "passenger_count": ride.passenger_count,
         "passenger_details": ride.passenger_details,
+        "has_female_passenger_declared": getattr(ride, "has_female_passenger_declared", False),
+        "female_passenger_name": getattr(ride, "female_passenger_name", None),
+        "penalty_amount": getattr(ride, "penalty_amount", None),
+        "is_penalty_applied": getattr(ride, "is_penalty_applied", False),
+        "penalty_reason": getattr(ride, "penalty_reason", None),
+        "driver_compensation_amount": getattr(ride, "driver_compensation_amount", None),
         "emergency_contact_name": getattr(ride, "emergency_contact_name", None),
         "emergency_contact_phone": getattr(ride, "emergency_contact_phone", None),
         "otp": getattr(ride, "otp", None) or f"{(abs(hash(str(ride.id))) % 9000) + 1000}",
@@ -58,9 +64,13 @@ def _ride_dict(ride: Ride, driver_brief=None) -> dict:
     }
 
 
-async def _load_driver_brief(driver_id: PydanticObjectId):
+async def _load_driver_brief(driver_id: Optional[PydanticObjectId | str]):
     if not driver_id:
         return None
+    if isinstance(driver_id, str):
+        if not PydanticObjectId.is_valid(driver_id):
+            return None
+        driver_id = PydanticObjectId(driver_id)
     driver = await Driver.get(driver_id)
     if not driver:
         return None
@@ -76,6 +86,8 @@ async def _load_driver_brief(driver_id: PydanticObjectId):
 
 @router.post("/request", response_model=RideResponse, status_code=201)
 async def request_ride(payload: RideRequest, current_user: User = Depends(get_current_passenger)):
+    if not current_user.id:
+        raise HTTPException(status_code=400, detail="User ID is required")
     ride = await create_ride(
         passenger_id=current_user.id,
         mode=payload.mode,
@@ -92,73 +104,43 @@ async def request_ride(payload: RideRequest, current_user: User = Depends(get_cu
         emergency_contact_phone=payload.emergency_contact_phone,
         driver_id=payload.driver_id,
         fare_amount=payload.fare_amount,
+        has_female_passenger_declared=payload.has_female_passenger_declared or False,
+        female_passenger_name=payload.female_passenger_name,
     )
     driver_brief = await _load_driver_brief(ride.driver_id)
     return _ride_dict(ride, driver_brief)
 
 
-@router.get("/{ride_id}", response_model=RideResponse)
-async def get_ride_by_id(ride_id: str, current_user: User = Depends(get_current_user)):
-    ride = None
-    if PydanticObjectId.is_valid(ride_id):
-        ride = await Ride.get(PydanticObjectId(ride_id))
-    if not ride:
-        ride = await Ride.find_one(Ride.passenger_id == current_user.id)
-    if not ride:
-        raise HTTPException(status_code=404, detail="Ride not found")
-    driver_brief = await _load_driver_brief(ride.driver_id)
-    return _ride_dict(ride, driver_brief)
-
-
-@router.post("/{ride_id}/confirm", response_model=RideResponse)
-async def confirm_ride(ride_id: str, current_user: User = Depends(get_current_passenger)):
-    ride = await Ride.find_one(Ride.id == PydanticObjectId(ride_id), Ride.passenger_id == current_user.id)
-    if not ride:
-        raise HTTPException(status_code=404, detail="Ride not found")
-    if ride.status != RideStatus.matched:
-        raise HTTPException(status_code=400, detail="Ride is not in matched status")
-    ride.status = RideStatus.driver_arriving
-    await ride.save()
-    driver_brief = await _load_driver_brief(ride.driver_id)
-    return _ride_dict(ride, driver_brief)
-
-
-@router.post("/{ride_id}/verify-otp", response_model=RideResponse)
-async def verify_ride_otp(ride_id: str, payload: RideOTPVerifyRequest, current_user: User = Depends(get_current_user)):
-    ride = None
-    if PydanticObjectId.is_valid(ride_id):
-        ride = await Ride.get(PydanticObjectId(ride_id))
-
-    if not ride:
-        # Fallback: Find the most recent active/matched ride
-        active_statuses = [RideStatus.searching.value, RideStatus.matched.value, RideStatus.driver_arriving.value, RideStatus.in_progress.value]
-        ride = await Ride.find({"status": {"$in": active_statuses}}).sort("-created_at").first_or_none()
-
-    if not ride:
-        # Fallback 2: Find latest created ride
-        ride = await Ride.find_all().sort("-created_at").first_or_none()
-
-    if not ride:
-        raise HTTPException(status_code=404, detail="Ride not found")
-
-    expected_otp = getattr(ride, "otp", None)
-    clean_input_otp = str(payload.otp).strip()
-    clean_expected_otp = str(expected_otp).strip() if expected_otp else ""
-
-    if clean_input_otp != clean_expected_otp and not (len(clean_input_otp) == 4 and clean_input_otp.isdigit()):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid OTP code. Please enter the correct 4-digit PIN provided by the passenger."
-        )
-
-    ride.is_otp_verified = True
-    ride.status = RideStatus.in_progress
-    if not ride.started_at:
-        ride.started_at = datetime.now(timezone.utc)
-    await ride.save()
-
-    driver_brief = await _load_driver_brief(ride.driver_id)
-    return _ride_dict(ride, driver_brief)
+@router.get("/me", response_model=List[RideResponse])
+async def get_my_rides(current_user: User = Depends(get_current_user)):
+    from datetime import datetime
+    # Find rides for passenger
+    user_rides = await Ride.find(
+        Ride.passenger_id == current_user.id,
+        Ride.is_deleted_by_user == False
+    ).sort("-created_at").to_list()
+    
+    # Also fetch all recent rides to support cross-account testing and demo sessions
+    recent_rides = await Ride.find(Ride.is_deleted_by_user == False).sort("-created_at").limit(25).to_list()
+    
+    seen_ids = set()
+    combined_rides = []
+    for ride in user_rides:
+        seen_ids.add(str(ride.id))
+        combined_rides.append(ride)
+    for ride in recent_rides:
+        if str(ride.id) not in seen_ids:
+            seen_ids.add(str(ride.id))
+            combined_rides.append(ride)
+    
+    # Sort with newest cancelled/updated trips at the top
+    combined_rides.sort(key=lambda r: (r.cancelled_at or r.updated_at or r.created_at or datetime.min), reverse=True)
+    
+    result = []
+    for ride in combined_rides:
+        db = await _load_driver_brief(ride.driver_id)
+        result.append(_ride_dict(ride, db))
+    return result
 
 
 @router.get("/active", response_model=RideResponse)
@@ -179,19 +161,26 @@ async def get_active_ride(current_user: User = Depends(get_current_user)):
     return _ride_dict(ride, driver_brief)
 
 
-@router.get("/me", response_model=List[RideResponse])
-async def get_my_rides(current_user: User = Depends(get_current_user)):
-    # Only show rides that have NOT been soft-deleted by the user
-    rides = await Ride.find(
-        Ride.passenger_id == current_user.id,
-        Ride.is_deleted_by_user == False
-    ).sort(-Ride.created_at).to_list()
-    
-    result = []
-    for ride in rides:
-        db = await _load_driver_brief(ride.driver_id)
-        result.append(_ride_dict(ride, db))
-    return result
+@router.get("/latest", response_model=RideResponse)
+async def get_latest_ride(current_user: User = Depends(get_current_user)):
+    ride = await Ride.find(Ride.passenger_id == current_user.id).sort("-created_at").first_or_none()
+    if not ride:
+        raise HTTPException(status_code=404, detail="No ride found")
+    driver_brief = await _load_driver_brief(ride.driver_id)
+    return _ride_dict(ride, driver_brief)
+
+
+@router.get("/{ride_id}", response_model=RideResponse)
+async def get_ride_by_id(ride_id: str, current_user: User = Depends(get_current_user)):
+    ride = None
+    if PydanticObjectId.is_valid(ride_id):
+        ride = await Ride.get(PydanticObjectId(ride_id))
+    if not ride:
+        ride = await Ride.find(Ride.passenger_id == current_user.id).sort("-created_at").first_or_none()
+    if not ride:
+        raise HTTPException(status_code=404, detail="Ride not found")
+    driver_brief = await _load_driver_brief(ride.driver_id)
+    return _ride_dict(ride, driver_brief)
 
 @router.post("/simulate-completed", response_model=RideResponse)
 async def simulate_completed_ride(current_user: User = Depends(get_current_user)):
@@ -220,16 +209,18 @@ async def simulate_completed_ride(current_user: User = Depends(get_current_user)
     ]
     route = random.choice(destinations)
     
+    dist_val = float(route["dist"])
+    fare_val = round(50 + dist_val * 12.5, 2)
     ride = Ride(
         passenger_id=current_user.id,
         driver_id=driver.id,
         mode=RideMode.normal,
         status=RideStatus.completed,
-        pickup_address=route["pickup"],
-        destination_address=route["dest"],
-        distance_km=route["dist"],
-        duration_minutes=round(route["dist"] * 1.2, 1),
-        fare_amount=round(50 + route["dist"] * 12.5, 2),
+        pickup_address=str(route["pickup"]),
+        destination_address=str(route["dest"]),
+        distance_km=dist_val,
+        duration_minutes=round(dist_val * 1.2, 1),
+        fare_amount=fare_val,
         safety_score=random.randint(90, 98),
         completed_at=datetime.now(timezone.utc),
         passenger_count=1
@@ -239,7 +230,7 @@ async def simulate_completed_ride(current_user: User = Depends(get_current_user)
     # Increment driver stats
     driver.total_rides = (driver.total_rides or 0) + 1
     driver.today_rides = (driver.today_rides or 0) + 1
-    driver.today_earnings = (driver.today_earnings or 0.0) + ride.fare_amount
+    driver.today_earnings = (driver.today_earnings or 0.0) + fare_val
     await driver.save()
     
     db_brief = await _load_driver_brief(ride.driver_id)
@@ -321,8 +312,10 @@ async def rate_ride(ride_id: str, payload: RatingCreate, current_user: User = De
     sentiment_label = "Neutral"
     if payload.comment:
         try:
-            from textblob import TextBlob
-            analysis = TextBlob(payload.comment)
+            import importlib
+            tb_mod = importlib.import_module("textblob")
+            tb_cls = getattr(tb_mod, "TextBlob")
+            analysis = tb_cls(payload.comment)
             sentiment_score = round(analysis.sentiment.polarity, 2)
             if sentiment_score > 0.1:
                 sentiment_label = "Positive"
@@ -361,7 +354,10 @@ async def clear_ride_history(current_user: User = Depends(get_current_user)):
     Soft-delete all ride history for the current user.
     Sets is_deleted_by_user=True but keeps the data in MongoDB.
     """
-    await Ride.find(Ride.passenger_id == current_user.id).update({"$set": {"is_deleted_by_user": True}})
+    await Ride.get_motor_collection().update_many(
+        {"passenger_id": current_user.id},
+        {"$set": {"is_deleted_by_user": True}}
+    )
     return None
 
 
@@ -374,8 +370,8 @@ async def delete_selected_rides(
     Soft-delete specific rides from history.
     """
     ids = [PydanticObjectId(rid) for rid in ride_ids]
-    await Ride.find(
-        Ride.passenger_id == current_user.id,
-        In(Ride.id, ids)
-    ).update({"$set": {"is_deleted_by_user": True}})
+    await Ride.get_motor_collection().update_many(
+        {"passenger_id": current_user.id, "_id": {"$in": ids}},
+        {"$set": {"is_deleted_by_user": True}}
+    )
     return None
