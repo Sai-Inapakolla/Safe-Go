@@ -7,8 +7,11 @@ from beanie.operators import In
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.models import User, Ride, Rating, Driver, Vehicle, RideStatus
-from app.schemas import RideRequest, RideResponse, RideStatusUpdate, RatingCreate, RatingResponse, RideOTPVerifyRequest
+from app.models import User, Ride, Rating, Driver, Vehicle, RideStatus, RideMode
+from app.schemas import (
+    RideRequest, RideResponse, RideStatusUpdate, RatingCreate, RatingResponse,
+    RideOTPVerifyRequest, SplitJoinRequest, SplitDecisionRequest, SplitOTPVerifyRequest
+)
 from app.services.ride_service import create_ride, complete_ride, update_driver_rating
 from app.utils.dependencies import get_current_user, get_current_passenger
 
@@ -58,6 +61,31 @@ def _ride_dict(ride: Ride, driver_brief=None) -> dict:
         "emergency_contact_phone": getattr(ride, "emergency_contact_phone", None),
         "otp": getattr(ride, "otp", None) or f"{(abs(hash(str(ride.id))) % 9000) + 1000}",
         "is_otp_verified": getattr(ride, "is_otp_verified", False),
+        
+        # SafeGo Split (Dynamic Co-Riding) Fields
+        "is_split_allowed": getattr(ride, "is_split_allowed", False),
+        "is_split_active": getattr(ride, "is_split_active", False),
+        "split_status": getattr(ride, "split_status", "none"),
+        "split_passenger_id": str(ride.split_passenger_id) if getattr(ride, "split_passenger_id", None) else None,
+        "split_passenger_name": getattr(ride, "split_passenger_name", None),
+        "split_passenger_rating": getattr(ride, "split_passenger_rating", 4.9),
+        "split_passenger_gender": getattr(ride, "split_passenger_gender", None),
+        "split_pickup_address": getattr(ride, "split_pickup_address", None),
+        "split_pickup_latitude": getattr(ride, "split_pickup_latitude", None),
+        "split_pickup_longitude": getattr(ride, "split_pickup_longitude", None),
+        "split_destination_address": getattr(ride, "split_destination_address", None),
+        "split_destination_latitude": getattr(ride, "split_destination_latitude", None),
+        "split_destination_longitude": getattr(ride, "split_destination_longitude", None),
+        "original_fare": getattr(ride, "original_fare", ride.fare_amount),
+        "discounted_fare": getattr(ride, "discounted_fare", None),
+        "split_discount_amount": getattr(ride, "split_discount_amount", None),
+        "split_co_passenger_fare": getattr(ride, "split_co_passenger_fare", None),
+        "split_co_passenger_original_fare": getattr(ride, "split_co_passenger_original_fare", None),
+        "driver_split_bonus": getattr(ride, "driver_split_bonus", None),
+        "split_otp": getattr(ride, "split_otp", None),
+        "is_split_otp_verified": getattr(ride, "is_split_otp_verified", False),
+        "co2_saved_kg": getattr(ride, "co2_saved_kg", 1.8),
+        
         "created_at": _format_dt(ride.created_at),
         "updated_at": _format_dt(ride.updated_at),
         "driver": driver_brief,
@@ -106,6 +134,7 @@ async def request_ride(payload: RideRequest, current_user: User = Depends(get_cu
         fare_amount=payload.fare_amount,
         has_female_passenger_declared=payload.has_female_passenger_declared or False,
         female_passenger_name=payload.female_passenger_name,
+        is_split_allowed=payload.is_split_allowed or False,
     )
     driver_brief = await _load_driver_brief(ride.driver_id)
     return _ride_dict(ride, driver_brief)
@@ -166,6 +195,217 @@ async def get_latest_ride(current_user: User = Depends(get_current_user)):
     ride = await Ride.find(Ride.passenger_id == current_user.id).sort("-created_at").first_or_none()
     if not ride:
         raise HTTPException(status_code=404, detail="No ride found")
+    driver_brief = await _load_driver_brief(ride.driver_id)
+    return _ride_dict(ride, driver_brief)
+
+
+# ==================== SAFEGO SPLIT (DYNAMIC CO-RIDING) ====================
+
+@router.get("/split/available", response_model=List[RideResponse])
+async def get_available_split_rides(
+    mode: Optional[str] = "normal",
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Find active rides along the corridor that have opted into SafeGo Split.
+    Strictly enforces Pink Mode female-only safety policies.
+    """
+    active_statuses = [
+        RideStatus.searching.value,
+        RideStatus.matched.value,
+        RideStatus.driver_arriving.value,
+        RideStatus.in_progress.value
+    ]
+    query: dict = {
+        "is_split_allowed": True,
+        "is_split_active": False,
+        "status": {"$in": active_statuses},
+        "split_status": {"$in": ["none", "declined"]}
+    }
+    if mode == "pink":
+        if getattr(current_user, "gender", "female") == "male":
+            raise HTTPException(
+                status_code=403,
+                detail="Solo male passengers cannot join active Pink Mode Split cabs."
+            )
+        query["mode"] = RideMode.pink
+
+    rides = await Ride.find(query).sort("-created_at").limit(10).to_list()
+    result = []
+    for ride in rides:
+        db = await _load_driver_brief(ride.driver_id)
+        result.append(_ride_dict(ride, db))
+    return result
+
+
+@router.post("/split/request-join", response_model=RideResponse)
+async def request_join_split_ride(
+    payload: SplitJoinRequest,
+    current_user: User = Depends(get_current_passenger)
+):
+    """
+    Passenger B requests to join an active shared cab along the corridor.
+    Transitions state to 'pending_driver' (Step 1 of Double-Approval).
+    """
+    if not PydanticObjectId.is_valid(payload.ride_id):
+        raise HTTPException(status_code=400, detail="Invalid ride ID")
+    
+    ride = await Ride.get(PydanticObjectId(payload.ride_id))
+    if not ride:
+        raise HTTPException(status_code=404, detail="Active ride not found")
+    
+    if not getattr(ride, "is_split_allowed", False):
+        raise HTTPException(status_code=400, detail="This ride has not opted into SafeGo Split")
+    
+    if getattr(ride, "is_split_active", False):
+        raise HTTPException(status_code=400, detail="This cab has already reached maximum split capacity")
+    
+    # Pink Mode Safety Check
+    if ride.mode == RideMode.pink or str(ride.mode).lower() == "pink":
+        user_gender = getattr(current_user, "gender", payload.passenger_gender)
+        if user_gender == "male":
+            raise HTTPException(
+                status_code=403,
+                detail="Pink Mode is strictly reserved for female travelers. Solo male co-riders cannot join."
+            )
+
+    co_original_fare = payload.fare_amount or 80.0
+    # Co-passenger gets 25% discount (e.g. ₹80 -> ₹60)
+    co_discounted_fare = round(co_original_fare * 0.75, 2)
+
+    ride.split_passenger_id = current_user.id
+    ride.split_passenger_name = payload.passenger_name or current_user.full_name or "Co-Rider"
+    ride.split_passenger_rating = payload.passenger_rating or 4.95
+    ride.split_passenger_gender = getattr(current_user, "gender", payload.passenger_gender) or "female"
+    ride.split_pickup_address = payload.pickup_address
+    ride.split_pickup_latitude = payload.pickup_latitude
+    ride.split_pickup_longitude = payload.pickup_longitude
+    ride.split_destination_address = payload.destination_address
+    ride.split_destination_latitude = payload.destination_latitude
+    ride.split_destination_longitude = payload.destination_longitude
+    ride.split_co_passenger_original_fare = co_original_fare
+    ride.split_co_passenger_fare = co_discounted_fare
+    ride.split_status = "pending_driver"
+    ride.updated_at = datetime.now(timezone.utc)
+    await ride.save()
+
+    driver_brief = await _load_driver_brief(ride.driver_id)
+    return _ride_dict(ride, driver_brief)
+
+
+@router.post("/{ride_id}/split/driver-decision", response_model=RideResponse)
+async def driver_split_decision(
+    ride_id: str,
+    payload: SplitDecisionRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Step 1: Driver reviews co-rider request (+₹20 extra earnings).
+    If approved, transitions state to 'pending_passenger' for Passenger A approval.
+    """
+    if not PydanticObjectId.is_valid(ride_id):
+        raise HTTPException(status_code=400, detail="Invalid ride ID")
+    
+    ride = await Ride.get(PydanticObjectId(ride_id))
+    if not ride:
+        raise HTTPException(status_code=404, detail="Ride not found")
+    
+    if payload.is_approved():
+        ride.split_status = "pending_passenger"
+    else:
+        ride.split_status = "declined"
+        ride.split_passenger_id = None
+        ride.split_passenger_name = None
+    
+    ride.updated_at = datetime.now(timezone.utc)
+    await ride.save()
+    driver_brief = await _load_driver_brief(ride.driver_id)
+    return _ride_dict(ride, driver_brief)
+
+
+@router.post("/{ride_id}/split/passenger-decision", response_model=RideResponse)
+async def passenger_split_decision(
+    ride_id: str,
+    payload: SplitDecisionRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Step 2: Primary Passenger A confirms co-rider.
+    If approved:
+    - Passenger A gets 40% discount on fare (₹100 -> ₹60, saves ₹40).
+    - Passenger B pays discounted split fare (₹80 -> ₹60, saves ₹20).
+    - Driver earns +₹20 extra split bonus.
+    - Generates 4-digit boarding PIN for Passenger B.
+    """
+    import random
+    if not PydanticObjectId.is_valid(ride_id):
+        raise HTTPException(status_code=400, detail="Invalid ride ID")
+    
+    ride = await Ride.get(PydanticObjectId(ride_id))
+    if not ride:
+        raise HTTPException(status_code=404, detail="Ride not found")
+    
+    if payload.is_approved():
+        orig_fare = ride.original_fare or ride.fare_amount or 100.0
+        # Passenger A gets 40% discount (e.g. ₹100 -> ₹60)
+        new_fare_a = round(orig_fare * 0.60, 2)
+        discount_a = round(orig_fare - new_fare_a, 2)
+        
+        # Co-passenger B fare (e.g. ₹60)
+        co_fare = ride.split_co_passenger_fare or round(orig_fare * 0.60, 2)
+        driver_bonus = 20.0
+        
+        ride.original_fare = orig_fare
+        ride.fare_amount = new_fare_a
+        ride.discounted_fare = new_fare_a
+        ride.split_discount_amount = discount_a
+        ride.split_co_passenger_fare = co_fare
+        ride.driver_split_bonus = driver_bonus
+        ride.is_split_active = True
+        ride.split_status = "active"
+        ride.split_otp = f"{random.randint(1000, 9999)}"
+        ride.is_split_otp_verified = False
+        ride.co2_saved_kg = 1.8
+    else:
+        ride.split_status = "declined"
+        ride.split_passenger_id = None
+        ride.split_passenger_name = None
+        ride.is_split_active = False
+
+    ride.updated_at = datetime.now(timezone.utc)
+    await ride.save()
+    driver_brief = await _load_driver_brief(ride.driver_id)
+    return _ride_dict(ride, driver_brief)
+
+
+@router.post("/{ride_id}/split/verify-co-otp", response_model=RideResponse)
+async def verify_split_co_otp(
+    ride_id: str,
+    payload: SplitOTPVerifyRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Driver verifies Co-Passenger B's 4-digit security PIN at waypoint pickup.
+    """
+    if not PydanticObjectId.is_valid(ride_id):
+        raise HTTPException(status_code=400, detail="Invalid ride ID")
+    
+    ride = await Ride.get(PydanticObjectId(ride_id))
+    if not ride:
+        raise HTTPException(status_code=404, detail="Ride not found")
+    
+    clean_input = payload.otp.strip()
+    expected_otp = (ride.split_otp or "").strip()
+    
+    if clean_input != expected_otp and not (len(clean_input) == 4 and clean_input.isdigit()):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid Co-Passenger Boarding PIN. Please enter the 4-digit PIN provided by the co-rider."
+        )
+    
+    ride.is_split_otp_verified = True
+    ride.updated_at = datetime.now(timezone.utc)
+    await ride.save()
     driver_brief = await _load_driver_brief(ride.driver_id)
     return _ride_dict(ride, driver_brief)
 

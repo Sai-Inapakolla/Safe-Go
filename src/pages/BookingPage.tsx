@@ -9,11 +9,14 @@ import { SafetyScoreBar } from "@/components/SafetyScoreBar";
 import {
   ArrowLeft, Star, MessageCircle, Shield, Loader2, CheckCircle2,
   MapPin, Navigation, Car, AlertCircle, Locate, Send, X, Users, Zap, Activity,
-  ShieldAlert, Phone, Siren, Radio, Copy, ShieldCheck, Lock, Search, Target
+  ShieldAlert, Phone, Siren, Radio, Copy, ShieldCheck, Lock, Search, Target,
+  Leaf, Sparkles, Percent, Timer, UserCheck
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { getApiUrl } from "@/lib/api";
+
+const API_URL = getApiUrl();
 
 // ─── Simulated nearby cabs ───────────────────────────────────────────────────
 const generateNearbyCabs = (lat: number, lng: number, mode: string = "normal", dbDrivers: any[] = []) => {
@@ -1148,6 +1151,172 @@ const BookingPage = () => {
     return p ? Number(p) : 0;
   });
 
+  // ─── SafeGo Split (Dynamic Co-Riding) States & Handlers ───────────────────
+  const [isSplitAllowed, setIsSplitAllowed] = useState<boolean>(true);
+  const [splitRideData, setSplitRideData] = useState<any>(null);
+  const [splitConsentModalOpen, setSplitConsentModalOpen] = useState<boolean>(false);
+  const [splitCountdown, setSplitCountdown] = useState<number>(30);
+  const [splitConsentData, setSplitConsentData] = useState<any>(null);
+  const [isProcessingSplitDecision, setIsProcessingSplitDecision] = useState<boolean>(false);
+  const [isCorridorSplitModalOpen, setIsCorridorSplitModalOpen] = useState<boolean>(false);
+  const [availableSplitCabs, setAvailableSplitCabs] = useState<any[]>([]);
+  const [isSearchingSplitCabs, setIsSearchingSplitCabs] = useState<boolean>(false);
+  const [isJoiningSplitCab, setIsJoiningSplitCab] = useState<boolean>(false);
+  const [splitJoinSuccessData, setSplitJoinSuccessData] = useState<any>(null);
+
+  // SafeGo Split 30s Countdown Timer Effect
+  useEffect(() => {
+    let timer: any = null;
+    if (splitConsentModalOpen && splitCountdown > 0) {
+      timer = setInterval(() => {
+        setSplitCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            handleDeclineSplitPassenger();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [splitConsentModalOpen, splitCountdown]);
+
+  const handleAcceptSplitPassenger = async () => {
+    setIsProcessingSplitDecision(true);
+    const rideId = currentRideId || splitConsentData?.rideId || localStorage.getItem("safego_current_ride_id");
+    const token = localStorage.getItem("token") || "dummy-token";
+    try {
+      if (rideId) {
+        let res = await fetch(`${API_URL}/api/rides/${rideId}/split/passenger-decision`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({ approved: true, decision: "accept" })
+        });
+        if (res.ok) {
+          const updatedRide = await res.json();
+          setSplitRideData(updatedRide);
+          setSplitConsentModalOpen(false);
+          toast.success(`SafeGo Split Accepted! Your fare dropped to ₹${updatedRide.discounted_fare || 60} (Saved ₹${updatedRide.split_discount_amount || 40})! 🌱 1.8 kg CO₂ prevented.`, {
+            duration: 6000
+          });
+          setIsProcessingSplitDecision(false);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("Split accept error:", e);
+    }
+
+    // Local fallback update
+    const origFare = selectedDriver?.price || rideDetails.fare || 100;
+    const discounted = Math.round(origFare * 0.6);
+    const savings = origFare - discounted;
+    setSplitRideData({
+      is_split_active: true,
+      split_status: "active",
+      split_passenger_name: splitConsentData?.passengerName || "Kavita Rao",
+      split_passenger_rating: splitConsentData?.passengerRating || 4.95,
+      split_pickup_address: splitConsentData?.pickupAddress || "Waypoint A2",
+      original_fare: origFare,
+      discounted_fare: discounted,
+      split_discount_amount: savings,
+      co2_saved_kg: 1.8,
+      split_otp: "7351",
+      is_split_otp_verified: false
+    });
+    setSplitConsentModalOpen(false);
+    toast.success(`SafeGo Split Accepted! Your fare dropped to ₹${discounted} (Saved ₹${savings})! 🌱 1.8 kg CO₂ prevented.`, {
+      duration: 6000
+    });
+    setIsProcessingSplitDecision(false);
+  };
+
+  const handleDeclineSplitPassenger = async () => {
+    setIsProcessingSplitDecision(true);
+    const rideId = currentRideId || splitConsentData?.rideId || localStorage.getItem("safego_current_ride_id");
+    const token = localStorage.getItem("token") || "dummy-token";
+    try {
+      if (rideId) {
+        await fetch(`${API_URL}/api/rides/${rideId}/split/passenger-decision`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({ approved: false, decision: "decline" })
+        });
+      }
+    } catch (e) {
+      console.warn("Split decline error:", e);
+    }
+    setSplitConsentModalOpen(false);
+    toast.info("Co-Rider request declined. Your ride continues as private.", { duration: 4000 });
+    setIsProcessingSplitDecision(false);
+  };
+
+  const handleOpenCorridorFinder = async () => {
+    setIsCorridorSplitModalOpen(true);
+    setIsSearchingSplitCabs(true);
+    try {
+      const lat = pickupCoords?.lat || mapCenter?.lat || 22.3023;
+      const lng = pickupCoords?.lng || mapCenter?.lng || 73.3762;
+      const res = await fetch(`${API_URL}/api/rides/split/available?latitude=${lat}&longitude=${lng}&mode=${mode.id}&gender=${userGender}`);
+      if (res.ok) {
+        const cabs = await res.json();
+        setAvailableSplitCabs(cabs);
+      }
+    } catch (err) {
+      console.warn("Fetch split cabs error:", err);
+    } finally {
+      setIsSearchingSplitCabs(false);
+    }
+  };
+
+  const handleRequestJoinCorridorCab = async (cab: any) => {
+    setIsJoiningSplitCab(true);
+    const token = localStorage.getItem("token") || "dummy-token";
+    const userName = localStorage.getItem("safego_user_name") || "Kavita Rao";
+    const userPhone = localStorage.getItem("safego_user_phone") || "+919876543299";
+    try {
+      const res = await fetch(`${API_URL}/api/rides/split/request-join`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ride_id: cab._id || cab.id,
+          passenger_name: userName,
+          passenger_gender: userGender,
+          passenger_phone: userPhone,
+          passenger_rating: 4.95,
+          fare_amount: 80.0,
+          pickup_address: pickup || "Middle Circle Metro (Waypoint A2)",
+          pickup_latitude: pickupCoords?.lat || 22.3223,
+          pickup_longitude: pickupCoords?.lng || 73.3962,
+          destination_address: destination || "Tech Park (Drop A3)",
+          destination_latitude: destinationCoords?.lat || 22.3523,
+          destination_longitude: destinationCoords?.lng || 73.4262
+        })
+      });
+      if (res.ok) {
+        const joinRes = await res.json();
+        setSplitJoinSuccessData(joinRes);
+        toast.success("Join request sent! Waiting for Pilot & Passenger A approval...", { duration: 5000 });
+      }
+    } catch (e) {
+      console.warn("Failed to join split cab:", e);
+    } finally {
+      setIsJoiningSplitCab(false);
+    }
+  };
+
   // Dedicated Ride Cancellation & Pink Mode Policy Violation Modal State
   const [cancellationModalOpen, setCancellationModalOpen] = useState<boolean>(false);
   const [cancellationData, setCancellationData] = useState<{
@@ -1776,6 +1945,30 @@ const BookingPage = () => {
             if (ride) {
               if (ride.otp) setRideOtp(ride.otp);
               if (ride.is_otp_verified !== undefined) setIsOtpVerified(ride.is_otp_verified);
+              
+              // SafeGo Split real-time status sync
+              if (ride.split_status === "pending_passenger" && !splitConsentModalOpen) {
+                setSplitConsentData({
+                  rideId: ride._id || ride.id,
+                  passengerName: ride.split_passenger_name || "Kavita Rao",
+                  passengerRating: ride.split_passenger_rating || 4.95,
+                  passengerGender: ride.split_passenger_gender || "female",
+                  pickupAddress: ride.split_pickup_address || "Middle Circle Metro (Waypoint A2)",
+                  destinationAddress: ride.split_destination_address || destination,
+                  originalFare: ride.original_fare || ride.fare_amount || 100,
+                  discountedFare: ride.discounted_fare || Math.round((ride.original_fare || 100) * 0.6),
+                  savings: ride.split_discount_amount || Math.round((ride.original_fare || 100) * 0.4),
+                  co2Saved: ride.co2_saved_kg || 1.8
+                });
+                setSplitCountdown(30);
+                setSplitConsentModalOpen(true);
+              } else if (ride.split_status === "active" || ride.is_split_active) {
+                setSplitRideData(ride);
+                if (splitConsentModalOpen) {
+                  setSplitConsentModalOpen(false);
+                }
+              }
+
               if (ride.status === "completed") {
                 localStorage.setItem("safego_current_ride_status", "completed");
                 setFlowState("review");
@@ -2437,7 +2630,8 @@ const BookingPage = () => {
         emergency_contact_name: emergencyContactName,
         emergency_contact_phone: emergencyContactPhone,
         driver_id: driverObj?.driver_id && driverObj.driver_id.length === 24 ? driverObj.driver_id : null,
-        fare_amount: driverObj?.price || rideDetails.fare || 180
+        fare_amount: driverObj?.price || rideDetails.fare || 180,
+        is_split_allowed: isSplitAllowed
       };
 
       if (mode.id === "pink") {
@@ -3105,6 +3299,71 @@ const BookingPage = () => {
                     <input type="tel" placeholder={t('booking.elderly_contact_placeholder', "Family or caregiver's number")} className="w-full rounded-xl border border-border bg-secondary/50 dark:bg-white/5 px-4 py-3 text-sm outline-none focus:border-primary transition-colors dark:text-white dark:placeholder:text-white/30" />
                   </div>
                 )}
+
+                {/* ─── SAFECO SPLIT DYNAMIC CO-RIDING OPT-IN CARD ─── */}
+                <div className="mt-4 rounded-[2.2rem] border-2 border-indigo-500/30 bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-background p-6 space-y-4 premium-shadow relative overflow-hidden transition-all hover:-translate-y-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3.5">
+                      <div className="p-3 rounded-2xl bg-indigo-600 text-white shrink-0 shadow-lg shadow-indigo-500/30">
+                        <Users size={22} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-black uppercase tracking-wider text-foreground">
+                            SafeGo Split (Dynamic Co-Riding)
+                          </h4>
+                          <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                            <Percent size={10} /> Save up to 40%
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                          Allow verified co-riders along your route corridor. You get full in-app double consent before anyone joins.
+                        </p>
+                      </div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+                      <input
+                        type="checkbox"
+                        checked={isSplitAllowed}
+                        onChange={(e) => setIsSplitAllowed(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </label>
+                  </div>
+
+                  {isSplitAllowed && (
+                    <div className="pt-3 border-t border-indigo-500/20 space-y-3 animate-in fade-in slide-in-from-top-1 duration-300">
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="p-2.5 rounded-xl bg-background/80 border border-border/60 shadow-sm">
+                          <span className="text-[10px] font-black uppercase text-muted-foreground block">You Save</span>
+                          <span className="text-sm font-black text-indigo-600 dark:text-indigo-400">₹40 (40%)</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-background/80 border border-border/60 shadow-sm">
+                          <span className="text-[10px] font-black uppercase text-muted-foreground block">Pilot Earns</span>
+                          <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">+₹20 Extra</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-background/80 border border-border/60 shadow-sm">
+                          <span className="text-[10px] font-black uppercase text-muted-foreground block">Eco Impact</span>
+                          <span className="text-xs font-black text-teal-600 dark:text-teal-400 mt-0.5 block">🌱 -1.8kg CO₂</span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[11px] text-muted-foreground font-medium">
+                          Looking for an active corridor cab?
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleOpenCorridorFinder}
+                          className="px-3 py-1.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-600 dark:text-indigo-300 border border-indigo-500/30 text-[11px] font-bold transition-all flex items-center gap-1.5 active:scale-95"
+                        >
+                          <Search size={12} /> Find Corridor Cabs
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 {isAnalyzing && (
                   <div className="mt-8 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12">
                     <div className="rounded-[2.5rem] bg-card premium-shadow border border-border/40 p-10 text-center relative overflow-hidden">
@@ -3607,6 +3866,65 @@ const BookingPage = () => {
                     )}
                   </div>
 
+                  {/* ─── SAFECO SPLIT LIVE TRIP STATUS CARD ─── */}
+                  {(splitRideData?.is_split_active || splitRideData?.split_status === "active") && (
+                    <div className="mt-6 p-5 rounded-2xl bg-gradient-to-br from-indigo-500/15 via-purple-500/10 to-background border-2 border-indigo-500/40 shadow-md space-y-3 animate-in fade-in slide-in-from-top-2 duration-400">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-500/30">
+                            <Users size={16} />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                              SafeGo Split Active
+                            </h4>
+                            <p className="text-[10px] text-muted-foreground font-medium">
+                              Shared Corridor Journey • Verified Co-Rider
+                            </p>
+                          </div>
+                        </div>
+                        <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                          <Leaf size={11} /> 1.8 kg CO₂ Saved
+                        </span>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-background/80 border border-border/60 space-y-2.5 shadow-inner">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground font-bold">Co-Passenger:</span>
+                          <span className="font-black text-foreground flex items-center gap-1.5">
+                            <UserCheck size={14} className="text-indigo-500" />
+                            {splitRideData.split_passenger_name || "Kavita Rao"}
+                            <span className="text-[11px] text-amber-500 font-bold ml-1">⭐ {splitRideData.split_passenger_rating || 4.95}</span>
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground font-bold">Waypoint Pickup:</span>
+                          <span className="font-semibold text-foreground truncate max-w-[200px]">
+                            {splitRideData.split_pickup_address || "Middle Circle Metro (Waypoint A2)"}
+                          </span>
+                        </div>
+
+                        <div className="pt-2 border-t border-border/40 flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] font-bold uppercase text-muted-foreground block">Your Discounted Fare</span>
+                            <div className="flex items-baseline gap-1.5">
+                              <span className="text-base font-black text-indigo-600 dark:text-indigo-400">
+                                ₹{splitRideData.discounted_fare || 60}
+                              </span>
+                              <span className="text-xs text-muted-foreground line-through">
+                                ₹{splitRideData.original_fare || selectedDriver?.price || 100}
+                              </span>
+                            </div>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-xs font-black">
+                            Saved ₹{splitRideData.split_discount_amount || 40} (40% OFF)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* RIDER EMERGENCY SOS WIDGET (DISPLAYED FOR ALL ONGOING RIDES) */}
                   <div className={`mt-6 p-5 rounded-2xl border flex flex-col gap-3 transition-all ${mode.id === "pink"
                       ? "bg-rose-500/10 border-rose-500/30"
@@ -4065,6 +4383,280 @@ const BookingPage = () => {
                   >
                     Close Window
                   </button>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+
+        {/* ─── 1. SAFECO SPLIT DOUBLE-APPROVAL CONSENT MODAL (PASSENGER A) ─── */}
+        {splitConsentModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-300">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 20 }}
+              className="w-full max-w-md rounded-3xl bg-card border-2 border-indigo-500/40 p-6 shadow-2xl relative overflow-hidden space-y-5"
+            >
+              {/* Animated Countdown Bar */}
+              <div className="absolute top-0 left-0 right-0 h-1.5 bg-secondary overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-500 via-indigo-500 to-emerald-500 transition-all duration-1000"
+                  style={{ width: `${(splitCountdown / 30) * 100}%` }}
+                />
+              </div>
+
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pt-1">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-500/30">
+                    <Users size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-wider text-foreground">
+                      Co-Passenger Split Request
+                    </h3>
+                    <p className="text-[10px] text-muted-foreground font-medium">
+                      Dual-Consent Route Corridor Match
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-[10px] font-black uppercase tracking-wider animate-pulse">
+                  <Timer size={12} /> {splitCountdown}s Left
+                </div>
+              </div>
+
+              {/* Co-Passenger Profile Card */}
+              <div className="p-4 rounded-2xl bg-secondary/50 border border-border/60 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-black text-lg flex items-center justify-center shadow-md">
+                    {(splitConsentData?.passengerName || "K")[0]}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="font-black text-foreground text-sm truncate">
+                        {splitConsentData?.passengerName || "Kavita Rao"}
+                      </h4>
+                      <span className="px-1.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[9px] font-black uppercase border border-indigo-500/20">
+                        Verified
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground font-semibold flex items-center gap-1 mt-0.5">
+                      <Star size={12} className="fill-amber-400 text-amber-400" />
+                      {splitConsentData?.passengerRating || 4.95} Rating • SafeGo Verified Traveler
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-border/40 space-y-1.5 text-xs">
+                  <div className="flex items-start gap-2">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground shrink-0 w-24">
+                      Waypoint Pickup:
+                    </span>
+                    <span className="font-semibold text-foreground truncate">
+                      {splitConsentData?.pickupAddress || "Middle Circle Metro (Waypoint A2)"}
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground shrink-0 w-24">
+                      Destination:
+                    </span>
+                    <span className="font-semibold text-foreground truncate">
+                      {splitConsentData?.destinationAddress || destination || "IT Tech Park (Drop A3)"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Economics & Green Savings Card */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-indigo-500/5 to-background border border-emerald-500/30 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-muted-foreground">Original Fare:</span>
+                  <span className="text-xs font-bold text-muted-foreground line-through">
+                    ₹{splitConsentData?.originalFare || selectedDriver?.price || 100}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-foreground">Your New Shared Fare:</span>
+                  <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
+                    ₹{splitConsentData?.discountedFare || 60}
+                  </span>
+                </div>
+                <div className="pt-2 border-t border-emerald-500/20 flex items-center justify-between">
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-black uppercase tracking-wider">
+                    Instant ₹{splitConsentData?.savings || 40} Savings (40% OFF)
+                  </span>
+                  <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400 flex items-center gap-1">
+                    <Leaf size={12} /> -1.8kg CO₂
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={handleDeclineSplitPassenger}
+                  disabled={isProcessingSplitDecision}
+                  className="flex-1 py-3.5 rounded-2xl border border-border bg-secondary/40 text-xs font-bold hover:bg-secondary transition-all active:scale-95 disabled:opacity-50"
+                >
+                  Decline
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAcceptSplitPassenger}
+                  disabled={isProcessingSplitDecision}
+                  className="flex-[2] py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black uppercase tracking-wider shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
+                >
+                  {isProcessingSplitDecision ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" />
+                      CONFIRMING...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={16} />
+                      ACCEPT & SAVE ₹40
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* ─── 2. CORRIDOR SPLIT CAB FINDER MODAL (PASSENGER B) ─── */}
+        {isCorridorSplitModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-300">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 20 }}
+              className="w-full max-w-lg rounded-3xl bg-card border border-border/60 p-6 shadow-2xl relative overflow-hidden space-y-5 max-h-[85vh] flex flex-col"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-border/60">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2.5 rounded-2xl bg-indigo-600 text-white shadow-md shadow-indigo-500/30">
+                    <Search size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-wider text-foreground">
+                      Available Corridor Split Cabs
+                    </h3>
+                    <p className="text-[10px] text-muted-foreground font-medium">
+                      Join active cabs along your route and ride for ₹60 (25% OFF)
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsCorridorSplitModalOpen(false);
+                    setSplitJoinSuccessData(null);
+                  }}
+                  className="p-2 rounded-full hover:bg-secondary text-muted-foreground transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {splitJoinSuccessData ? (
+                <div className="p-6 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-center space-y-4 animate-in zoom-in-95 duration-300">
+                  <div className="mx-auto w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-lg">
+                    <CheckCircle2 size={32} />
+                  </div>
+                  <div>
+                    <h4 className="text-base font-black text-foreground">Join Request Sent!</h4>
+                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                      Your request has been dispatched to the Safety Pilot and Primary Passenger. Once both approve, your 4-digit boarding PIN will be activated!
+                    </p>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-background border border-border/60 text-xs font-semibold space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Estimated Fare:</span>
+                      <span className="font-black text-emerald-600">₹60.00 (25% Corridor Discount)</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Pickup Location:</span>
+                      <span className="font-bold text-foreground truncate max-w-[200px]">{pickup || "Waypoint A2"}</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setIsCorridorSplitModalOpen(false);
+                      setSplitJoinSuccessData(null);
+                      setFlowState("confirmed");
+                    }}
+                    className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-xs uppercase tracking-wider shadow-md hover:brightness-110 transition-all"
+                  >
+                    View Trip Tracking
+                  </button>
+                </div>
+              ) : isSearchingSplitCabs ? (
+                <div className="py-12 text-center space-y-3">
+                  <Loader2 size={32} className="animate-spin text-indigo-500 mx-auto" />
+                  <p className="text-xs font-bold text-muted-foreground">Scanning route corridor for active SafeGo cabs...</p>
+                </div>
+              ) : availableSplitCabs.length === 0 ? (
+                <div className="py-10 text-center space-y-4">
+                  <div className="mx-auto w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center text-muted-foreground">
+                    <Car size={26} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-foreground">No Split Cabs On Corridor Right Now</h4>
+                    <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
+                      No active rides are currently traversing this segment. You can book your own ride and enable SafeGo Split to let others join you!
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setIsCorridorSplitModalOpen(false)}
+                    className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold uppercase tracking-wider shadow-md hover:brightness-110 transition-all"
+                  >
+                    Book Primary Ride
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3 overflow-y-auto max-h-[50vh] pr-1">
+                  {availableSplitCabs.map((cab, idx) => (
+                    <div
+                      key={idx}
+                      className="p-4 rounded-2xl bg-secondary/40 border border-border/60 hover:border-indigo-500/40 transition-all space-y-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-xl bg-indigo-600 text-white font-black text-sm flex items-center justify-center">
+                            {cab.driver_name ? cab.driver_name[0] : "P"}
+                          </div>
+                          <div>
+                            <h5 className="text-xs font-black text-foreground">{cab.driver_name || "Female Safety Pilot"}</h5>
+                            <p className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1">
+                              <Star size={10} className="fill-amber-400 text-amber-400" />
+                              {cab.driver_rating || 4.9} • {cab.vehicle_make || "Toyota"} ({cab.plate_number || "MH 02 AB 1234"})
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">₹60</span>
+                          <span className="block text-[9px] text-muted-foreground uppercase font-bold">25% Discount</span>
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-background/80 border border-border/40 text-[11px] font-semibold space-y-1">
+                        <div className="truncate text-muted-foreground">
+                          <strong className="text-foreground">Route:</strong> {cab.pickup_address || "A1 Station"} ➔ {cab.destination_address || "A3 Tech Park"}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRequestJoinCorridorCab(cab)}
+                        disabled={isJoiningSplitCab}
+                        className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-wider shadow-md flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
+                      >
+                        {isJoiningSplitCab ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />}
+                        Request to Join Cab (₹60)
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
             </motion.div>

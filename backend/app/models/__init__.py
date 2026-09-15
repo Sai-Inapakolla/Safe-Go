@@ -187,6 +187,31 @@ class Ride(Document):
     emergency_contact_phone: Optional[str] = None
     otp: Optional[str] = None
     is_otp_verified: bool = False
+    
+    # SafeGo Split (Dynamic Co-Riding) Fields
+    is_split_allowed: bool = False
+    is_split_active: bool = False
+    split_status: str = "none"  # "none", "pending_driver", "pending_passenger", "active", "completed", "declined"
+    split_passenger_id: Optional[PydanticObjectId] = None
+    split_passenger_name: Optional[str] = None
+    split_passenger_rating: Optional[float] = None
+    split_passenger_gender: Optional[str] = None
+    split_pickup_address: Optional[str] = None
+    split_pickup_latitude: Optional[float] = None
+    split_pickup_longitude: Optional[float] = None
+    split_destination_address: Optional[str] = None
+    split_destination_latitude: Optional[float] = None
+    split_destination_longitude: Optional[float] = None
+    original_fare: Optional[float] = None
+    discounted_fare: Optional[float] = None
+    split_discount_amount: Optional[float] = None
+    split_co_passenger_fare: Optional[float] = None
+    split_co_passenger_original_fare: Optional[float] = None
+    driver_split_bonus: Optional[float] = None
+    split_otp: Optional[str] = None
+    is_split_otp_verified: bool = False
+    co2_saved_kg: Optional[float] = 1.8
+    
     is_deleted_by_user: bool = False  # Soft delete flag
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)

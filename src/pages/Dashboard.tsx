@@ -11,7 +11,8 @@ import {
   LayoutDashboard, Car, Shield, Users, Settings,
   Star, TrendingUp, ArrowRight, User, Lock, Bell, Moon, MapPin,
   Accessibility, Mic, Check, Trash2, Loader2, Plus, X, Eye, EyeOff,
-  ShieldAlert, AlertCircle, Calendar, Clock, KeyRound, CheckCircle2, Info
+  ShieldAlert, AlertCircle, Calendar, Clock, KeyRound, CheckCircle2, Info,
+  Sparkles, Leaf
 } from "lucide-react";
 import { useVoiceAssistant } from "@/contexts/VoiceAssistantContext";
 import { useElderMode } from "@/contexts/ElderModeContext";
@@ -988,11 +989,18 @@ const Dashboard = () => {
                           <tr key={r._id || r.id || i} className={`border-b border-border last:border-0 ${i % 2 === 1 ? "bg-secondary/40" : ""} hover:bg-primary/5 transition-colors`}>
                             <td className="px-4 py-3 text-muted-foreground">{(Array.isArray(myRides) ? myRides.length : 0) - i}</td>
                             <td className="px-4 py-3">
-                              <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${
-                                r.mode === "Pink" || r.mode === "pink" ? "bg-pink-500/10 text-pink-600 border border-pink-500/20" : "bg-secondary text-foreground"
-                              }`}>
-                                {r.mode || "Normal"}
-                              </span>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${
+                                  r.mode === "Pink" || r.mode === "pink" ? "bg-pink-500/10 text-pink-600 border border-pink-500/20" : "bg-secondary text-foreground"
+                                }`}>
+                                  {r.mode || "Normal"}
+                                </span>
+                                {(r.is_split_active || r.split_status === "active" || r.is_split_allowed) && (
+                                  <span className="rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 flex items-center gap-1">
+                                    <Users size={10} /> Split
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-4 py-3 text-foreground">
                               <div className="flex flex-col max-w-[240px]">
@@ -1127,11 +1135,18 @@ const Dashboard = () => {
                         <tr key={r._id || r.id || i} className={`border-b border-border last:border-0 ${i % 2 === 1 ? "bg-secondary/40" : ""} hover:bg-primary/5 transition-colors`}>
                           <td className="px-4 py-3 text-muted-foreground">{(Array.isArray(myRides) ? myRides.length : 0) - i}</td>
                           <td className="px-4 py-3">
-                            <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${
-                              r.mode === "Pink" || r.mode === "pink" ? "bg-pink-500/10 text-pink-600 border border-pink-500/20" : "bg-secondary text-foreground"
-                            }`}>
-                              {r.mode || "Normal"}
-                            </span>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${
+                                r.mode === "Pink" || r.mode === "pink" ? "bg-pink-500/10 text-pink-600 border border-pink-500/20" : "bg-secondary text-foreground"
+                              }`}>
+                                {r.mode || "Normal"}
+                              </span>
+                              {(r.is_split_active || r.split_status === "active" || r.is_split_allowed) && (
+                                <span className="rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 flex items-center gap-1">
+                                  <Users size={10} /> Split
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-3 text-foreground">
                             <div className="flex flex-col max-w-[260px]">
@@ -1944,6 +1959,50 @@ const Dashboard = () => {
                   </div>
                 )}
               </div>
+
+              {/* SafeGo Split Shared Ride Details */}
+              {(selectedRideModal.is_split_active || selectedRideModal.split_status === "active" || selectedRideModal.split_discount_amount > 0 || selectedRideModal.is_split_allowed) && (
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-emerald-500/10 border-2 border-indigo-500/30 text-left space-y-2.5 animate-in fade-in duration-300">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                      <Users size={14} /> SafeGo Split • Shared Ride Savings
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                      40% OFF Applied
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span>Original Direct Fare:</span>
+                      <span className="line-through font-semibold">₹{selectedRideModal.original_fare || 100}.00</span>
+                    </div>
+                    <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 font-bold">
+                      <span className="flex items-center gap-1"><Sparkles size={12} /> SafeGo Split Discount:</span>
+                      <span>-₹{selectedRideModal.split_discount_amount || 40}.00</span>
+                    </div>
+                    <div className="flex items-center justify-between text-foreground font-black text-sm pt-1 border-t border-border/50">
+                      <span>Final Billed Fare:</span>
+                      <span className="text-emerald-600 dark:text-emerald-400">₹{selectedRideModal.discounted_fare || selectedRideModal.fare_amount || 60}.00</span>
+                    </div>
+                  </div>
+
+                  {selectedRideModal.split_passenger_name && (
+                    <div className="pt-2 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>Co-Rider:</span>
+                      <span className="font-bold text-foreground flex items-center gap-1">
+                        {selectedRideModal.split_passenger_name}
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">✓ Verified</span>
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-2 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                    <Leaf size={14} className="text-emerald-600 shrink-0" />
+                    <span>Eco Impact: {selectedRideModal.co2_saved_kg || 1.8} kg CO₂ emissions prevented by carpooling!</span>
+                  </div>
+                </div>
+              )}
 
               {/* Action Buttons */}
               <div className="flex gap-2.5 pt-1">

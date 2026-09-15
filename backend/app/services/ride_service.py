@@ -60,6 +60,7 @@ async def create_ride(
     fare_amount: Optional[float] = None,
     has_female_passenger_declared: bool = False,
     female_passenger_name: Optional[str] = None,
+    is_split_allowed: bool = False,
 ) -> Ride:
     """Create a ride request with safety policy validation."""
     # Strict SafeGo Pink Mode Policy Enforcement
@@ -91,6 +92,8 @@ async def create_ride(
         except Exception:
             valid_driver_id = None
 
+    final_fare = fare_amount if fare_amount is not None else route_info["fare_amount"]
+
     ride = Ride(
         passenger_id=passenger_id,
         driver_id=valid_driver_id,
@@ -104,7 +107,8 @@ async def create_ride(
         destination_longitude=destination_longitude,
         distance_km=route_info["distance_km"],
         duration_minutes=route_info["duration_minutes"],
-        fare_amount=fare_amount if fare_amount is not None else route_info["fare_amount"],
+        fare_amount=final_fare,
+        original_fare=final_fare,
         safety_score=route_info["safety_score"],
         route_polyline=route_info["route_polyline"],
         scheduled_at=scheduled_at,
@@ -116,6 +120,9 @@ async def create_ride(
         emergency_contact_phone=emergency_contact_phone,
         otp=generated_otp,
         is_otp_verified=False,
+        is_split_allowed=is_split_allowed,
+        is_split_active=False,
+        split_status="none",
     )
 
     await ride.insert()

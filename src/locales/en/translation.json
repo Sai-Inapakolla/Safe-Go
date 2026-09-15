@@ -187,7 +187,12 @@
     "pwd_special_cab_booked": "Special Cab Booked!",
     "pwd_special_cab_desc": "A specialized accessible cab has been booked. Our company provides more reasonable rates for PWD users to ensure accessible and affordable transport for everyone. Your driver is specially trained to assist you.",
     "pwd_reasonable_cost_title": "Subsidized PWD Pricing",
-    "pwd_reasonable_cost_desc": "SafeGo supports inclusion by providing subsidized, highly affordable rates for our PWD community. We ensure that accessible travel remains a basic right, not a luxury.",
-    "pwd_discount_applied": "PWD Subsidized Rate"
+    "pwd_discount_applied": "PWD Subsidized Rate",
+    "safego_split_title": "SafeGo Split (Dynamic Co-Riding)",
+    "safego_split_desc": "Save up to 40% on your fare by sharing your route corridor with a verified co-passenger.",
+    "safego_split_consent_title": "Co-Passenger Split Request",
+    "safego_split_consent_desc": "A verified co-rider wants to join your corridor. Approve to instantly save ₹40 on your trip!",
+    "safego_split_driver_bonus": "+₹20 Extra Split Profit",
+    "safego_split_eco_badge": "🌱 1.8 kg CO₂ Emissions Prevented"
   }
 }

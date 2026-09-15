@@ -70,7 +70,7 @@ async def _driver_dict(driver: Driver) -> dict:
                  "profile_photo": user.profile_photo, "is_active": user.is_active,
                  "is_verified": user.is_verified, "created_at": user.created_at,
                  "updated_at": user.updated_at} if user else None,
-        "vehicle": {"_id": str(vehicle.id), "make": vehicle.make, "model": vehicle.model,
+        "vehicle": {"_id": str(vehicle.id), "driver_id": str(driver.id), "make": vehicle.make, "model": vehicle.model,
                     "year": vehicle.year, "color": vehicle.color,
                     "plate_number": vehicle.plate_number,
                     "is_wheelchair_accessible": vehicle.is_wheelchair_accessible,

@@ -89,15 +89,15 @@ class VehicleCreate(BaseModel):
 
 
 class VehicleResponse(BaseModel):
-    id: str = Field(..., alias="_id")
-    driver_id: str
+    id: Optional[str] = Field(None, alias="_id")
+    driver_id: Optional[str] = None
     make: str
     model: str
-    year: int
-    color: str
+    year: Optional[int] = None
+    color: Optional[str] = None
     plate_number: str
-    is_wheelchair_accessible: bool
-    is_approved: bool
+    is_wheelchair_accessible: Optional[bool] = False
+    is_approved: Optional[bool] = False
     created_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
@@ -266,6 +266,7 @@ class RideRequest(BaseModel):
     emergency_contact_phone: Optional[str] = None
     driver_id: Optional[str] = None
     fare_amount: Optional[float] = None
+    is_split_allowed: Optional[bool] = False
 
 
 class RideResponse(BaseModel):
@@ -302,6 +303,31 @@ class RideResponse(BaseModel):
     emergency_contact_phone: Optional[str] = None
     otp: Optional[str] = None
     is_otp_verified: Optional[bool] = False
+    
+    # SafeGo Split (Dynamic Co-Riding)
+    is_split_allowed: Optional[bool] = False
+    is_split_active: Optional[bool] = False
+    split_status: Optional[str] = "none"
+    split_passenger_id: Optional[str] = None
+    split_passenger_name: Optional[str] = None
+    split_passenger_rating: Optional[float] = 4.9
+    split_passenger_gender: Optional[str] = None
+    split_pickup_address: Optional[str] = None
+    split_pickup_latitude: Optional[float] = None
+    split_pickup_longitude: Optional[float] = None
+    split_destination_address: Optional[str] = None
+    split_destination_latitude: Optional[float] = None
+    split_destination_longitude: Optional[float] = None
+    original_fare: Optional[float] = None
+    discounted_fare: Optional[float] = None
+    split_discount_amount: Optional[float] = None
+    split_co_passenger_fare: Optional[float] = None
+    split_co_passenger_original_fare: Optional[float] = None
+    driver_split_bonus: Optional[float] = None
+    split_otp: Optional[str] = None
+    is_split_otp_verified: Optional[bool] = False
+    co2_saved_kg: Optional[float] = 1.8
+
     passenger_name: Optional[str] = None
     passenger_rating: Optional[float] = 4.8
     created_at: Optional[datetime] = None
@@ -309,6 +335,38 @@ class RideResponse(BaseModel):
     driver: Optional[DriverBrief] = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class SplitJoinRequest(BaseModel):
+    ride_id: str
+    pickup_address: str
+    destination_address: str
+    pickup_latitude: float
+    pickup_longitude: float
+    destination_latitude: float
+    destination_longitude: float
+    fare_amount: Optional[float] = 60.0
+    passenger_name: Optional[str] = "Co-Rider"
+    passenger_gender: Optional[str] = "female"
+    passenger_rating: Optional[float] = 4.95
+
+
+class SplitDecisionRequest(BaseModel):
+    approved: Optional[bool] = None
+    decision: Optional[str] = None
+    reason: Optional[str] = None
+
+    def is_approved(self) -> bool:
+        if self.approved is not None:
+            return bool(self.approved)
+        if self.decision is not None:
+            return self.decision.strip().lower() in ["accept", "approved", "yes", "true", "1"]
+        return False
+
+
+
+class SplitOTPVerifyRequest(BaseModel):
+    otp: str
 
 
 class ReportViolationRequest(BaseModel):
