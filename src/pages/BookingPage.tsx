@@ -1942,9 +1942,9 @@ const BookingPage = () => {
           });
           if (res.ok) {
             const ride = await res.json();
-            if (ride) {
+            if (ride && (!activeRideId || ride._id === activeRideId || ride.id === activeRideId)) {
               if (ride.otp) setRideOtp(ride.otp);
-              if (ride.is_otp_verified !== undefined) setIsOtpVerified(ride.is_otp_verified);
+              if (ride.is_otp_verified !== undefined) setIsOtpVerified(Boolean(ride.is_otp_verified));
               
               // SafeGo Split real-time status sync
               if (ride.split_status === "pending_passenger" && !splitConsentModalOpen) {

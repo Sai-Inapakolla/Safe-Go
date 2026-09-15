@@ -444,13 +444,62 @@ async def verify_ride_start_otp(
     return _ride_dict(ride, driver_brief)
 
 
+@router.get("/active", response_model=RideResponse)
+async def get_active_ride(current_user: User = Depends(get_current_user)):
+    """
+    Get currently active ride for passenger or driver.
+    """
+    active_statuses = [
+        RideStatus.searching,
+        RideStatus.matched,
+        RideStatus.driver_arriving,
+        RideStatus.in_progress
+    ]
+    # Check if passenger has an active ride
+    ride = await Ride.find(
+        Ride.passenger_id == current_user.id,
+        {"status": {"$in": [s.value for s in active_statuses]}}
+    ).sort("-created_at").first_or_none()
+
+    if not ride:
+        # Check if driver has an active ride
+        driver = await Driver.find_one(Driver.user_id == current_user.id)
+        if driver:
+            ride = await Ride.find(
+                Ride.driver_id == driver.id,
+                {"status": {"$in": [s.value for s in active_statuses]}}
+            ).sort("-created_at").first_or_none()
+
+    if not ride:
+        raise HTTPException(status_code=404, detail="No active ride in progress")
+
+    driver_brief = await _load_driver_brief(ride.driver_id)
+    return _ride_dict(ride, driver_brief)
+
+
+@router.get("/latest", response_model=RideResponse)
+async def get_latest_ride(current_user: User = Depends(get_current_user)):
+    """
+    Get most recent ride for passenger or driver.
+    """
+    ride = await Ride.find(Ride.passenger_id == current_user.id).sort("-created_at").first_or_none()
+    if not ride:
+        driver = await Driver.find_one(Driver.user_id == current_user.id)
+        if driver:
+            ride = await Ride.find(Ride.driver_id == driver.id).sort("-created_at").first_or_none()
+    
+    if not ride:
+        raise HTTPException(status_code=404, detail="No rides found")
+    
+    driver_brief = await _load_driver_brief(ride.driver_id)
+    return _ride_dict(ride, driver_brief)
+
+
 @router.get("/{ride_id}", response_model=RideResponse)
 async def get_ride_by_id(ride_id: str, current_user: User = Depends(get_current_user)):
-    ride = None
-    if PydanticObjectId.is_valid(ride_id):
-        ride = await Ride.get(PydanticObjectId(ride_id))
-    if not ride:
-        ride = await Ride.find(Ride.passenger_id == current_user.id).sort("-created_at").first_or_none()
+    if not PydanticObjectId.is_valid(ride_id):
+        raise HTTPException(status_code=404, detail="Invalid ride ID")
+    ride = await Ride.get(PydanticObjectId(ride_id))
     if not ride:
         raise HTTPException(status_code=404, detail="Ride not found")
     driver_brief = await _load_driver_brief(ride.driver_id)
