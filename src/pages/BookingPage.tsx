@@ -57,32 +57,108 @@ const generateNearbyCabs = (lat: number, lng: number, mode: string = "normal", d
       cabLng = safeBaseLng + Math.cos(angles[i % angles.length]) * distances[i % distances.length];
     }
 
-    if (dbDriver) {
-      return {
-        id: i,
-        driver_id: dbDriver.id || dbDriver._id || null,
-        lat: cabLat,
-        lng: cabLng,
-        name: dbDriver.user?.full_name || fallbackNames[i % fallbackNames.length],
-        rating: dbDriver.average_rating ? Number(dbDriver.average_rating).toFixed(1) : (4.8).toFixed(1),
-        eta: Math.max(1, Math.round(distances[i % distances.length] * 500)),
-      };
-    } else {
-      return {
-        id: i,
-        driver_id: null,
-        lat: cabLat,
-        lng: cabLng,
-        name: fallbackNames[i % fallbackNames.length],
-        rating: ((i % 3) * 0.1 + 4.7).toFixed(1),
-        eta: Math.max(1, Math.round(distances[i % distances.length] * 500)),
-      };
-    }
+    // Is this driver offering SafeGo Split (Dynamic Co-Riding)?
+    // In Pink Mode: Priya Singh (0), Ananya Rao (1), Pooja Verma (4) allow Split sharing
+    // In Normal Mode: Aarav Sharma (0), Rohan Mehta (2), Aditya Patel (3) allow Split sharing
+    const isSplit = dbDriver?.is_split_allowed !== undefined 
+      ? Boolean(dbDriver.is_split_allowed) 
+      : (mode === "pink" ? (i === 0 || i === 1 || i === 4) : (i === 0 || i === 2 || i === 3));
+
+    const name = dbDriver ? (dbDriver.user?.full_name || fallbackNames[i % fallbackNames.length]) : fallbackNames[i % fallbackNames.length];
+    const rating = dbDriver ? (dbDriver.average_rating ? Number(dbDriver.average_rating).toFixed(1) : (4.8).toFixed(1)) : ((i % 3) * 0.1 + 4.7).toFixed(1);
+    const eta = Math.max(1, Math.round(distances[i % distances.length] * 500));
+
+    return {
+      id: i + 1,
+      driver_id: dbDriver ? (dbDriver.id || dbDriver._id || null) : null,
+      lat: cabLat,
+      lng: cabLng,
+      name,
+      rating,
+      eta,
+      is_split_allowed: isSplit,
+      split_discount_percent: 40,
+      corridor_name: isSplit ? "Central Arterial Corridor" : null,
+      seats_available: isSplit ? 1 : 0,
+      co2_saved_kg: 1.8
+    };
   });
 };
 
 // ─── Leaflet Map Panel (no API key) ─────────────────────────────────────────
 declare global { interface Window { L: any } }
+
+const renderCabMarker = (L: any, cab: any, accentColor: string, currentMode: string, fareEst: number) => {
+  const isSplit = Boolean(cab.is_split_allowed);
+  const soloFare = fareEst > 0 ? Math.round(fareEst * (0.98 + (cab.id % 3) * 0.02)) : (cab.price || 180);
+  const splitFare = Math.round(soloFare * 0.6);
+  const savings = soloFare - splitFare;
+
+  let cabHtml = '';
+  if (isSplit) {
+    cabHtml = `
+      <div style="position:relative;display:flex;flex-direction:column;align-items:center;cursor:pointer;">
+        <div style="position:relative;">
+          <div style="background:${currentMode === 'pink' ? '#ec4899' : accentColor};color:white;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;border:2.5px solid white;box-shadow:0 3px 12px rgba(99,102,241,0.55);">
+            ${(cab.name || "D").split(" ").map((n: string) => n[0]).join("")}
+          </div>
+          <div style="position:absolute;-top:2px;-right:2px;background:#6366f1;color:white;font-size:9px;padding:1px 4px;border-radius:999px;border:1.5px solid white;font-weight:900;box-shadow:0 1px 4px rgba(0,0,0,0.3);">👥</div>
+        </div>
+        <div style="background:linear-gradient(135deg, #4f46e5, #7c3aed);color:white;border-radius:6px;padding:2px 6px;font-size:9px;font-weight:800;margin-top:2px;box-shadow:0 2px 8px rgba(79,70,229,0.4);white-space:nowrap;display:flex;align-items:center;gap:2px;">
+          👥 ${cab.name.split(" ")[0]} · 40% OFF
+        </div>
+      </div>
+    `;
+  } else {
+    cabHtml = `
+      <div style="position:relative;display:flex;flex-direction:column;align-items:center;cursor:pointer;">
+        <div style="background:${accentColor};color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.25);">
+          ${(cab.name || "D").split(" ").map((n: string) => n[0]).join("")}
+        </div>
+        <div style="background:hsl(var(--card));border-radius:6px;padding:1px 5px;font-size:9px;font-weight:700;color:hsl(var(--card-foreground));margin-top:2px;box-shadow:0 1px 4px rgba(0,0,0,0.15);white-space:nowrap;">
+          🚖 ${cab.name.split(" ")[0]} (${cab.eta}m)
+        </div>
+      </div>
+    `;
+  }
+
+  const cabIcon = L.divIcon({ html: cabHtml, className: "", iconSize: [42, 56], iconAnchor: [21, 56] });
+  const marker = L.marker([cab.lat, cab.lng], { icon: cabIcon });
+
+  const popupHtml = isSplit ? `
+    <div style="padding:4px;font-family:sans-serif;min-width:180px;">
+      <div style="font-weight:900;font-size:13px;color:#0f172a;display:flex;align-items:center;justify-content:space-between;">
+        <span>🚖 ${cab.name}</span>
+        <span style="color:#eab308;font-size:11px;">⭐ ${cab.rating}</span>
+      </div>
+      <div style="margin:4px 0;padding:4px 6px;border-radius:6px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.25);color:#4f46e5;font-size:10px;font-weight:800;">
+        👥 SafeGo Split Corridor (40% OFF)
+      </div>
+      <div style="font-size:11px;color:#475569;margin-top:3px;">
+        ETA: <b>${cab.eta} min</b> &nbsp;·&nbsp; <span style="color:#10b981;font-weight:900;">₹${splitFare}</span> <span style="text-decoration:line-through;color:#94a3b8;font-size:9px;">₹${soloFare}</span>
+      </div>
+      <div style="font-size:10px;color:#059669;font-weight:700;margin-top:2px;">
+        🌱 Saves ₹${savings} & 1.8kg CO₂
+      </div>
+    </div>
+  ` : `
+    <div style="padding:4px;font-family:sans-serif;min-width:160px;">
+      <div style="font-weight:900;font-size:13px;color:#0f172a;display:flex;align-items:center;justify-content:space-between;">
+        <span>🚖 ${cab.name}</span>
+        <span style="color:#eab308;font-size:11px;">⭐ ${cab.rating}</span>
+      </div>
+      <div style="margin:4px 0;padding:3px 6px;border-radius:6px;background:rgba(100,116,139,0.1);font-size:10px;font-weight:700;color:#475569;">
+        🚖 100% Private Solo Cab
+      </div>
+      <div style="font-size:11px;color:#475569;margin-top:3px;">
+        ETA: <b>${cab.eta} min</b> &nbsp;·&nbsp; <b>₹${soloFare}</b>
+      </div>
+    </div>
+  `;
+
+  marker.bindPopup(popupHtml);
+  return marker;
+};
 
 const MapPanel = ({
   accent,
@@ -129,6 +205,7 @@ const MapPanel = ({
   const [locError, setLocError] = useState(false);
   const [selectedCab, setSelectedCab] = useState<number | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [cabFilter, setCabFilter] = useState<"all" | "split" | "solo">("all");
 
   // Pinpoint on map & On-Map search states
   const [isPinpointMode, setIsPinpointMode] = useState(false);
@@ -236,20 +313,8 @@ const MapPanel = ({
 
       fallbackCabs.forEach((cab: any) => {
         if (Number.isFinite(cab.lat) && Number.isFinite(cab.lng)) {
-          const cabHtml = `
-            <div style="position:relative;display:flex;flex-direction:column;align-items:center;">
-              <div style="background:${accent};color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.25);">
-                ${(cab.name || "D").split(" ").map((n: string) => n[0]).join("")}
-              </div>
-              <div style="background:hsl(var(--card));border-radius:6px;padding:1px 5px;font-size:9px;font-weight:700;color:hsl(var(--card-foreground));margin-top:2px;box-shadow:0 1px 4px rgba(0,0,0,0.15);white-space:nowrap;">
-                🚖 ${cab.name.split(" ")[0]} (${cab.eta}m)
-              </div>
-            </div>
-          `;
-          const cabIcon = L.divIcon({ html: cabHtml, className: "", iconSize: [36, 52], iconAnchor: [18, 52] });
-          L.marker([cab.lat, cab.lng], { icon: cabIcon })
-            .addTo(map)
-            .bindPopup(`<b>🚖 ${cab.name}</b><br>⭐ ${cab.rating} &nbsp;·&nbsp; ETA ${cab.eta} min<br><span style="font-size:10px;color:#64748b;">GPS: ${cab.lat.toFixed(4)}, ${cab.lng.toFixed(4)}</span>`);
+          const marker = renderCabMarker(L, cab, accent, mode, estimatedFare);
+          marker.addTo(map);
         }
       });
 
@@ -644,20 +709,8 @@ const MapPanel = ({
       // 4. Pinpoint Driver Markers
       fallbackCabs.forEach((cab: any) => {
         if (Number.isFinite(cab.lat) && Number.isFinite(cab.lng)) {
-          const cabHtml = `
-            <div style="position:relative;display:flex;flex-direction:column;align-items:center;">
-              <div style="background:${accent};color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.25);">
-                ${(cab.name || "D").split(" ").map((n: string) => n[0]).join("")}
-              </div>
-              <div style="background:hsl(var(--card));border-radius:6px;padding:1px 5px;font-size:9px;font-weight:700;color:hsl(var(--card-foreground));margin-top:2px;box-shadow:0 1px 4px rgba(0,0,0,0.15);white-space:nowrap;">
-                🚖 ${cab.name.split(" ")[0]} (${cab.eta}m)
-              </div>
-            </div>
-          `;
-          const cabIcon = L.divIcon({ html: cabHtml, className: "", iconSize: [36, 52], iconAnchor: [18, 52] });
-          L.marker([cab.lat, cab.lng], { icon: cabIcon })
-            .addTo(mapInstanceRef.current)
-            .bindPopup(`<b>🚖 ${cab.name}</b><br>⭐ ${cab.rating} &nbsp;·&nbsp; ETA ${cab.eta} min<br><span style="font-size:10px;color:#64748b;">GPS: ${cab.lat.toFixed(4)}, ${cab.lng.toFixed(4)}</span>`);
+          const marker = renderCabMarker(L, cab, accent, mode, estimatedFare);
+          marker.addTo(mapInstanceRef.current);
         }
       });
 
@@ -852,10 +905,24 @@ const MapPanel = ({
     }
   };
 
-  const cabsWithPrices = cabs.map((cab, i) => ({
-    ...cab,
-    price: estimatedFare > 0 ? Math.round(estimatedFare * (0.98 + (i % 3) * 0.02)) : 0
-  }));
+  const cabsWithPrices = cabs.map((cab, i) => {
+    const solo_fare = estimatedFare > 0 ? Math.round(estimatedFare * (0.98 + (i % 3) * 0.02)) : (cab.price || 180);
+    const split_fare = Math.round(solo_fare * 0.6);
+    const savings = solo_fare - split_fare;
+    return {
+      ...cab,
+      solo_fare,
+      split_fare,
+      savings,
+      price: cab.is_split_allowed ? split_fare : solo_fare
+    };
+  });
+
+  const displayedCabs = cabsWithPrices.filter(cab => {
+    if (cabFilter === "split") return cab.is_split_allowed;
+    if (cabFilter === "solo") return !cab.is_split_allowed;
+    return true;
+  });
 
   return (
     <div className={`relative h-full w-full bg-secondary ${isPinpointMode ? 'cursor-crosshair' : ''}`}>
@@ -1009,17 +1076,55 @@ const MapPanel = ({
       )}
       {!locating && cabs.length > 0 && (
         <div className="absolute bottom-0 left-0 right-0 z-30 px-3 pb-3">
+          {/* SafeGo Split Category Filter Pills */}
+          <div className="flex items-center gap-1.5 mb-2 px-1 overflow-x-auto scrollbar-hide">
+            <button
+              type="button"
+              onClick={() => setCabFilter("all")}
+              className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-all shrink-0 ${
+                cabFilter === "all"
+                  ? "bg-foreground text-background shadow-md"
+                  : "bg-card/90 text-muted-foreground hover:text-foreground backdrop-blur-md border border-border/50"
+              }`}
+            >
+              ✨ All Cabs ({cabsWithPrices.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setCabFilter("split")}
+              className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-all shrink-0 flex items-center gap-1 ${
+                cabFilter === "split"
+                  ? "bg-indigo-600 text-white shadow-indigo-500/30 shadow-md ring-2 ring-indigo-400"
+                  : "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/25 backdrop-blur-md border border-indigo-500/30"
+              }`}
+            >
+              <Users size={11} />
+              SafeGo Split ({cabsWithPrices.filter(c => c.is_split_allowed).length}) · 40% OFF
+            </button>
+            <button
+              type="button"
+              onClick={() => setCabFilter("solo")}
+              className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-all shrink-0 ${
+                cabFilter === "solo"
+                  ? "bg-primary text-primary-foreground shadow-md"
+                  : "bg-card/90 text-muted-foreground hover:text-foreground backdrop-blur-md border border-border/50"
+              }`}
+            >
+              🚖 Solo Private ({cabsWithPrices.filter(c => !c.is_split_allowed).length})
+            </button>
+          </div>
+
           <div
-            className="rounded-2xl p-3 flex gap-2 overflow-x-auto max-w-full"
+            className="rounded-2xl p-3 flex gap-2.5 overflow-x-auto max-w-full scrollbar-hide"
             style={{
-              background: "hsl(var(--card) / 0.93)",
+              background: "hsl(var(--card) / 0.94)",
               backdropFilter: "blur(14px)",
               WebkitBackdropFilter: "blur(14px)",
               boxShadow: "0 -2px 20px rgba(0,0,0,0.08)",
               scrollbarWidth: "none",
             }}
           >
-            {cabsWithPrices.map((cab) => (
+            {displayedCabs.map((cab) => (
               <div
                 key={cab.id}
                 onClick={() => {
@@ -1027,37 +1132,55 @@ const MapPanel = ({
                   setSelectedCab(isSelecting ? cab.id : null);
                   if (onCabSelect) onCabSelect(isSelecting ? cab : null);
                 }}
-                className="flex-shrink-0 flex flex-col items-center rounded-2xl border px-4 py-3 min-w-[115px] cursor-pointer transition-all relative"
+                className="flex-shrink-0 flex flex-col items-center rounded-2xl border px-3.5 py-3 min-w-[130px] cursor-pointer transition-all relative"
                 style={{
-                  borderColor: cab.id === selectedCab ? accent : "hsl(var(--border))",
+                  borderColor: cab.id === selectedCab ? (cab.is_split_allowed ? "#6366f1" : accent) : "hsl(var(--border))",
                   borderWidth: cab.id === selectedCab ? "2px" : "1px",
-                  backgroundColor: cab.id === selectedCab ? `${accent}12` : "hsl(var(--background))",
+                  backgroundColor: cab.id === selectedCab ? (cab.is_split_allowed ? "#6366f115" : `${accent}12`) : "hsl(var(--background))",
                   transform: cab.id === selectedCab ? "translateY(-3px)" : "none",
-                  boxShadow: cab.id === selectedCab ? `0 6px 16px ${accent}30` : "0 1px 4px rgba(0,0,0,0.06)",
+                  boxShadow: cab.id === selectedCab ? `0 6px 18px ${cab.is_split_allowed ? "rgba(99,102,241,0.35)" : `${accent}30`}` : "0 1px 4px rgba(0,0,0,0.06)",
                 }}
               >
                 {cab.id === selectedCab && (
-                  <div className="absolute top-2 right-2 flex items-center justify-center bg-white rounded-full">
-                    <CheckCircle2 size={16} style={{ color: accent }} className="fill-white" />
+                  <div className="absolute top-2 right-2 flex items-center justify-center bg-white rounded-full shadow">
+                    <CheckCircle2 size={16} style={{ color: cab.is_split_allowed ? "#6366f1" : accent }} className="fill-white" />
                   </div>
                 )}
+                {cab.is_split_allowed && (
+                  <span className="mb-1.5 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-sm flex items-center gap-0.5">
+                    <Users size={8} /> Split 40% OFF
+                  </span>
+                )}
                 <div
-                  className="h-12 w-12 rounded-full flex items-center justify-center text-sm font-bold text-white mb-2 shadow-sm"
-                  style={{ backgroundColor: accent }}
+                  className="h-11 w-11 rounded-full flex items-center justify-center text-xs font-bold text-white mb-1.5 shadow-sm"
+                  style={{ backgroundColor: cab.is_split_allowed ? "#6366f1" : accent }}
                 >
                   {(cab.name || "D").split(" ").map((n: string) => n[0]).join("")}
                 </div>
-                <p className="text-xs font-bold text-foreground leading-tight text-center">{cab.name}</p>
-                <div className="flex gap-1.5 items-center mt-1 whitespace-nowrap">
-                  <span className="text-[11px] text-muted-foreground font-medium">⭐ {cab.rating}</span>
-                  {cab.price > 0 && <span className="text-[11px] font-black text-blue-600">₹{cab.price}</span>}
+                <p className="text-xs font-bold text-foreground leading-tight text-center truncate max-w-[110px]">{cab.name}</p>
+                <div className="flex gap-1 items-center mt-1 whitespace-nowrap">
+                  <span className="text-[10px] text-muted-foreground font-medium">⭐ {cab.rating}</span>
+                  {cab.is_split_allowed ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-[11px] font-black text-emerald-600 dark:text-emerald-400">₹{cab.split_fare}</span>
+                      <span className="text-[9px] line-through text-muted-foreground">₹{cab.solo_fare}</span>
+                    </div>
+                  ) : (
+                    cab.solo_fare > 0 && <span className="text-[11px] font-black text-blue-600">₹{cab.solo_fare}</span>
+                  )}
                 </div>
-                <span
-                  className="mt-2.5 rounded-full px-3 py-1 text-[11px] font-bold text-white shadow-sm"
-                  style={{ backgroundColor: accent }}
-                >
-                  {cab.eta} min
-                </span>
+                {cab.is_split_allowed ? (
+                  <span className="mt-2 rounded-full px-2.5 py-0.5 text-[9px] font-black text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 border border-emerald-500/20">
+                    Save ₹{cab.savings} · {cab.eta}m
+                  </span>
+                ) : (
+                  <span
+                    className="mt-2 rounded-full px-2.5 py-0.5 text-[10px] font-bold text-white shadow-sm"
+                    style={{ backgroundColor: accent }}
+                  >
+                    {cab.eta} min
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -1163,6 +1286,7 @@ const BookingPage = () => {
   const [isSearchingSplitCabs, setIsSearchingSplitCabs] = useState<boolean>(false);
   const [isJoiningSplitCab, setIsJoiningSplitCab] = useState<boolean>(false);
   const [splitJoinSuccessData, setSplitJoinSuccessData] = useState<any>(null);
+  const [operatorCategoryFilter, setOperatorCategoryFilter] = useState<"all" | "split" | "solo">("all");
 
   // SafeGo Split 30s Countdown Timer Effect
   useEffect(() => {
@@ -2558,13 +2682,35 @@ const BookingPage = () => {
   };
 
   const handleAutoSelectNearestCab = (overrideDriver?: any) => {
-    const defaultDriverObj = overrideDriver || {
-      name: "Aarav Sharma",
-      price: rideDetails.fare || 180,
-      eta: 3,
-      rating: 4.95,
-      driver_id: null
-    };
+    let defaultDriverObj = overrideDriver;
+    if (!defaultDriverObj) {
+      const nearby = generateNearbyCabs(
+        pickupCoords?.lat || mapCenter?.lat || 22.3023,
+        pickupCoords?.lng || mapCenter?.lng || 73.3762,
+        mode.id,
+        activeDrivers
+      );
+      // Select best matching cab based on active category filter
+      const matchingCab = operatorCategoryFilter === "solo"
+        ? (nearby.find((c: any) => !c.is_split_allowed) || nearby[0])
+        : (nearby.find((c: any) => c.is_split_allowed) || nearby[0]);
+
+      const baseFare = rideDetails.fare || 180;
+      const splitFare = Math.round(baseFare * 0.6);
+      const isSplit = matchingCab?.is_split_allowed ?? (operatorCategoryFilter !== "solo");
+      defaultDriverObj = {
+        ...matchingCab,
+        name: matchingCab?.name || (mode.id === "pink" ? "Ananya Rao" : "Aarav Sharma"),
+        price: isSplit ? splitFare : baseFare,
+        solo_fare: baseFare,
+        split_fare: splitFare,
+        savings: baseFare - splitFare,
+        is_split_allowed: isSplit,
+        eta: matchingCab?.eta || 2,
+        rating: matchingCab?.rating || 4.95,
+        driver_id: matchingCab?.driver_id || null
+      };
+    }
     setSelectedDriver(defaultDriverObj);
     setAskStatus("asking");
     setTimeout(() => {
@@ -2617,6 +2763,9 @@ const BookingPage = () => {
       setAskStatus("asking");
 
       const driverObj = overrideDriver || selectedDriver;
+      const isSplitRide = driverObj?.is_split_allowed !== undefined ? Boolean(driverObj.is_split_allowed) : isSplitAllowed;
+      const chosenFare = isSplitRide && driverObj?.split_fare ? driverObj.split_fare : (driverObj?.price || rideDetails.fare || 180);
+
       const payload: any = {
         mode: mode.id,
         pickup_address: pickup || "Pickup Location",
@@ -2630,8 +2779,8 @@ const BookingPage = () => {
         emergency_contact_name: emergencyContactName,
         emergency_contact_phone: emergencyContactPhone,
         driver_id: driverObj?.driver_id && driverObj.driver_id.length === 24 ? driverObj.driver_id : null,
-        fare_amount: driverObj?.price || rideDetails.fare || 180,
-        is_split_allowed: isSplitAllowed
+        fare_amount: chosenFare,
+        is_split_allowed: isSplitRide
       };
 
       if (mode.id === "pink") {
@@ -3572,17 +3721,149 @@ const BookingPage = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="pt-4">
-                      <h3 className="text-sm font-black uppercase tracking-widest text-muted-foreground mb-4 pl-1 text-center">{t('booking.available_operators', 'Available Operators Nearby')}</h3>
+                    <div className="pt-4 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-black uppercase tracking-widest text-muted-foreground pl-1">
+                          {t('booking.available_operators', 'Available Operators Nearby')}
+                        </h3>
+                        {selectedDriver && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDriver(null)}
+                            className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
+                          >
+                            Change Pilot
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Category Switcher Tabs */}
+                      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-secondary/60 border border-border/40">
+                        <button
+                          type="button"
+                          onClick={() => setOperatorCategoryFilter("all")}
+                          className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                            operatorCategoryFilter === "all"
+                              ? "bg-card text-foreground shadow-sm"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          ✨ All Cabs
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setOperatorCategoryFilter("split")}
+                          className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+                            operatorCategoryFilter === "split"
+                              ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/30 ring-2 ring-indigo-400"
+                              : "text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10"
+                          }`}
+                        >
+                          <Users size={12} />
+                          SafeGo Split (40% OFF)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setOperatorCategoryFilter("solo")}
+                          className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                            operatorCategoryFilter === "solo"
+                              ? "bg-card text-foreground shadow-sm"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          🚖 Solo Pilot
+                        </button>
+                      </div>
+
                       {!selectedDriver ? (
-                        <div className="group rounded-[2.5rem] border-2 border-dashed border-primary/40 bg-card p-8 text-center transition-all hover:bg-card hover:border-primary/70 premium-shadow space-y-4 animate-in fade-in duration-300">
-                          <div className="mx-auto w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center shadow-sm text-primary group-hover:rotate-12 transition-transform">
-                            <Car size={28} />
+                        <div className="space-y-3 animate-in fade-in duration-300">
+                          {/* Nearby Operators Cards List */}
+                          <div className="space-y-2.5">
+                            {generateNearbyCabs(
+                              pickupCoords?.lat || mapCenter?.lat || 22.3023,
+                              pickupCoords?.lng || mapCenter?.lng || 73.3762,
+                              mode.id,
+                              activeDrivers
+                            )
+                              .map((cab, i) => {
+                                const solo_fare = rideDetails.fare > 0 ? Math.round(rideDetails.fare * (0.98 + (i % 3) * 0.02)) : 180;
+                                const split_fare = Math.round(solo_fare * 0.6);
+                                const savings = solo_fare - split_fare;
+                                return {
+                                  ...cab,
+                                  solo_fare,
+                                  split_fare,
+                                  savings,
+                                  price: cab.is_split_allowed ? split_fare : solo_fare
+                                };
+                              })
+                              .filter((cab) => {
+                                if (operatorCategoryFilter === "split") return cab.is_split_allowed;
+                                if (operatorCategoryFilter === "solo") return !cab.is_split_allowed;
+                                return true;
+                              })
+                              .map((cab) => (
+                                <div
+                                  key={cab.id}
+                                  onClick={() => setSelectedDriver(cab)}
+                                  className={`p-4 rounded-3xl border transition-all cursor-pointer hover:scale-[1.01] hover:shadow-lg flex items-center justify-between gap-4 ${
+                                    cab.is_split_allowed
+                                      ? "bg-gradient-to-r from-indigo-500/10 via-purple-500/5 to-card border-indigo-500/30 hover:border-indigo-500/60"
+                                      : "bg-card border-border/60 hover:border-primary/50"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-3.5 min-w-0">
+                                    <div className="relative shrink-0">
+                                      <div
+                                        className="h-12 w-12 rounded-2xl flex items-center justify-center font-black text-white text-sm shadow-md"
+                                        style={{ backgroundColor: cab.is_split_allowed ? "#6366f1" : mode.accent }}
+                                      >
+                                        {(cab.name || "D").split(" ").map((n: string) => n[0]).join("")}
+                                      </div>
+                                      <div className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-background bg-green-500 shadow-sm" />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <p className="text-sm font-black text-foreground truncate">{cab.name}</p>
+                                        <span className="flex items-center gap-0.5 text-xs font-black text-amber-500">
+                                          <Star size={12} className="fill-current" />
+                                          {cab.rating}
+                                        </span>
+                                      </div>
+                                      {cab.is_split_allowed ? (
+                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-indigo-600 text-white flex items-center gap-1">
+                                            <Users size={9} /> Split Available · 40% OFF
+                                          </span>
+                                          <span className="text-[10px] text-teal-600 dark:text-teal-400 font-bold">🌱 -1.8kg CO₂</span>
+                                        </div>
+                                      ) : (
+                                        <p className="text-[11px] text-muted-foreground font-medium">🚖 100% Private Solo Cab · ETA {cab.eta}m</p>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="text-right shrink-0">
+                                    {cab.is_split_allowed ? (
+                                      <div>
+                                        <div className="flex items-baseline justify-end gap-1.5">
+                                          <span className="text-lg font-black text-emerald-600 dark:text-emerald-400 tracking-tight">₹{cab.split_fare}</span>
+                                          <span className="text-xs line-through text-muted-foreground">₹{cab.solo_fare}</span>
+                                        </div>
+                                        <span className="block text-[9px] font-extrabold text-emerald-600 uppercase tracking-wider">Save ₹{cab.savings}</span>
+                                      </div>
+                                    ) : (
+                                      <div>
+                                        <span className="text-lg font-black text-foreground tracking-tight">₹{cab.solo_fare}</span>
+                                        <span className="block text-[10px] text-muted-foreground font-bold">{cab.eta} min away</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
                           </div>
-                          <div>
-                            <p className="text-base font-black text-foreground">{t('booking.available_operators', '5 Verified Cabs Available Nearby')}</p>
-                            <p className="text-xs text-muted-foreground mt-1 font-medium">Tap any vehicle on the map, or click below to auto-match & request the nearest verified pilot.</p>
-                          </div>
+
+                          {/* Quick 1-Click Auto-Match Action Button */}
                           <div className="pt-2">
                             <button
                               type="button"
@@ -3594,7 +3875,9 @@ const BookingPage = () => {
                                   ? "bg-rose-500/20 text-rose-500 cursor-not-allowed border border-rose-500/30"
                                   : mode.id === "pink" && userGender === "male" && (!isAccompaniedDeclared || !femaleCompanionName.trim())
                                     ? "bg-pink-500/20 text-pink-600 dark:text-pink-400 cursor-not-allowed border border-pink-500/30"
-                                    : "bg-primary text-primary-foreground hover:brightness-110 active:scale-95 shadow-xl shadow-primary/20"
+                                    : operatorCategoryFilter === "split"
+                                      ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:brightness-110 active:scale-95 shadow-xl shadow-indigo-500/25"
+                                      : "bg-primary text-primary-foreground hover:brightness-110 active:scale-95 shadow-xl shadow-primary/20"
                                 }`}
                             >
                               {mode.id === "pink" && userGender === "male" && passengers === 1 ? (
@@ -3610,27 +3893,33 @@ const BookingPage = () => {
                               ) : (
                                 <>
                                   <Zap size={16} className="fill-current" />
-                                  {t('booking.book_nearest_now', 'AUTO-MATCH & BOOK NEAREST CAB NOW')}
+                                  {operatorCategoryFilter === "split" ? "⚡ AUTO-MATCH & BOOK SHARED CAB (40% OFF)" : t('booking.book_nearest_now', 'AUTO-MATCH & BOOK NEAREST CAB NOW')}
                                 </>
                               )}
                             </button>
                           </div>
                         </div>
                       ) : (
-                        <div className="rounded-[2.5rem] bg-card border border-border/40 p-8 premium-shadow animate-in slide-in-from-bottom-4 duration-500 relative transition-all hover:-translate-y-1">
-                          <div className="flex items-center justify-between mb-6">
-                            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-secondary text-[10px] font-black uppercase tracking-[0.1em] text-muted-foreground">
-                              <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                              {t('booking.active_status', 'Active Status')}
+                        /* Selected Operator Console */
+                        <div className="rounded-[2.5rem] bg-card border border-border/40 p-7 premium-shadow animate-in slide-in-from-bottom-4 duration-500 relative transition-all hover:-translate-y-1 space-y-6">
+                          <div className="flex items-center justify-between">
+                            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.1em] ${
+                              selectedDriver.is_split_allowed
+                                ? "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30"
+                                : "bg-secondary text-muted-foreground"
+                            }`}>
+                              <div className={`h-1.5 w-1.5 rounded-full ${selectedDriver.is_split_allowed ? "bg-indigo-500" : "bg-primary"} animate-pulse`} />
+                              {selectedDriver.is_split_allowed ? "SafeGo Split Enabled" : t('booking.active_status', 'Active Status')}
                             </div>
                             <div className="flex items-center gap-1 font-black text-amber-500 text-xs">
                               <Star size={14} className="fill-current" />
                               {selectedDriver.rating}
                             </div>
                           </div>
+
                           <div className={`flex items-center gap-5 transition-all duration-500 ${askStatus === "rejected" ? "opacity-40 grayscale" : "opacity-100"}`}>
                             <div className="relative">
-                              <div className="flex h-16 w-16 items-center justify-center rounded-2xl text-xl font-black text-white shadow-xl shadow-black/20" style={{ backgroundColor: askStatus === "accepted" ? "#10b981" : mode.accent }}>
+                              <div className="flex h-16 w-16 items-center justify-center rounded-2xl text-xl font-black text-white shadow-xl shadow-black/20" style={{ backgroundColor: askStatus === "accepted" ? "#10b981" : selectedDriver.is_split_allowed ? "#6366f1" : mode.accent }}>
                                 {(selectedDriver?.name || "D").split(" ").map((n: string) => n[0]).join("")}
                               </div>
                               <div className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full border-2 border-background bg-green-500 shadow-sm" title="Verified Driver" />
@@ -3640,11 +3929,52 @@ const BookingPage = () => {
                               <p className="text-xs text-muted-foreground mt-2 font-black uppercase tracking-widest opacity-60">{t('booking.plate_label', 'Plate: {{plate}}', { plate: "ABC 123" })}</p>
                             </div>
                             <div className="text-right">
-                              <span className="block text-2xl font-black text-foreground tracking-tighter">₹{selectedDriver.price}</span>
-                              <span className="block mt-1 text-[10px] font-bold text-blue-600 uppercase tracking-widest">{t('booking.eta_minutes', 'ETA {{minutes}}m', { minutes: selectedDriver.eta })}</span>
+                              {selectedDriver.is_split_allowed ? (
+                                <div>
+                                  <div className="flex items-baseline justify-end gap-1.5">
+                                    <span className="block text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tighter">
+                                      ₹{selectedDriver.split_fare || Math.round(selectedDriver.price * 0.6)}
+                                    </span>
+                                    <span className="text-xs line-through text-muted-foreground">
+                                      ₹{selectedDriver.solo_fare || selectedDriver.price}
+                                    </span>
+                                  </div>
+                                  <span className="block mt-1 text-[10px] font-bold text-emerald-600 uppercase tracking-widest">
+                                    40% OFF · ETA {selectedDriver.eta}m
+                                  </span>
+                                </div>
+                              ) : (
+                                <div>
+                                  <span className="block text-2xl font-black text-foreground tracking-tighter">₹{selectedDriver.price}</span>
+                                  <span className="block mt-1 text-[10px] font-bold text-blue-600 uppercase tracking-widest">{t('booking.eta_minutes', 'ETA {{minutes}}m', { minutes: selectedDriver.eta })}</span>
+                                </div>
+                              )}
                             </div>
                           </div>
-                          <div className={`mt-8 transition-all duration-500 ${askStatus === "rejected" ? "opacity-40" : "opacity-100"}`}>
+
+                          {/* SafeGo Split Value Matrix Breakdown Card for Selected Driver */}
+                          {selectedDriver.is_split_allowed && (
+                            <div className="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 space-y-2.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-bold text-muted-foreground">Original Solo Fare:</span>
+                                <span className="line-through text-muted-foreground font-semibold">₹{selectedDriver.solo_fare || selectedDriver.price || 180}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-xs font-black">
+                                <span className="text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                                  <Users size={13} /> Your Shared Fare (40% OFF):
+                                </span>
+                                <span className="text-emerald-600 dark:text-emerald-400 text-sm">
+                                  ₹{selectedDriver.split_fare || Math.round((selectedDriver.price || 180) * 0.6)}
+                                </span>
+                              </div>
+                              <div className="pt-2 border-t border-indigo-500/15 flex items-center justify-between text-[11px] text-muted-foreground">
+                                <span>Pilot Bonus: <strong className="text-emerald-600">+₹20</strong></span>
+                                <span>Eco: <strong className="text-teal-600">🌱 -1.8kg CO₂</strong></span>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className={`transition-all duration-500 ${askStatus === "rejected" ? "opacity-40" : "opacity-100"}`}>
                             {chatOpen ? (
                               <div className="rounded-3xl border border-border/50 bg-secondary/20 p-2 animate-in fade-in zoom-in-95 duration-300">
                                 <div className="flex items-center justify-between px-4 py-3">
@@ -3708,7 +4038,15 @@ const BookingPage = () => {
                                     onClick={askStatus === "accepted" ? handleConfirmRide : handleAskDriver}
                                     disabled={askStatus === "asking" || (mode.id === "pink" && userGender === "male" && (passengers === 1 || !isAccompaniedDeclared || !femaleCompanionName.trim()))}
                                     className="flex-1 group relative rounded-2xl py-4 text-xs font-black uppercase tracking-widest text-white transition-all shadow-xl hover:shadow-2xl hover:brightness-110 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden"
-                                    style={{ backgroundColor: askStatus === "accepted" ? "#10b981" : askStatus === "rejected" ? "#ef4444" : mode.accent }}
+                                    style={{
+                                      backgroundColor: askStatus === "accepted"
+                                        ? "#10b981"
+                                        : askStatus === "rejected"
+                                          ? "#ef4444"
+                                          : selectedDriver.is_split_allowed
+                                            ? "#6366f1"
+                                            : mode.accent
+                                    }}
                                   >
                                     <div className="flex items-center justify-center gap-2">
                                       {mode.id === "pink" && userGender === "male" && passengers === 1 ? (
@@ -3722,7 +4060,7 @@ const BookingPage = () => {
                                           COMPLETE DECLARATION
                                         </>
                                       ) : askStatus === "idle" || askStatus === "rejected" ? (
-                                        <>{t('booking.send_request', 'SEND REQUEST')}</>
+                                        <>{selectedDriver.is_split_allowed ? "⚡ REQUEST & JOIN SHARED RIDE" : t('booking.send_request', 'SEND REQUEST')}</>
                                       ) : askStatus === "asking" ? (
                                         <><Loader2 size={16} className="animate-spin" /> {t('booking.pending', 'PENDING...')}</>
                                       ) : (
@@ -3735,7 +4073,7 @@ const BookingPage = () => {
                             )}
                           </div>
                           {askStatus === "accepted" && (
-                            <div className="mt-6 flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-green-500/10 border border-green-500/20 text-green-600 font-bold text-[10px] uppercase tracking-widest animate-in fade-in slide-in-from-top-2">
+                            <div className="mt-4 flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-green-500/10 border border-green-500/20 text-green-600 font-bold text-[10px] uppercase tracking-widest animate-in fade-in slide-in-from-top-2">
                               <CheckCircle2 size={12} />
                               {t('booking.driver_ready', 'Driver is ready to assist you')}
                             </div>
