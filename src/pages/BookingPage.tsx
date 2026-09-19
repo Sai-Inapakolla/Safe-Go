@@ -57,12 +57,9 @@ const generateNearbyCabs = (lat: number, lng: number, mode: string = "normal", d
       cabLng = safeBaseLng + Math.cos(angles[i % angles.length]) * distances[i % distances.length];
     }
 
-    // Is this driver offering SafeGo Split (Dynamic Co-Riding)?
-    // In Pink Mode: Priya Singh (0), Ananya Rao (1), Pooja Verma (4) allow Split sharing
-    // In Normal Mode: Aarav Sharma (0), Rohan Mehta (2), Aditya Patel (3) allow Split sharing
-    const isSplit = dbDriver?.is_split_allowed !== undefined 
-      ? Boolean(dbDriver.is_split_allowed) 
-      : (mode === "pink" ? (i === 0 || i === 1 || i === 4) : (i === 0 || i === 2 || i === 3));
+    // Normal fleet drivers are standard solo cabs by default
+    // SafeGo Split options are only dynamically attached when a real ride is booked with split preference
+    const isSplit = dbDriver?.is_split_allowed !== undefined ? Boolean(dbDriver.is_split_allowed) : false;
 
     const name = dbDriver ? (dbDriver.user?.full_name || fallbackNames[i % fallbackNames.length]) : fallbackNames[i % fallbackNames.length];
     const rating = dbDriver ? (dbDriver.average_rating ? Number(dbDriver.average_rating).toFixed(1) : (4.8).toFixed(1)) : ((i % 3) * 0.1 + 4.7).toFixed(1);
@@ -78,8 +75,8 @@ const generateNearbyCabs = (lat: number, lng: number, mode: string = "normal", d
       eta,
       is_split_allowed: isSplit,
       split_discount_percent: 40,
-      corridor_name: isSplit ? "Central Arterial Corridor" : null,
-      seats_available: isSplit ? 1 : 0,
+      corridor_name: null,
+      seats_available: 0,
       co2_saved_kg: 1.8
     };
   });
@@ -172,6 +169,7 @@ const MapPanel = ({
   onTravelComplete,
   estimatedFare = 0,
   activeDrivers = [],
+  availableSplitRides = [],
   onSelectMapDestination,
   onSelectMapPickup,
   pickupCoords,
@@ -188,6 +186,7 @@ const MapPanel = ({
   onTravelComplete?: () => void,
   estimatedFare?: number,
   activeDrivers?: any[],
+  availableSplitRides?: any[],
   onSelectMapDestination?: (coords: { lat: number, lng: number }, address: string) => void,
   onSelectMapPickup?: (coords: { lat: number, lng: number }, address: string) => void,
   pickupCoords?: { lat: number, lng: number } | null,
@@ -647,7 +646,30 @@ const MapPanel = ({
         }
       }
       const fallbackCabs = generateNearbyCabs(activeTarget.lat, activeTarget.lng, mode, activeDrivers);
-      setCabs(fallbackCabs);
+      let combinedCabs = fallbackCabs;
+      if (availableSplitRides && availableSplitRides.length > 0) {
+        const splitCabsFormatted = availableSplitRides.map((sr: any, idx: number) => ({
+          id: 1000 + idx,
+          ride_id: sr._id || sr.id,
+          driver_id: sr.driver_id || sr.driver?._id || null,
+          lat: sr.pickup_latitude ? Number(sr.pickup_latitude) : (activeTarget.lat + 0.003 * (idx + 1)),
+          lng: sr.pickup_longitude ? Number(sr.pickup_longitude) : (activeTarget.lng + 0.003 * (idx + 1)),
+          name: sr.driver?.user?.full_name || sr.driver?.name || "Corridor Shared Cab",
+          rating: (4.9).toFixed(1),
+          eta: 2,
+          is_split_allowed: true,
+          is_active_corridor_ride: true,
+          split_discount_percent: 40,
+          corridor_name: `${sr.pickup_address?.split(',')[0] || 'Corridor'} ➔ ${sr.destination_address?.split(',')[0] || 'Destination'}`,
+          seats_available: 1,
+          primary_passenger_name: sr.passenger_name || "Verified Traveler",
+          original_fare: sr.original_fare || sr.fare_amount || 180,
+          split_fare: sr.split_co_passenger_fare || Math.round((sr.fare_amount || 180) * 0.6),
+          co2_saved_kg: 1.8,
+        }));
+        combinedCabs = [...splitCabsFormatted, ...fallbackCabs];
+      }
+      setCabs(combinedCabs);
 
       mapInstanceRef.current.eachLayer((layer: any) => {
         if ((layer instanceof L.Marker || layer instanceof L.Circle) && (!layer.options || !layer.options.isRouteLayer)) {
@@ -707,7 +729,7 @@ const MapPanel = ({
       }
 
       // 4. Pinpoint Driver Markers
-      fallbackCabs.forEach((cab: any) => {
+      combinedCabs.forEach((cab: any) => {
         if (Number.isFinite(cab.lat) && Number.isFinite(cab.lng)) {
           const marker = renderCabMarker(L, cab, accent, mode, estimatedFare);
           marker.addTo(mapInstanceRef.current);
@@ -716,7 +738,7 @@ const MapPanel = ({
 
       setLocError(false);
     }
-  }, [centerLoc, pickupCoords, destinationCoords, accent, mode, mapReady, activeDrivers]);
+  }, [centerLoc, pickupCoords, destinationCoords, accent, mode, mapReady, activeDrivers, availableSplitRides]);
 
   // Handle Map Click in Pinpoint Mode
   useEffect(() => {
@@ -1089,18 +1111,20 @@ const MapPanel = ({
             >
               ✨ All Cabs ({cabsWithPrices.length})
             </button>
-            <button
-              type="button"
-              onClick={() => setCabFilter("split")}
-              className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-all shrink-0 flex items-center gap-1 ${
-                cabFilter === "split"
-                  ? "bg-indigo-600 text-white shadow-indigo-500/30 shadow-md ring-2 ring-indigo-400"
-                  : "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/25 backdrop-blur-md border border-indigo-500/30"
-              }`}
-            >
-              <Users size={11} />
-              SafeGo Split ({cabsWithPrices.filter(c => c.is_split_allowed).length}) · 40% OFF
-            </button>
+            {cabsWithPrices.filter(c => c.is_split_allowed).length > 0 && (
+              <button
+                type="button"
+                onClick={() => setCabFilter("split")}
+                className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-all shrink-0 flex items-center gap-1 ${
+                  cabFilter === "split"
+                    ? "bg-indigo-600 text-white shadow-indigo-500/30 shadow-md ring-2 ring-indigo-400 animate-pulse"
+                    : "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/25 backdrop-blur-md border border-indigo-500/30"
+                }`}
+              >
+                <Users size={11} />
+                SafeGo Split ({cabsWithPrices.filter(c => c.is_split_allowed).length}) · 40% OFF
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setCabFilter("solo")}
@@ -1275,7 +1299,8 @@ const BookingPage = () => {
   });
 
   // ─── SafeGo Split (Dynamic Co-Riding) States & Handlers ───────────────────
-  const [isSplitAllowed, setIsSplitAllowed] = useState<boolean>(true);
+  const [isSplitAllowed, setIsSplitAllowed] = useState<boolean>(false);
+  const [availableSplitRides, setAvailableSplitRides] = useState<any[]>([]);
   const [splitRideData, setSplitRideData] = useState<any>(null);
   const [splitConsentModalOpen, setSplitConsentModalOpen] = useState<boolean>(false);
   const [splitCountdown, setSplitCountdown] = useState<number>(30);
@@ -1287,6 +1312,42 @@ const BookingPage = () => {
   const [isJoiningSplitCab, setIsJoiningSplitCab] = useState<boolean>(false);
   const [splitJoinSuccessData, setSplitJoinSuccessData] = useState<any>(null);
   const [operatorCategoryFilter, setOperatorCategoryFilter] = useState<"all" | "split" | "solo">("all");
+
+  const fetchLiveSplitRides = async () => {
+    try {
+      const token = localStorage.getItem("token") || "dummy-token";
+      const lat = pickupCoords?.lat || mapCenter?.lat || 22.3023;
+      const lng = pickupCoords?.lng || mapCenter?.lng || 73.3762;
+      const gender = localStorage.getItem("safego_user_gender") || userGender;
+      const res = await fetch(`${API_URL}/api/rides/split/available?mode=${mode.id}&latitude=${lat}&longitude=${lng}&gender=${gender}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const rides = await res.json();
+        const curId = currentRideId || localStorage.getItem("safego_current_ride_id");
+        const filtered = (rides || []).filter((r: any) => {
+          const rId = String(r._id || r.id);
+          return rId !== curId;
+        });
+        setAvailableSplitRides(filtered);
+      }
+    } catch (e) {
+      console.warn("Fetch live split rides error:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchLiveSplitRides();
+    const interval = setInterval(fetchLiveSplitRides, 3500);
+    const handleSplitEvent = () => fetchLiveSplitRides();
+    window.addEventListener("safego_split_ride_updated", handleSplitEvent);
+    window.addEventListener("storage", handleSplitEvent);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("safego_split_ride_updated", handleSplitEvent);
+      window.removeEventListener("storage", handleSplitEvent);
+    };
+  }, [mode.id, pickupCoords, mapCenter, currentRideId, userGender]);
 
   // SafeGo Split 30s Countdown Timer Effect
   useEffect(() => {
@@ -1494,7 +1555,7 @@ const BookingPage = () => {
       const cancelledRideRecord = {
         _id: finalData.rideId || ("ride_cancel_" + Date.now()),
         id: finalData.rideId || ("ride_cancel_" + Date.now()),
-        mode: mode ? mode.charAt(0).toUpperCase() + mode.slice(1) : "Pink",
+        mode: mode?.name || mode?.id || "Pink",
         pickup_address: pickup || "Pickup Location",
         destination_address: destination || "Destination",
         route: `${pickup || "Pickup Location"} → ${destination || "Destination"}`,
@@ -2684,20 +2745,23 @@ const BookingPage = () => {
   const handleAutoSelectNearestCab = (overrideDriver?: any) => {
     let defaultDriverObj = overrideDriver;
     if (!defaultDriverObj) {
+      if (operatorCategoryFilter === "split" && availableSplitRides.length > 0) {
+        const bestSplit = availableSplitRides[0];
+        handleRequestJoinCorridorCab(bestSplit);
+        return;
+      }
       const nearby = generateNearbyCabs(
         pickupCoords?.lat || mapCenter?.lat || 22.3023,
         pickupCoords?.lng || mapCenter?.lng || 73.3762,
         mode.id,
         activeDrivers
       );
-      // Select best matching cab based on active category filter
-      const matchingCab = operatorCategoryFilter === "solo"
-        ? (nearby.find((c: any) => !c.is_split_allowed) || nearby[0])
-        : (nearby.find((c: any) => c.is_split_allowed) || nearby[0]);
+      // Default to the first nearby solo cab
+      const matchingCab = nearby[0];
 
       const baseFare = rideDetails.fare || 180;
       const splitFare = Math.round(baseFare * 0.6);
-      const isSplit = matchingCab?.is_split_allowed ?? (operatorCategoryFilter !== "solo");
+      const isSplit = isSplitAllowed;
       defaultDriverObj = {
         ...matchingCab,
         name: matchingCab?.name || (mode.id === "pink" ? "Ananya Rao" : "Aarav Sharma"),
@@ -2745,6 +2809,12 @@ const BookingPage = () => {
       }
     }
 
+    const driverObj = overrideDriver || selectedDriver;
+    if (driverObj?.is_active_corridor_ride) {
+      await handleRequestJoinCorridorCab(driverObj.raw_ride || driverObj);
+      return;
+    }
+
     let token = localStorage.getItem("token");
     if (!token) {
       token = "dummy-token";
@@ -2762,7 +2832,6 @@ const BookingPage = () => {
     try {
       setAskStatus("asking");
 
-      const driverObj = overrideDriver || selectedDriver;
       const isSplitRide = driverObj?.is_split_allowed !== undefined ? Boolean(driverObj.is_split_allowed) : isSplitAllowed;
       const chosenFare = isSplitRide && driverObj?.split_fare ? driverObj.split_fare : (driverObj?.price || rideDetails.fare || 180);
 
@@ -2844,6 +2913,8 @@ const BookingPage = () => {
       // Invalidate driver and admin caches to refresh live queues
       localStorage.removeItem("safego_driver_available");
       localStorage.removeItem("safego_passenger_rides");
+      window.dispatchEvent(new Event("safego_split_ride_updated"));
+      setTimeout(() => fetchLiveSplitRides(), 500);
       leftRef.current?.scrollTo({ top: 0, behavior: "smooth" });
 
     } catch (err) {
@@ -2857,6 +2928,8 @@ const BookingPage = () => {
       localStorage.setItem('safego_current_ride_status', 'confirmed');
       setAskStatus("accepted");
       setFlowState("confirmed");
+      window.dispatchEvent(new Event("safego_split_ride_updated"));
+      setTimeout(() => fetchLiveSplitRides(), 500);
       leftRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
@@ -2950,6 +3023,67 @@ const BookingPage = () => {
     handleUseCurrentLocation();
     leftRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  const baseFareVal = rideDetails.fare > 0 ? rideDetails.fare : 180;
+  const rawNearby = generateNearbyCabs(
+    pickupCoords?.lat || mapCenter?.lat || 22.3023,
+    pickupCoords?.lng || mapCenter?.lng || 73.3762,
+    mode.id,
+    activeDrivers
+  );
+
+  const regularFleet = rawNearby.map((cab, i) => {
+    const solo_fare = Math.round(baseFareVal * (0.98 + (i % 3) * 0.02));
+    const split_fare = Math.round(solo_fare * 0.6);
+    const savings = solo_fare - split_fare;
+    return {
+      ...cab,
+      solo_fare,
+      split_fare,
+      savings,
+      price: solo_fare,
+      is_split_allowed: false,
+      is_active_corridor_ride: false,
+      primary_passenger_name: null as string | null,
+      raw_ride: null as any
+    };
+  });
+
+  const splitCabsFormatted = (availableSplitRides || []).map((sr: any, idx: number) => {
+    const solo_fare = sr.original_fare || sr.fare_amount || baseFareVal;
+    const split_fare = sr.split_co_passenger_fare || Math.round(solo_fare * 0.6);
+    const savings = solo_fare - split_fare;
+    return {
+      id: 1000 + idx,
+      ride_id: sr._id || sr.id,
+      driver_id: sr.driver_id || sr.driver?._id || null,
+      lat: sr.pickup_latitude ? Number(sr.pickup_latitude) : ((pickupCoords?.lat || 22.3023) + 0.003 * (idx + 1)),
+      lng: sr.pickup_longitude ? Number(sr.pickup_longitude) : ((pickupCoords?.lng || 73.3762) + 0.003 * (idx + 1)),
+      name: sr.driver?.user?.full_name || sr.driver?.name || (mode.id === "pink" ? "Priya (Corridor Pilot)" : "Kabir (Corridor Pilot)"),
+      rating: (4.9).toFixed(1),
+      eta: 2,
+      is_split_allowed: true,
+      is_active_corridor_ride: true,
+      split_discount_percent: 40,
+      corridor_name: `${sr.pickup_address?.split(',')[0] || 'Corridor'} ➔ ${sr.destination_address?.split(',')[0] || 'Destination'}`,
+      seats_available: 1,
+      primary_passenger_name: sr.passenger_name || "Verified Traveler",
+      solo_fare,
+      split_fare,
+      savings,
+      price: split_fare,
+      co2_saved_kg: 1.8,
+      raw_ride: sr
+    };
+  });
+
+  const allFleetCabs = [...splitCabsFormatted, ...regularFleet];
+
+  const displayedCabs = allFleetCabs.filter((cab) => {
+    if (operatorCategoryFilter === "split") return cab.is_split_allowed;
+    if (operatorCategoryFilter === "solo") return !cab.is_split_allowed;
+    return true;
+  });
 
   return (
     <div className="flex h-screen flex-col bg-background overflow-hidden">
@@ -3748,20 +3882,34 @@ const BookingPage = () => {
                               : "text-muted-foreground hover:text-foreground"
                           }`}
                         >
-                          ✨ All Cabs
+                          ✨ All Cabs ({allFleetCabs.length})
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setOperatorCategoryFilter("split")}
-                          className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
-                            operatorCategoryFilter === "split"
-                              ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/30 ring-2 ring-indigo-400"
-                              : "text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10"
-                          }`}
-                        >
-                          <Users size={12} />
-                          SafeGo Split (40% OFF)
-                        </button>
+                        {splitCabsFormatted.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setOperatorCategoryFilter("split")}
+                            className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+                              operatorCategoryFilter === "split"
+                                ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/30 ring-2 ring-indigo-400 animate-pulse"
+                                : "text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 font-bold"
+                            }`}
+                          >
+                            <Users size={12} />
+                            SafeGo Split ({splitCabsFormatted.length}) · 40% OFF
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsSplitAllowed(true);
+                              toast.info("No active split rides right now. Opt into SafeGo Split in preferences to share your cab!", { duration: 4000 });
+                            }}
+                            className="flex-1 py-2 rounded-xl text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-all flex items-center justify-center gap-1.5"
+                          >
+                            <Users size={12} />
+                            SafeGo Split (0)
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => setOperatorCategoryFilter("solo")}
@@ -3771,7 +3919,7 @@ const BookingPage = () => {
                               : "text-muted-foreground hover:text-foreground"
                           }`}
                         >
-                          🚖 Solo Pilot
+                          🚖 Solo Pilot ({regularFleet.length})
                         </button>
                       </div>
 
@@ -3779,88 +3927,72 @@ const BookingPage = () => {
                         <div className="space-y-3 animate-in fade-in duration-300">
                           {/* Nearby Operators Cards List */}
                           <div className="space-y-2.5">
-                            {generateNearbyCabs(
-                              pickupCoords?.lat || mapCenter?.lat || 22.3023,
-                              pickupCoords?.lng || mapCenter?.lng || 73.3762,
-                              mode.id,
-                              activeDrivers
-                            )
-                              .map((cab, i) => {
-                                const solo_fare = rideDetails.fare > 0 ? Math.round(rideDetails.fare * (0.98 + (i % 3) * 0.02)) : 180;
-                                const split_fare = Math.round(solo_fare * 0.6);
-                                const savings = solo_fare - split_fare;
-                                return {
-                                  ...cab,
-                                  solo_fare,
-                                  split_fare,
-                                  savings,
-                                  price: cab.is_split_allowed ? split_fare : solo_fare
-                                };
-                              })
-                              .filter((cab) => {
-                                if (operatorCategoryFilter === "split") return cab.is_split_allowed;
-                                if (operatorCategoryFilter === "solo") return !cab.is_split_allowed;
-                                return true;
-                              })
-                              .map((cab) => (
-                                <div
-                                  key={cab.id}
-                                  onClick={() => setSelectedDriver(cab)}
-                                  className={`p-4 rounded-3xl border transition-all cursor-pointer hover:scale-[1.01] hover:shadow-lg flex items-center justify-between gap-4 ${
-                                    cab.is_split_allowed
-                                      ? "bg-gradient-to-r from-indigo-500/10 via-purple-500/5 to-card border-indigo-500/30 hover:border-indigo-500/60"
-                                      : "bg-card border-border/60 hover:border-primary/50"
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-3.5 min-w-0">
-                                    <div className="relative shrink-0">
-                                      <div
-                                        className="h-12 w-12 rounded-2xl flex items-center justify-center font-black text-white text-sm shadow-md"
-                                        style={{ backgroundColor: cab.is_split_allowed ? "#6366f1" : mode.accent }}
-                                      >
-                                        {(cab.name || "D").split(" ").map((n: string) => n[0]).join("")}
-                                      </div>
-                                      <div className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-background bg-green-500 shadow-sm" />
+                            {displayedCabs.map((cab) => (
+                              <div
+                                key={cab.id}
+                                onClick={() => setSelectedDriver(cab)}
+                                className={`p-4 rounded-3xl border transition-all cursor-pointer hover:scale-[1.01] hover:shadow-lg flex items-center justify-between gap-4 ${
+                                  cab.is_split_allowed
+                                    ? "bg-gradient-to-r from-indigo-500/10 via-purple-500/5 to-card border-indigo-500/30 hover:border-indigo-500/60 ring-1 ring-indigo-500/20"
+                                    : "bg-card border-border/60 hover:border-primary/50"
+                                }`}
+                              >
+                                <div className="flex items-center gap-3.5 min-w-0">
+                                  <div className="relative shrink-0">
+                                    <div
+                                      className="h-12 w-12 rounded-2xl flex items-center justify-center font-black text-white text-sm shadow-md"
+                                      style={{ backgroundColor: cab.is_split_allowed ? "#6366f1" : mode.accent }}
+                                    >
+                                      {(cab.name || "D").split(" ").map((n: string) => n[0]).join("")}
                                     </div>
-                                    <div className="min-w-0">
-                                      <div className="flex items-center gap-2">
-                                        <p className="text-sm font-black text-foreground truncate">{cab.name}</p>
-                                        <span className="flex items-center gap-0.5 text-xs font-black text-amber-500">
-                                          <Star size={12} className="fill-current" />
-                                          {cab.rating}
-                                        </span>
-                                      </div>
-                                      {cab.is_split_allowed ? (
-                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                    <div className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-background bg-green-500 shadow-sm" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <p className="text-sm font-black text-foreground truncate">{cab.name}</p>
+                                      <span className="flex items-center gap-0.5 text-xs font-black text-amber-500">
+                                        <Star size={12} className="fill-current" />
+                                        {cab.rating}
+                                      </span>
+                                    </div>
+                                    {cab.is_split_allowed ? (
+                                      <div className="space-y-1 mt-0.5">
+                                        <div className="flex items-center gap-1.5">
                                           <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-indigo-600 text-white flex items-center gap-1">
-                                            <Users size={9} /> Split Available · 40% OFF
+                                            <Users size={9} /> Active Shared Cab · 40% OFF
                                           </span>
                                           <span className="text-[10px] text-teal-600 dark:text-teal-400 font-bold">🌱 -1.8kg CO₂</span>
                                         </div>
-                                      ) : (
-                                        <p className="text-[11px] text-muted-foreground font-medium">🚖 100% Private Solo Cab · ETA {cab.eta}m</p>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  <div className="text-right shrink-0">
-                                    {cab.is_split_allowed ? (
-                                      <div>
-                                        <div className="flex items-baseline justify-end gap-1.5">
-                                          <span className="text-lg font-black text-emerald-600 dark:text-emerald-400 tracking-tight">₹{cab.split_fare}</span>
-                                          <span className="text-xs line-through text-muted-foreground">₹{cab.solo_fare}</span>
-                                        </div>
-                                        <span className="block text-[9px] font-extrabold text-emerald-600 uppercase tracking-wider">Save ₹{cab.savings}</span>
+                                        {cab.corridor_name && (
+                                          <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold truncate">
+                                            Corridor: {cab.corridor_name} ({cab.primary_passenger_name})
+                                          </p>
+                                        )}
                                       </div>
                                     ) : (
-                                      <div>
-                                        <span className="text-lg font-black text-foreground tracking-tight">₹{cab.solo_fare}</span>
-                                        <span className="block text-[10px] text-muted-foreground font-bold">{cab.eta} min away</span>
-                                      </div>
+                                      <p className="text-[11px] text-muted-foreground font-medium">🚖 100% Private Solo Cab · ETA {cab.eta}m</p>
                                     )}
                                   </div>
                                 </div>
-                              ))}
+
+                                <div className="text-right shrink-0">
+                                  {cab.is_split_allowed ? (
+                                    <div>
+                                      <div className="flex items-baseline justify-end gap-1.5">
+                                        <span className="text-lg font-black text-emerald-600 dark:text-emerald-400 tracking-tight">₹{cab.split_fare}</span>
+                                        <span className="text-xs line-through text-muted-foreground">₹{cab.solo_fare}</span>
+                                      </div>
+                                      <span className="block text-[9px] font-extrabold text-emerald-600 uppercase tracking-wider">Save ₹{cab.savings}</span>
+                                    </div>
+                                  ) : (
+                                    <div>
+                                      <span className="text-lg font-black text-foreground tracking-tight">₹{cab.solo_fare}</span>
+                                      <span className="block text-[10px] text-muted-foreground font-bold">{cab.eta} min away</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
                           </div>
 
                           {/* Quick 1-Click Auto-Match Action Button */}
@@ -3893,7 +4025,7 @@ const BookingPage = () => {
                               ) : (
                                 <>
                                   <Zap size={16} className="fill-current" />
-                                  {operatorCategoryFilter === "split" ? "⚡ AUTO-MATCH & BOOK SHARED CAB (40% OFF)" : t('booking.book_nearest_now', 'AUTO-MATCH & BOOK NEAREST CAB NOW')}
+                                  {operatorCategoryFilter === "split" && splitCabsFormatted.length > 0 ? "⚡ AUTO-MATCH & JOIN SHARED CAB (40% OFF)" : t('booking.book_nearest_now', 'AUTO-MATCH & BOOK NEAREST CAB NOW')}
                                 </>
                               )}
                             </button>
@@ -4035,8 +4167,12 @@ const BookingPage = () => {
                                     </div>
                                   </button>
                                   <button
-                                    onClick={askStatus === "accepted" ? handleConfirmRide : handleAskDriver}
-                                    disabled={askStatus === "asking" || (mode.id === "pink" && userGender === "male" && (passengers === 1 || !isAccompaniedDeclared || !femaleCompanionName.trim()))}
+                                    onClick={
+                                      selectedDriver?.is_active_corridor_ride
+                                        ? () => handleRequestJoinCorridorCab(selectedDriver.raw_ride || selectedDriver)
+                                        : (askStatus === "accepted" ? handleConfirmRide : handleAskDriver)
+                                    }
+                                    disabled={askStatus === "asking" || isJoiningSplitCab || (mode.id === "pink" && userGender === "male" && (passengers === 1 || !isAccompaniedDeclared || !femaleCompanionName.trim()))}
                                     className="flex-1 group relative rounded-2xl py-4 text-xs font-black uppercase tracking-widest text-white transition-all shadow-xl hover:shadow-2xl hover:brightness-110 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden"
                                     style={{
                                       backgroundColor: askStatus === "accepted"
@@ -4059,8 +4195,10 @@ const BookingPage = () => {
                                           <ShieldCheck size={14} />
                                           COMPLETE DECLARATION
                                         </>
+                                      ) : isJoiningSplitCab ? (
+                                        <><Loader2 size={16} className="animate-spin" /> JOINING CORRIDOR CAB...</>
                                       ) : askStatus === "idle" || askStatus === "rejected" ? (
-                                        <>{selectedDriver.is_split_allowed ? "⚡ REQUEST & JOIN SHARED RIDE" : t('booking.send_request', 'SEND REQUEST')}</>
+                                        <>{selectedDriver.is_active_corridor_ride ? "⚡ REQUEST & JOIN SHARED RIDE (40% OFF)" : selectedDriver.is_split_allowed ? "⚡ REQUEST & JOIN SHARED RIDE" : t('booking.send_request', 'SEND REQUEST')}</>
                                       ) : askStatus === "asking" ? (
                                         <><Loader2 size={16} className="animate-spin" /> {t('booking.pending', 'PENDING...')}</>
                                       ) : (
@@ -4401,6 +4539,7 @@ const BookingPage = () => {
               }}
               estimatedFare={rideDetails.fare}
               activeDrivers={activeDrivers}
+              availableSplitRides={availableSplitRides}
               onSelectMapDestination={handleSelectMapDestination}
               onSelectMapPickup={handleSelectMapPickup}
               pickupCoords={pickupCoords}

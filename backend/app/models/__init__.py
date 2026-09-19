@@ -91,6 +91,7 @@ class User(Document):
     department: Optional[str] = None
     preferred_mode: Optional[RideMode] = RideMode.normal
     gender: Optional[Gender] = Gender.male
+    age: Optional[int] = None
     profile_photo: Optional[str] = None
     is_elder: bool = False
     is_active: bool = True

@@ -15,6 +15,7 @@ class UserRegister(BaseModel):
     confirm_password: str = Field(..., min_length=6)
     role: str = Field(default="passenger")
     gender: str = Field(default="male")
+    age: Optional[int] = None
     is_elder: Optional[bool] = False
 
 
@@ -52,6 +53,7 @@ class UserResponse(BaseModel):
     department: Optional[str] = None
     preferred_mode: Optional[str] = None
     gender: Optional[str] = None
+    age: Optional[int] = None
     profile_photo: Optional[str] = None
     is_elder: Optional[bool] = False
     is_active: bool
@@ -67,6 +69,7 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None
     gender: Optional[str] = None
+    age: Optional[int] = None
     preferred_mode: Optional[str] = None
     is_elder: Optional[bool] = None
 
@@ -358,7 +361,7 @@ class SplitDecisionRequest(BaseModel):
 
     def is_approved(self) -> bool:
         if self.approved is not None:
-            return bool(self.approved)
+            return self.approved
         if self.decision is not None:
             return self.decision.strip().lower() in ["accept", "approved", "yes", "true", "1"]
         return False

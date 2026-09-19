@@ -13,7 +13,7 @@ from app.schemas import (
     RideOTPVerifyRequest, SplitJoinRequest, SplitDecisionRequest, SplitOTPVerifyRequest
 )
 from app.services.ride_service import create_ride, complete_ride, update_driver_rating
-from app.utils.dependencies import get_current_user, get_current_passenger
+from app.utils.dependencies import get_current_user, get_current_passenger, get_optional_user
 
 router = APIRouter(prefix="/api/rides", tags=["rides"])
 
@@ -204,7 +204,10 @@ async def get_latest_ride(current_user: User = Depends(get_current_user)):
 @router.get("/split/available", response_model=List[RideResponse])
 async def get_available_split_rides(
     mode: Optional[str] = "normal",
-    current_user: User = Depends(get_current_user)
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
+    gender: Optional[str] = None,
+    current_user: Optional[User] = Depends(get_optional_user)
 ):
     """
     Find active rides along the corridor that have opted into SafeGo Split.
@@ -222,8 +225,13 @@ async def get_available_split_rides(
         "status": {"$in": active_statuses},
         "split_status": {"$in": ["none", "declined"]}
     }
+    if current_user and current_user.id:
+        query["passenger_id"] = {"$ne": current_user.id}
+
     if mode == "pink":
-        if getattr(current_user, "gender", "female") == "male":
+        user_gender = getattr(current_user, "gender", None) or gender or "female"
+        user_gender_val = user_gender.value if hasattr(user_gender, "value") else str(user_gender).lower()
+        if user_gender_val == "male":
             raise HTTPException(
                 status_code=403,
                 detail="Solo male passengers cannot join active Pink Mode Split cabs."

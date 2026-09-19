@@ -82,7 +82,9 @@ const Dashboard = () => {
     return {
       name: localStorage.getItem("safego_user_name") || "",
       phone: cleanStoredPhone,
-      email: localStorage.getItem("safego_user_email") || ""
+      email: localStorage.getItem("safego_user_email") || "",
+      gender: localStorage.getItem("safego_user_gender") || "male",
+      age: localStorage.getItem("safego_user_age") || "24",
     };
   });
   const [penaltyBalance, setPenaltyBalance] = useState<number>(() => {
@@ -176,8 +178,11 @@ const Dashboard = () => {
       const savedPhone = (rawSavedPhone && !rawSavedPhone.startsWith("fb-")) ? rawSavedPhone : "";
       const savedEmail = localStorage.getItem("safego_user_email") || "";
 
+      const savedGender = localStorage.getItem("safego_user_gender") || "male";
+      const savedAge = localStorage.getItem("safego_user_age") || "24";
+
       if (!token) {
-        setProfile({ name: savedName, phone: savedPhone, email: savedEmail });
+        setProfile({ name: savedName, phone: savedPhone, email: savedEmail, gender: savedGender, age: savedAge });
         return;
       }
 
@@ -190,16 +195,20 @@ const Dashboard = () => {
         const rawPhone = data.phone || savedPhone;
         const finalPhone = (rawPhone && !rawPhone.startsWith("fb-")) ? rawPhone : "";
         const finalEmail = data.email || savedEmail;
-        setProfile({ name: finalName, phone: finalPhone, email: finalEmail });
+        const finalGender = data.gender || savedGender;
+        const finalAge = data.age !== undefined && data.age !== null ? String(data.age) : savedAge;
+        setProfile({ name: finalName, phone: finalPhone, email: finalEmail, gender: finalGender, age: finalAge });
         localStorage.setItem("safego_user_name", finalName);
         localStorage.setItem("safego_user_phone", finalPhone);
         localStorage.setItem("safego_user_email", finalEmail);
+        localStorage.setItem("safego_user_gender", finalGender);
+        localStorage.setItem("safego_user_age", finalAge);
         if (data.penalty_balance !== undefined) {
           setPenaltyBalance(data.penalty_balance);
           localStorage.setItem("safego_penalty_balance", String(data.penalty_balance));
         }
       } else {
-        setProfile({ name: savedName, phone: savedPhone, email: savedEmail });
+        setProfile({ name: savedName, phone: savedPhone, email: savedEmail, gender: savedGender, age: savedAge });
       }
     } catch (err) {
       console.error("Failed to fetch profile", err);
@@ -207,7 +216,9 @@ const Dashboard = () => {
       const rawSavedPhone = localStorage.getItem("safego_user_phone") || "";
       const savedPhone = (rawSavedPhone && !rawSavedPhone.startsWith("fb-")) ? rawSavedPhone : "";
       const savedEmail = localStorage.getItem("safego_user_email") || "";
-      setProfile({ name: savedName, phone: savedPhone, email: savedEmail });
+      const savedGender = localStorage.getItem("safego_user_gender") || "male";
+      const savedAge = localStorage.getItem("safego_user_age") || "24";
+      setProfile({ name: savedName, phone: savedPhone, email: savedEmail, gender: savedGender, age: savedAge });
     }
   };
 
@@ -544,6 +555,8 @@ const Dashboard = () => {
     localStorage.setItem("safego_user_name", profile.name);
     localStorage.setItem("safego_user_phone", profile.phone);
     localStorage.setItem("safego_user_email", profile.email);
+    localStorage.setItem("safego_user_gender", profile.gender || "male");
+    localStorage.setItem("safego_user_age", profile.age || "24");
     try {
       const token = localStorage.getItem("token");
       if (token) {
@@ -555,7 +568,9 @@ const Dashboard = () => {
           },
           body: JSON.stringify({
             full_name: profile.name,
-            phone: profile.phone
+            phone: profile.phone,
+            gender: profile.gender,
+            age: profile.age ? parseInt(profile.age, 10) : undefined
           })
         });
         if (res.ok) {
@@ -1512,6 +1527,30 @@ const Dashboard = () => {
                         }}
                         className="w-full rounded-xl border border-border bg-secondary px-4 py-2.5 text-sm outline-none focus:border-primary transition-colors"
                         placeholder="+91 91234 56789"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 block">Gender</label>
+                      <select
+                        value={profile.gender || "male"}
+                        onChange={(e) => setProfile({ ...profile, gender: e.target.value })}
+                        className="w-full rounded-xl border border-border bg-secondary px-4 py-2.5 text-sm outline-none focus:border-primary transition-colors font-medium text-foreground cursor-pointer"
+                      >
+                        <option value="male">Male (He/Him)</option>
+                        <option value="female">Female (She/Her) · Pink Mode Eligible</option>
+                        <option value="other">Other / Non-Binary</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 block">Age (Years)</label>
+                      <input
+                        type="number"
+                        min={18}
+                        max={100}
+                        value={profile.age || ""}
+                        onChange={(e) => setProfile({ ...profile, age: e.target.value })}
+                        className="w-full rounded-xl border border-border bg-secondary px-4 py-2.5 text-sm outline-none focus:border-primary transition-colors"
+                        placeholder="24"
                       />
                     </div>
                     <div className="sm:col-span-2">

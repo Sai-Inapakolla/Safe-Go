@@ -5,7 +5,7 @@ from typing import List
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.models import User, EmergencyContact, Notification
+from app.models import User, EmergencyContact, Notification, Gender, RideMode
 from app.schemas import (
     UserResponse,
     UserUpdate,
@@ -34,9 +34,19 @@ async def update_my_profile(
     if payload.phone is not None:
         current_user.phone = payload.phone
     if payload.gender is not None:
-        current_user.gender = payload.gender
+        try:
+            current_user.gender = Gender(payload.gender) if isinstance(payload.gender, str) else payload.gender
+        except Exception:
+            current_user.gender = payload.gender  # type: ignore
+    if payload.age is not None:
+        current_user.age = payload.age
     if payload.preferred_mode is not None:
-        current_user.preferred_mode = payload.preferred_mode
+        try:
+            current_user.preferred_mode = RideMode(payload.preferred_mode) if isinstance(payload.preferred_mode, str) else payload.preferred_mode
+        except Exception:
+            current_user.preferred_mode = payload.preferred_mode  # type: ignore
+    if payload.is_elder is not None:
+        current_user.is_elder = payload.is_elder
 
     await current_user.save()
     return _user_to_response(current_user)
@@ -50,7 +60,7 @@ async def list_emergency_contacts(
 ):
     contacts = await EmergencyContact.find(
         EmergencyContact.user_id == current_user.id
-    ).sort(-EmergencyContact.is_primary).to_list()
+    ).sort("-is_primary").to_list()
     return [_ec_to_response(c) for c in contacts]
 
 
@@ -120,7 +130,7 @@ async def list_notifications(
 ):
     notifs = await Notification.find(
         Notification.user_id == current_user.id
-    ).sort(-Notification.created_at).limit(50).to_list()
+    ).sort("-created_at").limit(50).to_list()
     return [_notif_to_response(n) for n in notifs]
 
 
@@ -175,9 +185,12 @@ def _user_to_response(user: User) -> dict:
         "role": user.role.value if hasattr(user.role, "value") else user.role,
         "preferred_mode": user.preferred_mode.value if user.preferred_mode and hasattr(user.preferred_mode, "value") else user.preferred_mode,
         "gender": user.gender.value if user.gender and hasattr(user.gender, "value") else user.gender,
+        "age": getattr(user, "age", None),
         "profile_photo": user.profile_photo,
+        "is_elder": getattr(user, "is_elder", False),
         "is_active": user.is_active,
         "is_verified": user.is_verified,
+        "penalty_balance": getattr(user, "penalty_balance", 0.0),
         "created_at": user.created_at,
         "updated_at": user.updated_at,
     }
