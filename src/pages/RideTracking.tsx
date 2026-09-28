@@ -240,12 +240,16 @@ const RideTracking = () => {
         {/* Driver info */}
         <div className="flex items-center gap-4">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-lg font-bold text-primary-foreground shadow-lg shadow-primary/20">
-            {rideData?.driver?.user?.full_name ? rideData.driver.user.full_name.split(" ").map((n: string) => n[0]).join("") : "JD"}
+            {rideData?.driver?.user?.full_name
+              ? rideData.driver.user.full_name.split(" ").filter(Boolean).map((n: string) => n[0]).slice(0, 2).join("").toUpperCase()
+              : (rideData?.driver?.full_name
+                ? rideData.driver.full_name.split(" ").filter(Boolean).map((n: string) => n[0]).slice(0, 2).join("").toUpperCase()
+                : "DP")}
           </div>
           <div className="flex-1">
-            <p className="font-semibold text-foreground">{rideData?.driver?.user?.full_name || "James D."}</p>
+            <p className="font-semibold text-foreground">{rideData?.driver?.user?.full_name || rideData?.driver?.full_name || "Assigned Driver"}</p>
             <p className="text-xs text-muted-foreground">
-              <Star size={10} className="inline fill-amber-400 text-amber-400" /> {rideData?.driver?.average_rating || 4.9} · {rideData?.driver?.vehicle?.make || "Toyota"} {rideData?.driver?.vehicle?.model || "Vios"} · {rideData?.driver?.vehicle?.plate_number || "ABC 123"}
+              <Star size={10} className="inline fill-amber-400 text-amber-400" /> {rideData?.driver?.average_rating || 4.9} · {rideData?.driver?.vehicle?.make || "SafeGo"} {rideData?.driver?.vehicle?.model || "Fleet Vehicle"} · {rideData?.driver?.vehicle?.plate_number || "MH 02 LIVE"}
             </p>
           </div>
           <div className="flex gap-2">

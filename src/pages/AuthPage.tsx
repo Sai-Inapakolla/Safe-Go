@@ -270,6 +270,15 @@ const AuthPage = () => {
               });
               if (meRes.ok) {
                 const meData = await meRes.json();
+                if (meData.full_name) {
+                  localStorage.setItem("safego_user_name", meData.full_name);
+                }
+                if (meData.phone) {
+                  localStorage.setItem("safego_user_phone", meData.phone);
+                }
+                if (meData.email) {
+                  localStorage.setItem("safego_user_email", meData.email);
+                }
                 if (meData.is_elder) {
                   setElderMode(true);
                 }

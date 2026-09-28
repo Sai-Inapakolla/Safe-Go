@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import math
 
-# ---------- FARE RATES (Philippines Peso) ----------
+# ---------- FARE RATES (INR ₹) ----------
 
 FARE_RATES = {
-    "normal":  {"flag_down": 40.0, "per_km": 18.0},
-    "pink":    {"flag_down": 45.0, "per_km": 20.0},
-    "pwd":     {"flag_down": 25.0, "per_km": 12.0},
-    "elderly": {"flag_down": 30.0, "per_km": 14.0},
+    "normal":  {"flag_down": 30.0, "per_km": 10.0},
+    "pink":    {"flag_down": 35.0, "per_km": 12.0},
+    "elderly": {"flag_down": 30.0, "per_km": 10.5},
+    "pwd":     {"flag_down": 35.0, "per_km": 13.0},
+    "premium": {"flag_down": 50.0, "per_km": 15.0},
 }
 
 # ---------- SAFETY SCORE BASE ----------

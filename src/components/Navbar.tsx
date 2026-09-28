@@ -15,10 +15,18 @@ export const Navbar = ({ fullWidth = true }: { fullWidth?: boolean }) => {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
+  const userRole = localStorage.getItem("userRole");
+  const isDriver = userRole === "driver";
+  const isAdmin = userRole === "admin";
+
   const navLinks = [
     { label: t('nav.home', 'Home'), to: "/home" },
-    { label: t('nav.book', 'Book'), to: "/book/normal" },
-    { label: t('nav.drive_with_us', 'Drive With Us'), to: "/drive-with-us" },
+    ...(isDriver
+      ? [{ label: t('nav.driver_portal', 'Driver Portal'), to: "/driver" }]
+      : isAdmin
+        ? [{ label: t('nav.admin_portal', 'Admin Portal'), to: "/admin" }, { label: t('nav.book', 'Book'), to: "/book/normal" }]
+        : [{ label: t('nav.book', 'Book'), to: "/book/normal" }]),
+    ...(!isDriver ? [{ label: t('nav.drive_with_us', 'Drive With Us'), to: "/drive-with-us" }] : []),
     { label: t('nav.dashboard', 'Dashboard'), to: "/dashboard" },
     { label: t('nav.about', 'About'), to: "/about" },
   ];

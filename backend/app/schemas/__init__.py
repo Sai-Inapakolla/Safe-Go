@@ -191,6 +191,11 @@ class DriverOnlineStatus(BaseModel):
     is_online: bool
 
 
+class DriverLocationUpdate(BaseModel):
+    latitude: float
+    longitude: float
+
+
 class DocumentUpload(BaseModel):
     file_url: str
 

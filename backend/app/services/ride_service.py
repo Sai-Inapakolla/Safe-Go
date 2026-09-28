@@ -67,17 +67,11 @@ async def create_ride(
     if mode == "pink":
         user = await User.get(passenger_id)
         if user and user.gender == Gender.male:
-            if passenger_count <= 1:
+            if not has_female_passenger_declared and not (female_passenger_name and female_passenger_name.strip()):
                 from fastapi import HTTPException
                 raise HTTPException(
                     status_code=400,
                     detail="Solo male passengers are strictly prohibited from booking SafeGo Pink Mode. Please switch to Normal Mode or travel accompanied with a female companion."
-                )
-            if not has_female_passenger_declared:
-                from fastapi import HTTPException
-                raise HTTPException(
-                    status_code=400,
-                    detail="Accompanied Pink Mode booking requires explicit declaration that at least one female passenger is traveling."
                 )
 
     route_info = await get_route(pickup_latitude, pickup_longitude, destination_latitude, destination_longitude, mode)

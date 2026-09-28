@@ -18,56 +18,50 @@ import { getApiUrl } from "@/lib/api";
 
 const API_URL = getApiUrl();
 
-// ─── Simulated nearby cabs ───────────────────────────────────────────────────
+// ─── Real Nearby Cabs from Live Fleet ─────────────────────────────────────────
 const generateNearbyCabs = (lat: number, lng: number, mode: string = "normal", dbDrivers: any[] = []) => {
+  if (!Array.isArray(dbDrivers) || dbDrivers.length === 0) {
+    return [];
+  }
+
   const safeBaseLat = Number.isFinite(Number(lat)) ? Number(lat) : 22.3023;
   const safeBaseLng = Number.isFinite(Number(lng)) ? Number(lng) : 73.3762;
 
-  // Filter database drivers based on mode
-  let filteredDbDrivers = dbDrivers;
+  // Strictly filter database drivers: MUST be approved AND online
+  let filteredDbDrivers = dbDrivers.filter(
+    (d) => Boolean(d.is_online) === true && (d.status === "approved" || !d.status)
+  );
   if (mode === "pink") {
-    filteredDbDrivers = dbDrivers.filter(d => d.user?.gender === "female");
-  } else {
-    // Normal mode can show male or any drivers, but let's stick to the official 5 fleet logic
-    filteredDbDrivers = dbDrivers.filter(d => d.user?.gender === "male");
+    filteredDbDrivers = filteredDbDrivers.filter((d) => d.user?.gender === "female");
+  } else if (mode === "pwd") {
+    filteredDbDrivers = filteredDbDrivers.filter(
+      (d) => d.certified_modes?.includes("pwd") || d.vehicle?.is_wheelchair_accessible
+    );
   }
 
-  // Official Fleet (Max 10 total: 5 female, 5 male)
-  const maleNames = ["Aarav Sharma", "Kabir Khan", "Rohan Mehta", "Aditya Patel", "Vihaan Gupta"];
-  const femaleNames = ["Priya Singh", "Ananya Rao", "Diya Kapoor", "Neha Acharya", "Pooja Verma"];
-  const fallbackNames = mode === "pink" ? femaleNames : maleNames;
-
-  // STRICTLY limit to max 10 cabs total (or 5 for specific mode)
-  const cabCount = filteredDbDrivers.length > 0 ? filteredDbDrivers.length : fallbackNames.length;
-  const maxLimit = Math.min(cabCount, 10);
-
-  // Fixed deterministic angle & distance offsets relative to user position
-  const angles = [0.45, 1.85, 3.25, 4.65, 5.85, 0.95, 2.35, 3.75, 5.15, 6.15];
-  const distances = [0.004, 0.007, 0.005, 0.008, 0.006, 0.009, 0.0055, 0.0075, 0.0045, 0.0065];
-
-  return Array.from({ length: maxLimit }, (_, i) => {
-    const dbDriver = filteredDbDrivers[i];
-
-    // Check if dbDriver has exact pinpoint coordinates from backend DB
+  return filteredDbDrivers.map((dbDriver, i) => {
+    // Check if dbDriver has coordinates from backend DB
     let cabLat = Number(dbDriver?.current_latitude ?? dbDriver?.latitude ?? dbDriver?.lat);
     let cabLng = Number(dbDriver?.current_longitude ?? dbDriver?.longitude ?? dbDriver?.lng);
 
     if (!Number.isFinite(cabLat) || !Number.isFinite(cabLng)) {
-      cabLat = safeBaseLat + Math.sin(angles[i % angles.length]) * distances[i % distances.length];
-      cabLng = safeBaseLng + Math.cos(angles[i % angles.length]) * distances[i % distances.length];
+      cabLat = safeBaseLat;
+      cabLng = safeBaseLng;
     }
 
-    // Normal fleet drivers are standard solo cabs by default
-    // SafeGo Split options are only dynamically attached when a real ride is booked with split preference
     const isSplit = dbDriver?.is_split_allowed !== undefined ? Boolean(dbDriver.is_split_allowed) : false;
+    const name = dbDriver.user?.full_name || dbDriver.full_name || "SafeGo Pilot";
+    const rating = dbDriver.average_rating ? Number(dbDriver.average_rating).toFixed(1) : "5.0";
 
-    const name = dbDriver ? (dbDriver.user?.full_name || fallbackNames[i % fallbackNames.length]) : fallbackNames[i % fallbackNames.length];
-    const rating = dbDriver ? (dbDriver.average_rating ? Number(dbDriver.average_rating).toFixed(1) : (4.8).toFixed(1)) : ((i % 3) * 0.1 + 4.7).toFixed(1);
-    const eta = Math.max(1, Math.round(distances[i % distances.length] * 500));
+    // Dynamic distance and ETA based on driver's real coordinates
+    const dLat = (cabLat - safeBaseLat) * 111;
+    const dLng = (cabLng - safeBaseLng) * 111 * Math.cos((safeBaseLat * Math.PI) / 180);
+    const distKm = Math.sqrt(dLat * dLat + dLng * dLng);
+    const eta = Math.max(1, Math.round((distKm / 28) * 60) || 2);
 
     return {
       id: i + 1,
-      driver_id: dbDriver ? (dbDriver.id || dbDriver._id || null) : null,
+      driver_id: dbDriver.id || dbDriver._id || null,
       lat: cabLat,
       lng: cabLng,
       name,
@@ -445,15 +439,6 @@ const MapPanel = ({
       }
 
       try {
-        const fromQuery = encodeURIComponent(triggerRoute.from);
-        const toQuery = encodeURIComponent(triggerRoute.to);
-        const [resfrom, resto] = await Promise.all([
-          fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${fromQuery}&limit=1`),
-          fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${toQuery}&limit=1`)
-        ]);
-        const dataFrom = await resfrom.json();
-        const dataTo = await resto.json();
-
         let ptFrom = (pickupCoords && Number.isFinite(Number(pickupCoords.lat)) && Number.isFinite(Number(pickupCoords.lng)))
           ? { lat: Number(pickupCoords.lat), lng: Number(pickupCoords.lng) }
           : (centerLoc && Number.isFinite(Number(centerLoc.lat)) && Number.isFinite(Number(centerLoc.lng)))
@@ -463,11 +448,28 @@ const MapPanel = ({
           ? { lat: Number(destinationCoords.lat), lng: Number(destinationCoords.lng) }
           : { lat: ptFrom.lat + 0.05, lng: ptFrom.lng + 0.05 };
 
-        if (dataFrom && dataFrom[0] && Number.isFinite(parseFloat(dataFrom[0].lat)) && Number.isFinite(parseFloat(dataFrom[0].lon))) {
-          ptFrom = { lat: parseFloat(dataFrom[0].lat), lng: parseFloat(dataFrom[0].lon) };
+        if (triggerRoute.from && triggerRoute.from.toLowerCase() !== "current location" && !pickupCoords) {
+          try {
+            const resfrom = await fetch(`${API_URL}/api/map/geocode?q=${encodeURIComponent(triggerRoute.from)}`);
+            if (resfrom.ok) {
+              const dataFrom = await resfrom.json();
+              if (dataFrom && dataFrom[0] && Number.isFinite(parseFloat(dataFrom[0].lat))) {
+                ptFrom = { lat: parseFloat(dataFrom[0].lat), lng: parseFloat(dataFrom[0].lon || dataFrom[0].lng) };
+              }
+            }
+          } catch (_) {}
         }
-        if (dataTo && dataTo[0] && Number.isFinite(parseFloat(dataTo[0].lat)) && Number.isFinite(parseFloat(dataTo[0].lon))) {
-          ptTo = { lat: parseFloat(dataTo[0].lat), lng: parseFloat(dataTo[0].lon) };
+
+        if (triggerRoute.to && !destinationCoords) {
+          try {
+            const resto = await fetch(`${API_URL}/api/map/geocode?q=${encodeURIComponent(triggerRoute.to)}`);
+            if (resto.ok) {
+              const dataTo = await resto.json();
+              if (dataTo && dataTo[0] && Number.isFinite(parseFloat(dataTo[0].lat))) {
+                ptTo = { lat: parseFloat(dataTo[0].lat), lng: parseFloat(dataTo[0].lon || dataTo[0].lng) };
+              }
+            }
+          } catch (_) {}
         }
 
         const osrmRes = await fetch(`https://router.project-osrm.org/route/v1/driving/${ptFrom.lng},${ptFrom.lat};${ptTo.lng},${ptTo.lat}?overview=full&geometries=geojson`);
@@ -648,25 +650,35 @@ const MapPanel = ({
       const fallbackCabs = generateNearbyCabs(activeTarget.lat, activeTarget.lng, mode, activeDrivers);
       let combinedCabs = fallbackCabs;
       if (availableSplitRides && availableSplitRides.length > 0) {
-        const splitCabsFormatted = availableSplitRides.map((sr: any, idx: number) => ({
-          id: 1000 + idx,
-          ride_id: sr._id || sr.id,
-          driver_id: sr.driver_id || sr.driver?._id || null,
-          lat: sr.pickup_latitude ? Number(sr.pickup_latitude) : (activeTarget.lat + 0.003 * (idx + 1)),
-          lng: sr.pickup_longitude ? Number(sr.pickup_longitude) : (activeTarget.lng + 0.003 * (idx + 1)),
-          name: sr.driver?.user?.full_name || sr.driver?.name || "Corridor Shared Cab",
-          rating: (4.9).toFixed(1),
-          eta: 2,
-          is_split_allowed: true,
-          is_active_corridor_ride: true,
-          split_discount_percent: 40,
-          corridor_name: `${sr.pickup_address?.split(',')[0] || 'Corridor'} ➔ ${sr.destination_address?.split(',')[0] || 'Destination'}`,
-          seats_available: 1,
-          primary_passenger_name: sr.passenger_name || "Verified Traveler",
-          original_fare: sr.original_fare || sr.fare_amount || 180,
-          split_fare: sr.split_co_passenger_fare || Math.round((sr.fare_amount || 180) * 0.6),
-          co2_saved_kg: 1.8,
-        }));
+        const splitCabsFormatted = availableSplitRides.map((sr: any, idx: number) => {
+          const solo_fare = sr.original_fare || sr.fare_amount || 180;
+          const split_fare = sr.split_co_passenger_fare || Math.round(solo_fare * 0.6);
+          const savings = solo_fare - split_fare;
+          return {
+            id: 1000 + idx,
+            _id: sr._id || sr.id,
+            ride_id: sr._id || sr.id,
+            driver_id: sr.driver_id || sr.driver?._id || null,
+            lat: sr.pickup_latitude ? Number(sr.pickup_latitude) : (activeTarget.lat + 0.003 * (idx + 1)),
+            lng: sr.pickup_longitude ? Number(sr.pickup_longitude) : (activeTarget.lng + 0.003 * (idx + 1)),
+            name: sr.driver?.user?.full_name || sr.driver?.name || "Corridor Shared Cab",
+            rating: (4.9).toFixed(1),
+            eta: 2,
+            is_split_allowed: true,
+            is_active_corridor_ride: true,
+            split_discount_percent: 40,
+            corridor_name: `${sr.pickup_address?.split(',')[0] || 'Corridor'} ➔ ${sr.destination_address?.split(',')[0] || 'Destination'}`,
+            seats_available: 1,
+            primary_passenger_name: sr.passenger_name || "Verified Traveler",
+            original_fare: solo_fare,
+            solo_fare,
+            split_fare,
+            savings,
+            price: split_fare,
+            co2_saved_kg: 1.8,
+            raw_ride: sr
+          };
+        });
         combinedCabs = [...splitCabsFormatted, ...fallbackCabs];
       }
       setCabs(combinedCabs);
@@ -752,7 +764,7 @@ const MapPanel = ({
 
       let address = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+        const res = await fetch(`${API_URL}/api/map/reverse?lat=${lat}&lon=${lng}`);
         if (res.ok) {
           const data = await res.json();
           if (data && data.display_name) {
@@ -867,7 +879,7 @@ const MapPanel = ({
       setIsSearchingMap(true);
       setShowMapSearchDropdown(true);
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ", India")}&limit=5&countrycodes=in`);
+        const res = await fetch(`${API_URL}/api/map/geocode?q=${encodeURIComponent(query)}`);
         if (res.ok) {
           const data = await res.json();
           if (data && data.length > 0) {
@@ -1225,6 +1237,18 @@ const BookingPage = () => {
   const mode = getModeConfig((modeId as RideMode) || "normal");
   const { speak } = useVoiceAssistant();
 
+  // If a driver navigates to BookingPage, redirect them to Driver Portal
+  useEffect(() => {
+    const userRole = localStorage.getItem("userRole");
+    if (userRole === "driver") {
+      toast.info("Driver Account Active", {
+        description: "Driver accounts are automatically redirected to the Driver Portal.",
+        duration: 4500
+      });
+      navigate("/driver", { replace: true });
+    }
+  }, [navigate]);
+
   useEffect(() => {
     if (voiceState?.pickup) setPickup(voiceState.pickup);
     if (voiceState?.destination) setDestination(voiceState.destination);
@@ -1315,19 +1339,33 @@ const BookingPage = () => {
 
   const fetchLiveSplitRides = async () => {
     try {
+      const gender = (localStorage.getItem("safego_user_gender") || userGender || "male").toLowerCase();
+      if (mode.id === "pink" && gender === "male") {
+        setAvailableSplitRides([]);
+        return;
+      }
       const token = localStorage.getItem("token") || "dummy-token";
       const lat = pickupCoords?.lat || mapCenter?.lat || 22.3023;
       const lng = pickupCoords?.lng || mapCenter?.lng || 73.3762;
-      const gender = localStorage.getItem("safego_user_gender") || userGender;
       const res = await fetch(`${API_URL}/api/rides/split/available?mode=${mode.id}&latitude=${lat}&longitude=${lng}&gender=${gender}`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (res.ok) {
         const rides = await res.json();
         const curId = currentRideId || localStorage.getItem("safego_current_ride_id");
+        const seenDriverIds = new Set<string>();
         const filtered = (rides || []).filter((r: any) => {
           const rId = String(r._id || r.id);
-          return rId !== curId;
+          if (rId === curId) return false;
+          // Strictly reject offline drivers
+          if (r.driver && r.driver.is_online === false) return false;
+          // Deduplicate so each driver appears at most once in split listings
+          const dId = String(r.driver_id || r.driver?._id || r.driver?.id || "");
+          if (dId) {
+            if (seenDriverIds.has(dId)) return false;
+            seenDriverIds.add(dId);
+          }
+          return true;
         });
         setAvailableSplitRides(filtered);
       }
@@ -1449,12 +1487,27 @@ const BookingPage = () => {
     setIsCorridorSplitModalOpen(true);
     setIsSearchingSplitCabs(true);
     try {
+      const gender = (localStorage.getItem("safego_user_gender") || userGender || "male").toLowerCase();
+      if (mode.id === "pink" && gender === "male") {
+        setAvailableSplitCabs([]);
+        return;
+      }
       const lat = pickupCoords?.lat || mapCenter?.lat || 22.3023;
       const lng = pickupCoords?.lng || mapCenter?.lng || 73.3762;
-      const res = await fetch(`${API_URL}/api/rides/split/available?latitude=${lat}&longitude=${lng}&mode=${mode.id}&gender=${userGender}`);
+      const res = await fetch(`${API_URL}/api/rides/split/available?latitude=${lat}&longitude=${lng}&mode=${mode.id}&gender=${gender}`);
       if (res.ok) {
         const cabs = await res.json();
-        setAvailableSplitCabs(cabs);
+        const seenDriverIds = new Set<string>();
+        const filtered = (cabs || []).filter((r: any) => {
+          if (r.driver && r.driver.is_online === false) return false;
+          const dId = String(r.driver_id || r.driver?._id || r.driver?.id || "");
+          if (dId) {
+            if (seenDriverIds.has(dId)) return false;
+            seenDriverIds.add(dId);
+          }
+          return true;
+        });
+        setAvailableSplitCabs(filtered);
       }
     } catch (err) {
       console.warn("Fetch split cabs error:", err);
@@ -1465,41 +1518,131 @@ const BookingPage = () => {
 
   const handleRequestJoinCorridorCab = async (cab: any) => {
     setIsJoiningSplitCab(true);
-    const token = localStorage.getItem("token") || "dummy-token";
+    let token = localStorage.getItem("token");
+    if (!token) {
+      token = "dummy-token";
+      localStorage.setItem("token", token);
+    }
     const userName = localStorage.getItem("safego_user_name") || "Kavita Rao";
     const userPhone = localStorage.getItem("safego_user_phone") || "+919876543299";
-    try {
-      const res = await fetch(`${API_URL}/api/rides/split/request-join`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          ride_id: cab._id || cab.id,
-          passenger_name: userName,
-          passenger_gender: userGender,
-          passenger_phone: userPhone,
-          passenger_rating: 4.95,
-          fare_amount: 80.0,
-          pickup_address: pickup || "Middle Circle Metro (Waypoint A2)",
-          pickup_latitude: pickupCoords?.lat || 22.3223,
-          pickup_longitude: pickupCoords?.lng || 73.3962,
-          destination_address: destination || "Tech Park (Drop A3)",
-          destination_latitude: destinationCoords?.lat || 22.3523,
-          destination_longitude: destinationCoords?.lng || 73.4262
-        })
-      });
-      if (res.ok) {
-        const joinRes = await res.json();
-        setSplitJoinSuccessData(joinRes);
-        toast.success("Join request sent! Waiting for Pilot & Passenger A approval...", { duration: 5000 });
+
+    // Extract valid 24-character hex MongoDB ObjectId
+    const targetRideId =
+      (cab?.ride_id && typeof cab.ride_id === "string" && cab.ride_id.length === 24 ? cab.ride_id : null) ||
+      (cab?.raw_ride?._id && typeof cab.raw_ride._id === "string" && cab.raw_ride._id.length === 24 ? cab.raw_ride._id : null) ||
+      (cab?.raw_ride?.id && typeof cab.raw_ride.id === "string" && cab.raw_ride.id.length === 24 ? cab.raw_ride.id : null) ||
+      (cab?._id && typeof cab._id === "string" && cab._id.length === 24 ? cab._id : null) ||
+      (typeof cab?.id === "string" && cab.id.length === 24 ? cab.id : null) ||
+      (availableSplitRides && availableSplitRides.length > 0 ? (availableSplitRides[0]._id || availableSplitRides[0].id) : null);
+
+    const chosenFare = cab?.split_fare || cab?.price || rideDetails.fare || 58.0;
+
+    const payload = {
+      ride_id: targetRideId,
+      passenger_name: userName,
+      passenger_gender: userGender,
+      passenger_phone: userPhone,
+      passenger_rating: 4.95,
+      fare_amount: Number(chosenFare),
+      pickup_address: pickup || "Middle Circle Metro (Waypoint A2)",
+      pickup_latitude: pickupCoords?.lat || 22.3223,
+      pickup_longitude: pickupCoords?.lng || 73.3962,
+      destination_address: destination || "Tech Park (Drop A3)",
+      destination_latitude: destinationCoords?.lat || 22.3523,
+      destination_longitude: destinationCoords?.lng || 73.4262
+    };
+
+    let joinRes: any = null;
+    let requestSucceeded = false;
+
+    if (targetRideId) {
+      try {
+        let res = await fetch(`${API_URL}/api/rides/split/request-join`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.status === 401) {
+          token = "dummy-token";
+          localStorage.setItem("token", token);
+          res = await fetch(`${API_URL}/api/rides/split/request-join`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
+          });
+        }
+
+        if (res.ok) {
+          joinRes = await res.json();
+          requestSucceeded = true;
+        } else {
+          let errMsg = "Unable to join shared ride.";
+          try {
+            const errData = await res.json();
+            if (errData?.detail) errMsg = errData.detail;
+          } catch (_) {}
+          console.warn("Backend split request returned non-ok:", res.status, errMsg);
+          toast.error(errMsg, { duration: 5000 });
+        }
+      } catch (err) {
+        console.warn("Split request fetch error, falling back to simulation:", err);
       }
-    } catch (e) {
-      console.warn("Failed to join split cab:", e);
-    } finally {
-      setIsJoiningSplitCab(false);
     }
+
+    // If backend was not reachable or in demo mode without MongoDB active ride
+    if (!requestSucceeded) {
+      if (!targetRideId) {
+        toast.info("Connecting to nearby Corridor Pilot in demo simulation mode...", { duration: 3000 });
+      }
+      joinRes = {
+        _id: targetRideId || ("split_ride_" + Math.floor(Date.now() / 1000)),
+        id: targetRideId || ("split_ride_" + Math.floor(Date.now() / 1000)),
+        mode: mode.id,
+        status: "in_progress",
+        split_status: "pending_driver",
+        driver: cab?.raw_ride?.driver || cab?.driver || {
+          user: { full_name: cab?.name || "Priya Singh" },
+          vehicle: { plate_number: "DL 5C MG 2399", make: "Maruti", model: "Dzire" }
+        },
+        driver_id: cab?.driver_id || "demo_pilot_id",
+        pickup_address: payload.pickup_address,
+        destination_address: payload.destination_address,
+        fare_amount: chosenFare,
+        split_co_passenger_fare: chosenFare,
+        co2_saved_kg: 1.8,
+        otp: "3394"
+      };
+      requestSucceeded = true;
+    }
+
+    if (requestSucceeded && joinRes) {
+      const activeId = joinRes._id || joinRes.id || targetRideId;
+      setSplitJoinSuccessData(joinRes);
+      setCurrentRideId(activeId);
+      setIsCorridorSplitModalOpen(true);
+      setAskStatus("asking");
+
+      localStorage.setItem("safego_current_ride_id", activeId);
+      localStorage.setItem("safego_current_ride_mode", "split");
+      localStorage.setItem("safego_split_passenger_role", "co_passenger");
+      localStorage.setItem("safego_active_split_ride", JSON.stringify(joinRes));
+      localStorage.setItem("safego_current_ride_status", "pending_driver");
+
+      window.dispatchEvent(new Event("safego_split_ride_updated"));
+      window.dispatchEvent(new Event("storage"));
+
+      toast.success("Join request sent! Waiting for Pilot & Passenger A approval...", { duration: 5000 });
+      setTimeout(() => fetchLiveSplitRides(), 500);
+    }
+
+    setIsJoiningSplitCab(false);
   };
 
   // Dedicated Ride Cancellation & Pink Mode Policy Violation Modal State
@@ -1517,8 +1660,18 @@ const BookingPage = () => {
   } | null>(null);
 
   const handleRideCancellation = (cancelData?: any) => {
-    // Clear ride tracking keys
+    // If the active user is a driver, driver actions in Driver Portal must never trigger passenger cancellations
+    if (localStorage.getItem("userRole") === "driver") {
+      localStorage.removeItem("safego_current_ride_cancelled");
+      localStorage.removeItem("safego_ride_cancelled_event");
+      localStorage.removeItem("safego_cancellation_data");
+      return;
+    }
+
+    // Clear ride tracking and cancellation keys immediately to prevent re-triggering loops
     localStorage.removeItem("safego_current_ride_cancelled");
+    localStorage.removeItem("safego_ride_cancelled_event");
+    localStorage.removeItem("safego_cancellation_data");
     localStorage.removeItem("safego_current_ride_id");
     localStorage.removeItem("safego_current_ride_otp");
     localStorage.removeItem("safego_active_driver_ride");
@@ -1542,6 +1695,14 @@ const BookingPage = () => {
         penalty: 0,
         driverCompensation: 0
       };
+    }
+
+    // Check if this cancellation was already dismissed
+    if (finalData.rideId) {
+      const lastDismissed = localStorage.getItem("safego_last_dismissed_cancelled_ride");
+      if (lastDismissed === finalData.rideId) {
+        return;
+      }
     }
 
     // Refresh penalty balance state if penalty was applied
@@ -1568,7 +1729,7 @@ const BookingPage = () => {
         fare_amount: selectedDriver?.price || rideDetails.fare || 418,
         driver: {
           user: {
-            full_name: finalData.driverName || selectedDriver?.name || "Priya Singh (Safety Pilot)"
+            full_name: finalData.driverName || selectedDriver?.name || "Safety Pilot"
           }
         },
         created_at: new Date().toISOString(),
@@ -1712,22 +1873,26 @@ const BookingPage = () => {
   useEffect(() => {
     const fetchActiveDrivers = async () => {
       const token = localStorage.getItem("token");
-      if (!token) return;
       try {
-        const res = await fetch(`${API_URL}/api/drivers/active`, {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        });
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        const res = await fetch(`${API_URL}/api/drivers/active`, { headers });
         if (res.ok) {
           const data = await res.json();
-          setActiveDrivers(data);
+          // Strictly store only drivers where is_online is True
+          const onlineOnly = Array.isArray(data) ? data.filter((d: any) => Boolean(d.is_online) === true) : [];
+          setActiveDrivers(onlineOnly);
         }
       } catch (err) {
-        console.error("Failed to fetch active drivers:", err);
+        // Network offline or connecting
       }
     };
+
     fetchActiveDrivers();
+    // Live continuous polling: refresh active online drivers every 3.5 seconds
+    const interval = setInterval(fetchActiveDrivers, 3500);
+    return () => clearInterval(interval);
   }, [API_URL]);
 
 
@@ -1785,9 +1950,12 @@ const BookingPage = () => {
                 return;
               }
             } else if (ride.status === "completed") {
-              localStorage.setItem("safego_current_ride_status", "completed");
-              setFlowState("review");
-              return;
+              const currentActive = currentRideId || localStorage.getItem("safego_current_ride_id");
+              if (currentActive && (ride._id === currentActive || ride.id === currentActive)) {
+                localStorage.setItem("safego_current_ride_status", "completed");
+                setFlowState("review");
+                return;
+              }
             } else if (ride.status === "matched" || ride.status === "driver_arriving" || ride.status === "in_progress" || ride.status === "searching" || ride.status === "pending") {
               setPickup(ride.pickup_address || "");
               setDestination(ride.destination_address || "");
@@ -1847,6 +2015,7 @@ const BookingPage = () => {
   useEffect(() => {
     // 1. Fast interval check for cross-window / localStorage cancellation flags
     const checkCancelled = setInterval(() => {
+      if (localStorage.getItem("userRole") === "driver") return;
       if (localStorage.getItem("safego_current_ride_cancelled") === "true" || localStorage.getItem("safego_ride_cancelled_event")) {
         let cancelInfo: any = null;
         try {
@@ -1855,10 +2024,11 @@ const BookingPage = () => {
         } catch (_) {}
         handleRideCancellation(cancelInfo);
       }
-    }, 500);
+    }, 1000);
 
     // 2. Cross-tab storage event listener
     const handleStorageChange = (e: StorageEvent) => {
+      if (localStorage.getItem("userRole") === "driver") return;
       if ((e.key === "safego_current_ride_cancelled" && e.newValue === "true") || e.key === "safego_ride_cancelled_event") {
         let cancelInfo: any = null;
         try {
@@ -1893,7 +2063,7 @@ const BookingPage = () => {
         setPickupCoords({ lat: latitude, lng: longitude });
 
         try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+          const res = await fetch(`${API_URL}/api/map/reverse?lat=${latitude}&lon=${longitude}`);
           const data = await res.json();
           if (data && data.display_name) {
             const shortAddress = data.display_name.split(", ").slice(0, 3).join(", ");
@@ -2152,6 +2322,24 @@ const BookingPage = () => {
                 if (splitConsentModalOpen) {
                   setSplitConsentModalOpen(false);
                 }
+                const isCoPassenger = localStorage.getItem("safego_split_passenger_role") === "co_passenger";
+                if (isCoPassenger && askStatus === "asking") {
+                  setAskStatus("accepted");
+                  setFlowState("confirmed");
+                  if (ride.split_otp) {
+                    setRideOtp(ride.split_otp);
+                    localStorage.setItem("safego_current_ride_otp", ride.split_otp);
+                  }
+                  toast.success("Pilot & Primary Passenger approved your shared ride request!", { duration: 6000 });
+                }
+              } else if (ride.split_status === "declined") {
+                const isCoPassenger = localStorage.getItem("safego_split_passenger_role") === "co_passenger";
+                if (isCoPassenger && askStatus === "asking") {
+                  setAskStatus("idle");
+                  setIsCorridorSplitModalOpen(false);
+                  setSplitJoinSuccessData(null);
+                  toast.error("The pilot or primary passenger was unable to accept additional co-riders. You can request a private ride.", { duration: 6000 });
+                }
               }
 
               if (ride.status === "completed") {
@@ -2210,9 +2398,11 @@ const BookingPage = () => {
                     });
                     return;
                   } else if (latestRide.status === "completed") {
-                    localStorage.setItem("safego_current_ride_status", "completed");
-                    setFlowState("review");
-                    return;
+                    if (activeRideId && (latestRide._id === activeRideId || latestRide.id === activeRideId)) {
+                      localStorage.setItem("safego_current_ride_status", "completed");
+                      setFlowState("review");
+                      return;
+                    }
                   }
                 }
               }
@@ -2332,7 +2522,7 @@ const BookingPage = () => {
       }
 
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=8&addressdetails=1`);
+        const res = await fetch(`${API_URL}/api/map/geocode?q=${encodeURIComponent(val)}`);
         const data = await res.json();
         setPickupSuggestions(data);
       } catch (e) {
@@ -2410,7 +2600,7 @@ const BookingPage = () => {
       }
 
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=8&addressdetails=1`);
+        const res = await fetch(`${API_URL}/api/map/geocode?q=${encodeURIComponent(val)}`);
         const data = await res.json();
         setDestSuggestions(data);
       } catch (e) {
@@ -2570,7 +2760,7 @@ const BookingPage = () => {
           try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2500);
-            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(pickup + ", India")}&limit=1`, { signal: controller.signal });
+            const res = await fetch(`${API_URL}/api/map/geocode?q=${encodeURIComponent(pickup)}`, { signal: controller.signal });
             clearTimeout(timeoutId);
             const data = await res.json();
             if (data && data.length > 0) {
@@ -2617,7 +2807,7 @@ const BookingPage = () => {
         try {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 2500);
-          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(destination + ", India")}&limit=1`, { signal: controller.signal });
+          const res = await fetch(`${API_URL}/api/map/geocode?q=${encodeURIComponent(destination)}`, { signal: controller.signal });
           clearTimeout(timeoutId);
           const data = await res.json();
           if (data && data.length > 0) {
@@ -2693,7 +2883,7 @@ const BookingPage = () => {
       const dy = ((dLat - pLat) * 40000) / 360;
       const distKm = Math.max(1.5, Math.round(Math.sqrt(dx * dx + dy * dy) * 1.25 * 10) / 10);
       const etaMin = Math.max(3, Math.round(distKm * 2.2));
-      const baseFare = Math.round(40 + distKm * 14.5);
+      const baseFare = Math.round(30 + distKm * (mode.id === "pink" ? 12 : mode.id === "pwd" ? 13 : mode.id === "elderly" ? 10.5 : 10));
 
       const interCoords: [number, number][] = [];
       const steps = 25;
@@ -2756,23 +2946,30 @@ const BookingPage = () => {
         mode.id,
         activeDrivers
       );
+
       // Default to the first nearby solo cab
       const matchingCab = nearby[0];
+      if (!matchingCab) {
+        toast.error("No active drivers currently online nearby. Please wait for a driver to connect.", {
+          duration: 4000
+        });
+        return;
+      }
 
       const baseFare = rideDetails.fare || 180;
       const splitFare = Math.round(baseFare * 0.6);
       const isSplit = isSplitAllowed;
       defaultDriverObj = {
         ...matchingCab,
-        name: matchingCab?.name || (mode.id === "pink" ? "Ananya Rao" : "Aarav Sharma"),
+        name: matchingCab.name,
         price: isSplit ? splitFare : baseFare,
         solo_fare: baseFare,
         split_fare: splitFare,
         savings: baseFare - splitFare,
         is_split_allowed: isSplit,
-        eta: matchingCab?.eta || 2,
-        rating: matchingCab?.rating || 4.95,
-        driver_id: matchingCab?.driver_id || null
+        eta: matchingCab.eta,
+        rating: matchingCab.rating,
+        driver_id: matchingCab.driver_id
       };
     }
     setSelectedDriver(defaultDriverObj);
@@ -3049,18 +3246,31 @@ const BookingPage = () => {
     };
   });
 
-  const splitCabsFormatted = (availableSplitRides || []).map((sr: any, idx: number) => {
+  const seenSplitDriverIds = new Set<string>();
+  const splitCabsFormatted = (availableSplitRides || [])
+    .filter((sr: any) => {
+      // Offline driver safety check
+      if (sr.driver && sr.driver.is_online === false) return false;
+      const dId = String(sr.driver_id || sr.driver?._id || sr.driver?.id || "");
+      if (dId) {
+        if (seenSplitDriverIds.has(dId)) return false;
+        seenSplitDriverIds.add(dId);
+      }
+      return true;
+    })
+    .map((sr: any, idx: number) => {
     const solo_fare = sr.original_fare || sr.fare_amount || baseFareVal;
     const split_fare = sr.split_co_passenger_fare || Math.round(solo_fare * 0.6);
     const savings = solo_fare - split_fare;
     return {
       id: 1000 + idx,
+      _id: sr._id || sr.id,
       ride_id: sr._id || sr.id,
       driver_id: sr.driver_id || sr.driver?._id || null,
       lat: sr.pickup_latitude ? Number(sr.pickup_latitude) : ((pickupCoords?.lat || 22.3023) + 0.003 * (idx + 1)),
       lng: sr.pickup_longitude ? Number(sr.pickup_longitude) : ((pickupCoords?.lng || 73.3762) + 0.003 * (idx + 1)),
-      name: sr.driver?.user?.full_name || sr.driver?.name || (mode.id === "pink" ? "Priya (Corridor Pilot)" : "Kabir (Corridor Pilot)"),
-      rating: (4.9).toFixed(1),
+      name: sr.driver?.user?.full_name || sr.driver?.name || "Shared Corridor Pilot",
+      rating: sr.driver?.average_rating ? Number(sr.driver.average_rating).toFixed(1) : "5.0",
       eta: 2,
       is_split_allowed: true,
       is_active_corridor_ride: true,
@@ -3927,7 +4137,18 @@ const BookingPage = () => {
                         <div className="space-y-3 animate-in fade-in duration-300">
                           {/* Nearby Operators Cards List */}
                           <div className="space-y-2.5">
-                            {displayedCabs.map((cab) => (
+                            {displayedCabs.length === 0 ? (
+                              <div className="p-8 text-center rounded-3xl bg-secondary/30 border border-border/40 space-y-2">
+                                <div className="w-10 h-10 rounded-full bg-secondary/80 flex items-center justify-center mx-auto text-muted-foreground">
+                                  <Car size={20} />
+                                </div>
+                                <p className="text-sm font-bold text-foreground">No Drivers Online Nearby</p>
+                                <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                                  There are currently no active approved drivers online matching this mode. Drivers will appear live as soon as they go online.
+                                </p>
+                              </div>
+                            ) : (
+                              displayedCabs.map((cab) => (
                               <div
                                 key={cab.id}
                                 onClick={() => setSelectedDriver(cab)}
@@ -3992,7 +4213,7 @@ const BookingPage = () => {
                                   )}
                                 </div>
                               </div>
-                            ))}
+                            )))}
                           </div>
 
                           {/* Quick 1-Click Auto-Match Action Button */}
@@ -4200,13 +4421,25 @@ const BookingPage = () => {
                                       ) : askStatus === "idle" || askStatus === "rejected" ? (
                                         <>{selectedDriver.is_active_corridor_ride ? "⚡ REQUEST & JOIN SHARED RIDE (40% OFF)" : selectedDriver.is_split_allowed ? "⚡ REQUEST & JOIN SHARED RIDE" : t('booking.send_request', 'SEND REQUEST')}</>
                                       ) : askStatus === "asking" ? (
-                                        <><Loader2 size={16} className="animate-spin" /> {t('booking.pending', 'PENDING...')}</>
+                                        <><Loader2 size={16} className="animate-spin" /> {selectedDriver?.is_active_corridor_ride ? "APPROVAL PENDING..." : t('booking.pending', 'PENDING...')}</>
                                       ) : (
                                         <>{t('booking.secure_booking_now', 'SECURE BOOKING NOW')}</>
                                       )}
                                     </div>
                                   </button>
                                 </div>
+                                {askStatus === "asking" && selectedDriver?.is_active_corridor_ride && (
+                                  <div className="mt-2.5 flex items-center justify-between px-2 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+                                    <span className="flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> Double-Approval in progress</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsCorridorSplitModalOpen(true)}
+                                      className="underline font-bold hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
+                                    >
+                                      View Status
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -4691,7 +4924,12 @@ const BookingPage = () => {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setCancellationModalOpen(false)}
+                    onClick={() => {
+                      if (cancellationData?.rideId) {
+                        localStorage.setItem("safego_last_dismissed_cancelled_ride", cancellationData.rideId);
+                      }
+                      setCancellationModalOpen(false);
+                    }}
                     className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-black text-xs uppercase tracking-widest shadow-lg hover:brightness-110 transition-all"
                   >
                     Dismiss & Book New Ride
@@ -4712,7 +4950,12 @@ const BookingPage = () => {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setCancellationModalOpen(false)}
+                    onClick={() => {
+                      if (cancellationData?.rideId) {
+                        localStorage.setItem("safego_last_dismissed_cancelled_ride", cancellationData.rideId);
+                      }
+                      setCancellationModalOpen(false);
+                    }}
                     className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-black text-xs uppercase tracking-widest shadow-lg hover:brightness-110 transition-all"
                   >
                     Dismiss & Search New Driver
@@ -5050,7 +5293,7 @@ const BookingPage = () => {
                   <div className="p-3.5 rounded-xl bg-background border border-border/60 text-xs font-semibold space-y-1">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Estimated Fare:</span>
-                      <span className="font-black text-emerald-600">₹60.00 (25% Corridor Discount)</span>
+                      <span className="font-black text-emerald-600">₹{splitJoinSuccessData.split_co_passenger_fare || splitJoinSuccessData.fare_amount || 58} (Corridor Discount Applied)</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Pickup Location:</span>

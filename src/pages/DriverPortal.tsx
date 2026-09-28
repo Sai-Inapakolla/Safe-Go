@@ -12,7 +12,7 @@ import {
   IndianRupee, Download, Filter, Search, Menu, ChevronDown, ChevronUp,
   Route, Clock3, Fuel, Award, ThumbsUp, Navigation, CircleDot,
   FileUp, ExternalLink, MoreVertical, Trash2, Loader2, ShieldCheck, Lock, KeyRound, ShieldAlert,
-  Users, Sparkles, CheckCircle2
+  Users, Sparkles, CheckCircle2, Power, Radio, Coffee
 } from "lucide-react";
 import {
   Dialog,
@@ -23,26 +23,6 @@ import {
 } from "@/components/ui/dialog";
 import { useRef } from "react";
 import { getApiUrl } from "@/lib/api";
-
-const DEFAULT_PILOT = {
-  id: "drv_me",
-  full_name: "SafeGo Pilot",
-  phone: "+91 98201 44556",
-  email: "driver@safego.ph",
-  license_number: "IND-MH02-2023-8821",
-  status: "approved",
-  is_online: true,
-  rating: 4.95,
-  total_rides: 42,
-  today_rides: 4,
-  today_earnings: 1450,
-  vehicle: {
-    make: "Toyota",
-    model: "Innova Crysta",
-    plate_number: "MH 02 AB 1234",
-    color: "Silver"
-  }
-};
 
 // ───────── Types ─────────
 type TabKey = "dashboard" | "rides" | "history" | "documents" | "earnings" | "settings";
@@ -56,16 +36,6 @@ const navItems: { icon: any; label: string; tab: TabKey }[] = [
   { icon: Settings, label: "Settings", tab: "settings" },
 ];
 
-const DEFAULT_MOCK_HISTORY = [
-  { id: "mock-101", pickup: "Indiranagar 100ft Road", dest: "HSR Layout Sector 1", fare: "₹380", status: "completed", date: "Today", duration: "24 min", rating: 5, tip: "₹50", time: "02:15 PM" },
-  { id: "mock-102", pickup: "Koramangala 5th Block", dest: "MG Road Metro Station", fare: "₹240", status: "completed", date: "Today", duration: "18 min", rating: 5, tip: "₹20", time: "11:30 AM" },
-  { id: "mock-103", pickup: "Whitefield ITPL", dest: "Bellandur Outer Ring Rd", fare: "₹520", status: "completed", date: "Yesterday", duration: "42 min", rating: 5, tip: "₹30", time: "06:45 PM" },
-  { id: "mock-104", pickup: "Hebbal Flyover", dest: "Kempegowda Int'l Airport", fare: "₹950", status: "completed", date: "Yesterday", duration: "35 min", rating: 5, tip: "₹100", time: "08:10 AM" },
-  { id: "mock-105", pickup: "Electronic City Phase 1", dest: "Silk Board Junction", fare: "₹310", status: "completed", date: "Mar 10, 2026", duration: "28 min", rating: 4, tip: "₹0", time: "05:20 PM" },
-  { id: "mock-106", pickup: "Jayanagar 4th Block", dest: "JP Nagar 6th Phase", fare: "₹180", status: "completed", date: "Mar 09, 2026", duration: "15 min", rating: 5, tip: "₹30", time: "03:00 PM" },
-  { id: "mock-107", pickup: "Commercial Street", dest: "Brigade Road", fare: "₹150", status: "completed", date: "Mar 08, 2026", duration: "12 min", rating: 5, tip: "₹20", time: "01:10 PM" },
-];
-
 // ───────── Tab Components ─────────
 
 const DashboardTab = ({
@@ -73,6 +43,9 @@ const DashboardTab = ({
   requests,
   activity,
   activeRide,
+  isOnline,
+  onToggleOnline,
+  isTogglingOnline = false,
   onAccept,
   onDecline,
   onDetails,
@@ -88,6 +61,9 @@ const DashboardTab = ({
   requests: any[],
   activity: any[],
   activeRide: any,
+  isOnline: boolean,
+  onToggleOnline: () => void,
+  isTogglingOnline?: boolean,
   onAccept: (id: string, loc: string) => void,
   onDecline: (id: string) => void,
   onDetails: (ride: any) => void,
@@ -99,7 +75,8 @@ const DashboardTab = ({
   onOpenSplitOtpModal?: (id: string) => void,
   loading: boolean
 }) => {
-  const initials = driver?.user?.full_name ? driver.user.full_name.split(" ").map((n: string) => n[0]).join("") : "D";
+  const dName = driver?.user?.full_name || driver?.full_name || localStorage.getItem("safego_user_name") || "Driver";
+  const initials = dName.trim().split(" ").filter(Boolean).map((n: string) => n[0]).slice(0, 2).join("").toUpperCase() || "D";
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
@@ -230,6 +207,105 @@ const DashboardTab = ({
         </div>
       )}
 
+      {/* ─── LIVE DRIVER AVAILABILITY HERO BANNER ─── */}
+      <div className={`relative overflow-hidden rounded-3xl border-2 transition-all duration-500 shadow-xl ${
+        isOnline
+          ? "border-emerald-500/40 bg-gradient-to-br from-emerald-950/20 via-card to-background shadow-emerald-500/5"
+          : "border-border/80 bg-gradient-to-br from-secondary/60 via-card to-background shadow-black/5"
+      }`}>
+        {/* Ambient Background Glow Effect when Online */}
+        {isOnline && (
+          <div className="absolute -top-24 -right-24 h-48 w-48 rounded-full bg-emerald-500/15 blur-3xl pointer-events-none animate-pulse" />
+        )}
+
+        <div className="p-6 sm:p-7 relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex items-start sm:items-center gap-4">
+            {/* Animated Status Pulse Emblem */}
+            <div className={`relative flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border transition-all duration-500 shadow-inner ${
+              isOnline
+                ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-500 shadow-emerald-500/20"
+                : "border-border bg-secondary/80 text-muted-foreground"
+            }`}>
+              {isOnline ? (
+                <>
+                  <Radio size={28} className="animate-pulse" />
+                  <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 border-2 border-background" />
+                  </span>
+                </>
+              ) : (
+                <Coffee size={28} className="text-muted-foreground" />
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border shadow-sm ${
+                  isOnline
+                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+                    : "bg-secondary text-muted-foreground border-border"
+                }`}>
+                  <span className={`h-2 w-2 rounded-full ${isOnline ? "bg-emerald-500 animate-ping" : "bg-muted-foreground"}`} />
+                  {isOnline ? "Duty: ONLINE" : "Duty: OFFLINE"}
+                </span>
+
+                <span className="text-xs font-bold text-muted-foreground flex items-center gap-1">
+                  <ShieldCheck size={14} className="text-primary" /> Verified Pilot
+                </span>
+              </div>
+
+              <h2 className="text-xl sm:text-2xl font-black font-display tracking-tight text-foreground">
+                {isOnline ? "Available for Taking Rides" : "Off-Duty • Taking a Break"}
+              </h2>
+
+              <p className="text-xs sm:text-sm text-muted-foreground max-w-xl leading-relaxed">
+                {isOnline
+                  ? "Your vehicle is visible to passengers nearby. SafeGo AI is actively searching and dispatching ride requests and corridor splits."
+                  : "You are currently invisible to riders. Toggle availability ON whenever you are ready to receive new ride requests and earn."}
+              </p>
+            </div>
+          </div>
+
+          {/* Big Interactive Online / Offline Action Switch Button */}
+          <div className="flex items-center gap-4 self-end md:self-center shrink-0">
+            <div className="text-right hidden sm:block">
+              <p className="text-xs font-black uppercase tracking-wider text-foreground">
+                {isOnline ? "Go Off-Duty" : "Go On-Duty"}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {isOnline ? "Pause ride matching" : "Start receiving rides"}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              disabled={isTogglingOnline}
+              onClick={onToggleOnline}
+              className={`relative inline-flex items-center justify-center gap-3 px-6 py-4 rounded-2xl font-black text-sm uppercase tracking-wider transition-all duration-300 shadow-xl active:scale-95 disabled:opacity-50 select-none ${
+                isOnline
+                  ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/25 ring-2 ring-emerald-500/20"
+                  : "bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary/20 ring-2 ring-primary/20"
+              }`}
+            >
+              {isTogglingOnline ? (
+                <Loader2 size={20} className="animate-spin" />
+              ) : isOnline ? (
+                <>
+                  <Power size={20} className="text-emerald-100" />
+                  <span>Online • Active</span>
+                </>
+              ) : (
+                <>
+                  <Power size={20} className="text-primary-foreground" />
+                  <span>Go Online Now</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Profile header */}
       <div className="rounded-2xl border border-border bg-background p-6 lg:p-8 shadow-sm">
         <div className="flex flex-wrap items-center gap-4">
@@ -237,11 +313,20 @@ const DashboardTab = ({
             {initials}
           </div>
           <div>
-            <h2 className="font-display text-2xl font-black text-foreground tracking-tight">{driver?.user?.full_name || "Driver Portal"}</h2>
-            <div className="mt-1 flex items-center gap-3 text-sm text-muted-foreground font-medium">
+            <h2 className="font-display text-2xl font-black text-foreground tracking-tight">{driver?.user?.full_name || driver?.full_name || localStorage.getItem("safego_user_name") || "Driver Portal"}</h2>
+            <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground font-medium">
               <span className="flex items-center gap-1.5"><Star size={14} className="fill-amber-400 text-amber-400" /> {driver?.average_rating || "0.0"} Rating</span>
               <span className="h-1 w-1 rounded-full bg-muted-foreground/30" />
               <span className="rounded-full bg-primary/10 px-3 py-0.5 text-[10px] font-black uppercase tracking-widest text-primary border border-primary/20">Verified Driver ✓</span>
+              <span className="h-1 w-1 rounded-full bg-muted-foreground/30" />
+              <span className={`rounded-full px-3 py-0.5 text-[10px] font-black uppercase tracking-widest border flex items-center gap-1.5 ${
+                isOnline
+                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
+                  : "bg-secondary text-muted-foreground border-border"
+              }`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+                {isOnline ? "Available for Rides" : "Off-Duty"}
+              </span>
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -278,58 +363,82 @@ const DashboardTab = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h3 className="font-display text-lg font-bold text-foreground">Incoming Ride Requests</h3>
-            <span className="h-2.5 w-2.5 rounded-full bg-primary animate-pulse" />
+            {isOnline && <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />}
           </div>
-          <span className="text-xs text-muted-foreground bg-secondary px-3 py-1 rounded-full">{requests.length} pending</span>
-        </div>
-        <div className="mt-4 flex flex-col gap-3">
-          {requests.length > 0 ? (
-            requests.map((r) => (
-              <div key={r.id} className="flex flex-wrap items-center gap-4 rounded-xl border border-border p-4 hover:border-primary/30 hover:shadow-sm transition-all group animate-in slide-in-from-top-2">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                  <Navigation size={18} className="text-primary" />
-                </div>
-                <div className="flex-1 min-w-[200px]">
-                  <p className="text-sm font-semibold text-foreground">{r.pickup} → {r.dest}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{r.dist} · Est. {r.fare} · {r.passengers} passenger{r.passengers > 1 ? "s" : ""}</p>
-                </div>
-                <span className="text-xs text-muted-foreground">{r.time}</span>
-                <span className="rounded-full px-3 py-1 text-xs font-medium" style={{ backgroundColor: r.modeBg, color: r.modeColor }}>{r.mode}</span>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => onDetails(r)}
-                    className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
-                  >
-                    Details
-                  </button>
-                  <button
-                    onClick={() => onAccept(r.id, r.dest)}
-                    className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:brightness-110 transition-all active:scale-95"
-                  >
-                    Accept
-                  </button>
-                  <button
-                    onClick={() => onDecline(r.id)}
-                    className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-50 hover:border-red-100 transition-colors"
-                  >
-                    Decline
-                  </button>
-                </div>
-              </div>
-            ))
+          {isOnline ? (
+            <span className="text-xs text-muted-foreground bg-secondary px-3 py-1 rounded-full">{requests.length} pending</span>
           ) : (
-            <div className="py-16 text-center bg-secondary/10 rounded-2xl border border-dashed border-border transition-all animate-in fade-in zoom-in-95">
-              <div className="mx-auto w-16 h-16 bg-background rounded-full flex items-center justify-center mb-4 shadow-sm">
-                <Car className="text-muted-foreground opacity-50" size={28} />
-              </div>
-              <h4 className="text-xl font-display font-bold text-foreground">All Cleared!</h4>
-              <p className="text-sm text-muted-foreground mt-1 px-4">You've reached the end of the queue. We'll notify you when new ride requests arrive.</p>
-              <button className="mt-6 rounded-xl border border-border bg-background px-6 py-2 text-sm font-semibold text-foreground hover:bg-secondary transition-colors">
-                Refresh Queue
-              </button>
-            </div>
+            <span className="text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full">Off-Duty / Paused</span>
           )}
         </div>
+
+        {!isOnline ? (
+          <div className="mt-4 py-12 px-6 text-center bg-secondary/15 rounded-2xl border border-dashed border-border/80 transition-all animate-in fade-in zoom-in-95">
+            <div className="mx-auto w-16 h-16 bg-background rounded-2xl border border-border flex items-center justify-center mb-3 shadow-sm text-muted-foreground">
+              <Coffee size={28} />
+            </div>
+            <h4 className="text-lg font-display font-black text-foreground">You are currently Offline</h4>
+            <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+              New ride requests and corridor split passengers are paused. Switch your status to <strong>Online</strong> to start receiving real-time passenger requests.
+            </p>
+            <button
+              onClick={onToggleOnline}
+              disabled={isTogglingOnline}
+              className="mt-5 inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
+            >
+              <Power size={14} /> Go Online & Accept Rides
+            </button>
+          </div>
+        ) : (
+          <div className="mt-4 flex flex-col gap-3">
+            {requests.length > 0 ? (
+              requests.map((r) => (
+                <div key={r.id} className="flex flex-wrap items-center gap-4 rounded-xl border border-border p-4 hover:border-primary/30 hover:shadow-sm transition-all group animate-in slide-in-from-top-2">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                    <Navigation size={18} className="text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-[200px]">
+                    <p className="text-sm font-semibold text-foreground">{r.pickup} → {r.dest}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{r.dist} · Est. {r.fare} · {r.passengers} passenger{r.passengers > 1 ? "s" : ""}</p>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{r.time}</span>
+                  <span className="rounded-full px-3 py-1 text-xs font-medium" style={{ backgroundColor: r.modeBg, color: r.modeColor }}>{r.mode}</span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => onDetails(r)}
+                      className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
+                    >
+                      Details
+                    </button>
+                    <button
+                      onClick={() => onAccept(r.id, r.dest)}
+                      className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:brightness-110 transition-all active:scale-95"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => onDecline(r.id)}
+                      className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-50 hover:border-red-100 transition-colors"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="py-16 text-center bg-secondary/10 rounded-2xl border border-dashed border-border transition-all animate-in fade-in zoom-in-95">
+                <div className="mx-auto w-16 h-16 bg-background rounded-full flex items-center justify-center mb-4 shadow-sm">
+                  <Car className="text-muted-foreground opacity-50" size={28} />
+                </div>
+                <h4 className="text-xl font-display font-bold text-foreground">All Cleared!</h4>
+                <p className="text-sm text-muted-foreground mt-1 px-4">You've reached the end of the queue. We'll notify you when new ride requests arrive.</p>
+                <button onClick={onRefresh} className="mt-6 rounded-xl border border-border bg-background px-6 py-2 text-sm font-semibold text-foreground hover:bg-secondary transition-colors">
+                  Refresh Queue
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Performance & Activity */}
@@ -388,12 +497,16 @@ const DashboardTab = ({
 
 const AvailableRidesTab = ({
   available,
+  isOnline = true,
+  onToggleOnline,
   onAccept,
   onDetails,
   onRefresh,
   loading
 }: {
   available: any[],
+  isOnline?: boolean,
+  onToggleOnline?: () => void,
   onAccept: (id: string, loc: string) => void,
   onDetails: (ride: any) => void,
   onRefresh: () => void,
@@ -406,6 +519,28 @@ const AvailableRidesTab = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
+      {!isOnline && (
+        <div className="rounded-2xl border-2 border-amber-500/30 bg-amber-500/10 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400">
+              <AlertCircle size={22} />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm text-foreground">You are currently Offline</h4>
+              <p className="text-xs text-muted-foreground">Go Online to accept rides and allow passengers to request trips with you.</p>
+            </div>
+          </div>
+          {onToggleOnline && (
+            <button
+              onClick={onToggleOnline}
+              className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider shadow-md shrink-0 active:scale-95 transition-all flex items-center gap-2"
+            >
+              <Power size={14} /> Go Online Now
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="rounded-2xl border border-border bg-background p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -509,13 +644,13 @@ const HistoryTab = ({
     );
   }
 
-  const effectiveHistory = history && history.length > 0 ? history : DEFAULT_MOCK_HISTORY;
+  const effectiveHistory = Array.isArray(history) ? history : [];
   const completedRides = effectiveHistory.filter(r => r.status !== "failed" && r.status !== "cancelled");
   const calculatedEarnings = completedRides.reduce((sum, r) => sum + (parseInt((r.fare || "0").toString().replace("₹", "").replace(",", "")) || 0), 0);
-  const totalEarnings = driver?.today_earnings || (calculatedEarnings > 0 ? calculatedEarnings : 37152);
-  const totalRides = driver?.total_rides || (completedRides.length > 0 ? completedRides.length : 35);
+  const totalEarnings = driver?.today_earnings || calculatedEarnings;
+  const totalRides = driver?.total_rides || completedRides.length;
   const calculatedTips = completedRides.reduce((sum, r) => sum + (parseInt((r.tip || "0").toString().replace("₹", "").replace(",", "")) || 0), 0);
-  const totalTips = calculatedTips > 0 ? calculatedTips : 250;
+  const totalTips = calculatedTips;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
@@ -536,7 +671,7 @@ const HistoryTab = ({
             <p className="text-xs text-muted-foreground mt-1">Tips Earned</p>
           </div>
           <div className="rounded-xl bg-secondary/80 p-4 text-center">
-            <p className="text-2xl font-bold font-display text-foreground">{driver?.average_rating || 4.9}</p>
+            <p className="text-2xl font-bold font-display text-foreground">{driver?.average_rating ? Number(driver.average_rating).toFixed(1) : "5.0"}</p>
             <p className="text-xs text-muted-foreground mt-1">Avg Rating</p>
           </div>
         </div>
@@ -550,7 +685,14 @@ const HistoryTab = ({
           </div>
         </div>
         <div className="divide-y divide-border">
-          {effectiveHistory.map((r, i) => {
+          {effectiveHistory.length === 0 ? (
+            <div className="py-16 text-center">
+              <Clock className="mx-auto text-muted-foreground/30 mb-3" size={40} />
+              <p className="text-base font-bold text-foreground">No ride history yet</p>
+              <p className="text-xs text-muted-foreground mt-1">Completed trips will be recorded here automatically.</p>
+            </div>
+          ) : (
+            effectiveHistory.map((r, i) => {
             const isCancelled = r.status === "failed" || r.status === "cancelled";
             const isViolation = isCancelled && Boolean(
               r.is_penalty_applied ||
@@ -682,7 +824,7 @@ const HistoryTab = ({
                 )}
               </div>
             );
-          })}
+          }))}
         </div>
       </div>
     </div>
@@ -773,18 +915,17 @@ const DocumentsTab = ({
 
 const EarningsTab = ({ history, driver }: { history: any[], driver?: any }) => {
   const { t } = useTranslation();
-  const effectiveHistory = history && history.length > 0 ? history : DEFAULT_MOCK_HISTORY;
+  const effectiveHistory = Array.isArray(history) ? history : [];
   const completedRides = effectiveHistory.filter(r => r.status !== "failed" && r.status !== "cancelled");
   const calculatedEarnings = completedRides.reduce((sum, r) => sum + (parseInt((r.fare || "0").toString().replace("₹", "").replace(",", "")) || 0), 0);
-  const totalEarnings = driver?.today_earnings || (calculatedEarnings > 0 ? calculatedEarnings : 37152);
-  const totalRides = driver?.total_rides || (completedRides.length > 0 ? completedRides.length : 35);
+  const totalEarnings = driver?.today_earnings || calculatedEarnings;
+  const totalRides = driver?.total_rides || completedRides.length;
   const calculatedTips = completedRides.reduce((sum, r) => sum + (parseInt((r.tip || "0").toString().replace("₹", "").replace(",", "")) || 0), 0);
-  const totalTips = calculatedTips > 0 ? calculatedTips : 250;
+  const totalTips = calculatedTips;
 
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const sampleDailyAmounts = [4200, 5800, 6100, 4900, 7200, 8952, 0];
 
-  const earningsByDay = days.map((day, idx) => {
+  const earningsByDay = days.map((day) => {
     const dayRides = completedRides.filter(r => {
       let dateVal: Date;
       if (r.date === "Today") dateVal = new Date();
@@ -796,13 +937,12 @@ const EarningsTab = ({ history, driver }: { history: any[], driver?: any }) => {
       }
       return !isNaN(dateVal.getTime()) && days[dateVal.getDay()] === day;
     });
-    const rawAmount = dayRides.reduce((sum, r) => sum + (parseInt((r.fare || "0").toString().replace("₹", "").replace(",", "")) || 0), 0);
-    const amount = rawAmount > 0 ? rawAmount : sampleDailyAmounts[idx];
-    const ridesCount = dayRides.length > 0 ? dayRides.length : (amount > 0 ? Math.max(1, Math.round(amount / 650)) : 0);
+    const amount = dayRides.reduce((sum, r) => sum + (parseInt((r.fare || "0").toString().replace("₹", "").replace(",", "")) || 0), 0);
+    const ridesCount = dayRides.length;
     return { day, amount, rides: ridesCount };
   });
 
-  const maxEarning = Math.max(...earningsByDay.map(d => d.amount), 1000);
+  const maxEarning = Math.max(...earningsByDay.map(d => d.amount), 500);
 
   const handleExport = () => {
     const csvContent = "data:text/csv;charset=utf-8,"
@@ -945,20 +1085,55 @@ const EarningsTab = ({ history, driver }: { history: any[], driver?: any }) => {
   );
 };
 
-const SettingsTab = () => {
+const SettingsTab = ({
+  driver,
+  onUpdateProfile
+}: {
+  driver: any,
+  onUpdateProfile?: (updatedData: any) => void
+}) => {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
-  const [profile, setProfile] = useState({
-    firstName: "James",
-    lastName: "Dela Cruz",
-    email: "james.delacruz@email.com",
-    phone: "+63 917 123 4567",
-    address: "123 Rizal Ave, Quezon City, Metro Manila",
-    vehicleModel: "Toyota Vios 2023",
-    plateNumber: "ABC-1234",
-    licenseNo: "N01-23-456789",
-  });
-  const [tempProfile, setTempProfile] = useState({ ...profile });
+
+  const getDriverData = () => {
+    const fullName = driver?.user?.full_name || driver?.full_name || localStorage.getItem("safego_user_name") || "Driver Partner";
+    const nameParts = fullName.trim().split(" ").filter(Boolean);
+    const firstName = nameParts[0] || "Driver";
+    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "Partner";
+    const email = driver?.user?.email || driver?.email || localStorage.getItem("safego_user_email") || "driver@safego.in";
+    const phone = driver?.user?.phone || driver?.phone || localStorage.getItem("safego_user_phone") || "+91 98000 00000";
+    const vehicleModel = driver?.vehicle?.make && driver?.vehicle?.model
+      ? `${driver.vehicle.make} ${driver.vehicle.model}`
+      : driver?.vehicle?.model || (driver?.vehicle?.make ? driver.vehicle.make : "Toyota Innova Crysta");
+    const plateNumber = driver?.vehicle?.plate_number || "MH 02 LIVE 2026";
+    const licenseNo = driver?.license_number || "IND-DL-2026";
+    const driverId = driver?.id || driver?._id
+      ? `DRV-${String(driver.id || driver._id).slice(-6).toUpperCase()}`
+      : "DRV-LIVE-2026";
+
+    return {
+      firstName,
+      lastName,
+      email,
+      phone,
+      vehicleModel,
+      plateNumber,
+      licenseNo,
+      driverId
+    };
+  };
+
+  const [profile, setProfile] = useState(getDriverData);
+  const [tempProfile, setTempProfile] = useState(getDriverData);
+
+  useEffect(() => {
+    if (!editing) {
+      const fresh = getDriverData();
+      setProfile(fresh);
+      setTempProfile(fresh);
+    }
+  }, [driver, editing]);
+
   const [showPassword, setShowPassword] = useState(false);
   const [notifications, setNotifications] = useState({
     rideAlerts: true,
@@ -972,6 +1147,9 @@ const SettingsTab = () => {
   const handleSave = () => {
     setProfile({ ...tempProfile });
     setEditing(false);
+    if (onUpdateProfile) {
+      onUpdateProfile(tempProfile);
+    }
     toast.success("Settings saved!", {
       description: "Your profile has been updated successfully.",
       position: "bottom-right",
@@ -982,6 +1160,8 @@ const SettingsTab = () => {
     setTempProfile({ ...profile });
     setEditing(false);
   };
+
+  const avatarInitials = `${(profile.firstName?.[0] || "P")}${(profile.lastName?.[0] || "S")}`.toUpperCase();
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
@@ -997,7 +1177,7 @@ const SettingsTab = () => {
           <div className="flex items-center gap-6">
             <div className="relative group">
               <div className="flex h-24 w-24 items-center justify-center rounded-full bg-primary text-3xl font-display font-black text-primary-foreground shadow-xl shadow-primary/20 ring-4 ring-background">
-                {profile.firstName[0]}{profile.lastName[0]}
+                {avatarInitials}
               </div>
               {editing && (
                 <button className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px]">
@@ -1008,7 +1188,7 @@ const SettingsTab = () => {
             <div>
               <h4 className="font-display text-2xl font-black text-foreground">{profile.firstName} {profile.lastName}</h4>
               <div className="mt-1 flex items-center gap-4 text-xs font-bold text-muted-foreground uppercase tracking-widest">
-                <span>ID: DRV-2026-XJ</span>
+                <span>ID: {profile.driverId || "DRV-LIVE-2026"}</span>
                 <span className="text-primary bg-primary/10 px-2 py-0.5 rounded">Verified Driver</span>
               </div>
             </div>
@@ -1098,12 +1278,48 @@ const DriverPortal = () => {
   useEffect(() => {
     localStorage.setItem("safego_driver_active_tab", activeTab);
   }, [activeTab]);
+
+  const [isOnline, setIsOnline] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem("safego_driver_online_status");
+      if (saved !== null) return saved === "true";
+      const c = localStorage.getItem("safego_driver_profile");
+      if (c) {
+        const parsed = JSON.parse(c);
+        if (parsed.is_online !== undefined) return Boolean(parsed.is_online);
+      }
+    } catch {}
+    return true; // Default to online for active welcoming driver experience
+  });
+  const [isTogglingOnline, setIsTogglingOnline] = useState(false);
+
   const [driver, setDriver] = useState<any>(() => {
     try {
       const c = localStorage.getItem("safego_driver_profile");
       if (c) return JSON.parse(c);
     } catch {}
-    return DEFAULT_PILOT;
+    const storedName = localStorage.getItem("safego_user_name") || "Driver Partner";
+    const storedEmail = localStorage.getItem("safego_user_email") || "driver@safego.in";
+    const storedPhone = localStorage.getItem("safego_user_phone") || "+91 98000 00000";
+    return {
+      id: "drv_session",
+      full_name: storedName,
+      phone: storedPhone,
+      email: storedEmail,
+      license_number: "IND-DL-2026-LIVE",
+      status: "approved",
+      is_online: true,
+      rating: 5.0,
+      today_rides: 0,
+      today_earnings: 0,
+      total_rides: 0,
+      vehicle: {
+        make: "SafeGo",
+        model: "Fleet Vehicle",
+        plate_number: "LIVE-2026",
+        color: "Silver"
+      }
+    };
   });
   const [activeRide, setActiveRide] = useState<any>(() => {
     try {
@@ -1193,6 +1409,126 @@ const DriverPortal = () => {
   const [splitOtpError, setSplitOtpError] = useState<string | null>(null);
 
   const API_URL = getApiUrl();
+
+  const handleToggleOnlineStatus = async (forcedStatus?: boolean) => {
+    const nextStatus = forcedStatus !== undefined ? forcedStatus : !isOnline;
+    setIsTogglingOnline(true);
+    setIsOnline(nextStatus);
+    setDriver((prev: any) => prev ? { ...prev, is_online: nextStatus } : prev);
+    try {
+      localStorage.setItem("safego_driver_online_status", String(nextStatus));
+      const c = localStorage.getItem("safego_driver_profile");
+      if (c) {
+        const parsed = JSON.parse(c);
+        parsed.is_online = nextStatus;
+        localStorage.setItem("safego_driver_profile", JSON.stringify(parsed));
+      }
+    } catch (e) {}
+
+    const token = localStorage.getItem("token");
+    try {
+      if (token) {
+        await fetch(`${API_URL}/api/drivers/me/online-status`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({ is_online: nextStatus })
+        });
+      }
+    } catch (err) {
+      console.warn("Could not sync online status to server:", err);
+    } finally {
+      setIsTogglingOnline(false);
+    }
+
+    if (nextStatus) {
+      toast.success("You are now ONLINE & Available for Rides", {
+        description: "Listening for new passenger bookings and split corridor requests.",
+        icon: <CircleDot size={18} className="text-emerald-500 animate-ping" />
+      });
+      fetchDriverData(true);
+    } else {
+      toast.info("You are now OFFLINE (Off-Duty)", {
+        description: "You will not receive new ride requests until you go back online.",
+        icon: <Coffee size={18} className="text-amber-500" />
+      });
+    }
+  };
+
+  const handleUpdateProfile = async (updatedData: any) => {
+    const updatedFullName = updatedData.full_name || `${updatedData.firstName} ${updatedData.lastName}`.trim();
+    const updatedVehicleParts = (updatedData.vehicleModel || "").split(" ");
+    const updatedMake = updatedVehicleParts[0] || "Toyota";
+    const updatedModel = updatedVehicleParts.slice(1).join(" ") || "Innova Crysta";
+
+    setDriver((prev: any) => {
+      const next = {
+        ...prev,
+        full_name: updatedFullName,
+        email: updatedData.email,
+        phone: updatedData.phone,
+        license_number: updatedData.licenseNo,
+        user: {
+          ...(prev?.user || {}),
+          full_name: updatedFullName,
+          email: updatedData.email,
+          phone: updatedData.phone,
+        },
+        vehicle: {
+          ...(prev?.vehicle || {}),
+          make: updatedMake,
+          model: updatedModel,
+          plate_number: updatedData.plateNumber
+        }
+      };
+      try {
+        localStorage.setItem("safego_driver_profile", JSON.stringify(next));
+        localStorage.setItem("safego_user_name", updatedFullName);
+        localStorage.setItem("safego_user_email", updatedData.email);
+        localStorage.setItem("safego_user_phone", updatedData.phone);
+      } catch (_) {}
+      return next;
+    });
+
+    const token = localStorage.getItem("token");
+    try {
+      if (token) {
+        await Promise.allSettled([
+          fetch(`${API_URL}/api/users/me`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              full_name: updatedFullName,
+              phone: updatedData.phone
+            })
+          }),
+          fetch(`${API_URL}/api/drivers/me/profile`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              full_name: updatedFullName,
+              phone: updatedData.phone,
+              email: updatedData.email,
+              license_number: updatedData.licenseNo,
+              vehicle_make: updatedMake,
+              vehicle_model: updatedModel,
+              plate_number: updatedData.plateNumber
+            })
+          })
+        ]);
+      }
+    } catch (e) {
+      console.warn("Backend driver profile sync error:", e);
+    }
+  };
 
   const handleDriverAcceptSplit = async (rideId: string) => {
     setIsProcessingDriverSplit(true);
@@ -1877,10 +2213,13 @@ const DriverPortal = () => {
       const declinedRideIds: string[] = storedDeclined ? JSON.parse(storedDeclined) : [];
 
       const mappedAvailable = mapRides(available || []);
-      const filteredAvailable = mappedAvailable.filter(r => !acceptedIds.includes(r.id) && !declinedRideIds.includes(r.id));
-      const finalAvailable = filteredAvailable.length > 0 ? filteredAvailable : mappedAvailable;
-      setAvailableRides(finalAvailable);
-      setRequests(finalAvailable.slice(0, 4));
+      const filteredAvailable = mappedAvailable.filter(r => 
+        (r.status === "searching" || r.status === "pending") &&
+        !acceptedIds.includes(r.id) && 
+        !declinedRideIds.includes(r.id)
+      );
+      setAvailableRides(filteredAvailable);
+      setRequests(filteredAvailable.slice(0, 4));
 
       // Calculate stats based on whether they were already marked completed in the backend history
       let additionalRidesCount = 0;
@@ -1896,21 +2235,29 @@ const DriverPortal = () => {
       });
 
       if (profile) {
+        if (profile.is_online !== undefined) {
+          const savedLocal = localStorage.getItem("safego_driver_online_status");
+          if (savedLocal === null) {
+            setIsOnline(profile.is_online);
+            localStorage.setItem("safego_driver_online_status", String(profile.is_online));
+          }
+        }
         const updatedProfile = {
           ...profile,
           id: profile._id || profile.id,
-          full_name: profile.user?.full_name || profile.full_name || "SafeGo Pilot",
-          phone: profile.user?.phone || profile.phone || "+91 98201 44556",
-          email: profile.user?.email || profile.email || "driver@safego.ph",
-          license_number: profile.license_number || "IND-MH02-2023-8821",
+          full_name: profile.user?.full_name || profile.full_name || localStorage.getItem("safego_user_name") || "Driver Partner",
+          phone: profile.user?.phone || profile.phone || localStorage.getItem("safego_user_phone") || "+91 98000 00000",
+          email: profile.user?.email || profile.email || localStorage.getItem("safego_user_email") || "driver@safego.in",
+          license_number: profile.license_number || "IND-DL-2026",
           rating: profile.average_rating || 4.95,
           today_rides: (profile.today_rides || 0) + additionalRidesCount,
           today_earnings: (profile.today_earnings || 0) + additionalEarnings,
           total_rides: (profile.total_rides || 0) + additionalRidesCount,
+          is_online: isOnline,
           vehicle: profile.vehicle || {
             make: "Toyota",
             model: "Innova Crysta",
-            plate_number: "MH 02 AB 1234",
+            plate_number: "MH 02 LIVE 2026",
             color: "Silver"
           }
         };
@@ -1966,9 +2313,9 @@ const DriverPortal = () => {
 
       // ─── Cache all data to localStorage for refresh persistence ───
       try {
-        localStorage.setItem("safego_driver_requests", JSON.stringify(finalAvailable.slice(0, 4)));
+        localStorage.setItem("safego_driver_requests", JSON.stringify(filteredAvailable.slice(0, 4)));
         localStorage.setItem("safego_driver_activity", JSON.stringify(initialActivity));
-        localStorage.setItem("safego_driver_available", JSON.stringify(finalAvailable));
+        localStorage.setItem("safego_driver_available", JSON.stringify(filteredAvailable));
         localStorage.setItem("safego_driver_history", JSON.stringify(fullHistory));
       } catch (e) { console.warn("Failed to cache driver data", e); }
 
@@ -2052,7 +2399,8 @@ const DriverPortal = () => {
 
   // Live WebSocket High-Accuracy Driver Location Stream
   useEffect(() => {
-    if (!driver || !driver.id && !driver._id) return;
+    if (!driver || (!driver.id && !driver._id)) return;
+    if (!isOnline) return; // Only stream GPS and location when driver is online/on-duty
     const token = localStorage.getItem("token");
     if (!token) return;
 
@@ -2073,22 +2421,41 @@ const DriverPortal = () => {
       console.warn("[Driver WebSocket] Connection failed:", e);
     }
 
+    const syncLocation = (latitude: number, longitude: number) => {
+      // 1. Send via WebSocket if open
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          latitude,
+          longitude,
+          ride_id: activeRide?.id || activeRide?._id || null
+        }));
+      }
+      // 2. Also send via HTTP PUT to ensure persistent database update
+      fetch(`${API_URL}/api/drivers/me/location`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ latitude, longitude })
+      }).catch(() => {});
+    };
+
     if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => syncLocation(pos.coords.latitude, pos.coords.longitude),
+        (err) => console.warn("[Driver GPS] Initial position note:", err),
+        { enableHighAccuracy: true, timeout: 5000 }
+      );
+
       watchId = navigator.geolocation.watchPosition(
         (pos) => {
           const { latitude, longitude, accuracy } = pos.coords;
-          if (accuracy && accuracy > 50) return; // Noise filter
-
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-              latitude,
-              longitude,
-              ride_id: activeRide?.id || activeRide?._id || null
-            }));
-          }
+          if (accuracy && accuracy > 5000) return;
+          syncLocation(latitude, longitude);
         },
         (err) => console.warn("[Driver GPS] Watch error:", err),
-        { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+        { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
       );
     }
 
@@ -2096,7 +2463,7 @@ const DriverPortal = () => {
       if (watchId !== null) navigator.geolocation?.clearWatch(watchId);
       if (ws) ws.close();
     };
-  }, [driver, activeRide]);
+  }, [driver, activeRide, isOnline, API_URL]);
 
 
   const handleAcceptRide = async (id: string, dest: string) => {
@@ -2123,7 +2490,7 @@ const DriverPortal = () => {
       localStorage.setItem("safego_ride_accepted_event", JSON.stringify({
         timestamp: Date.now(),
         rideId: id,
-        driverName: driver?.user?.full_name || "Priya Singh"
+        driverName: driver?.user?.full_name || driver?.full_name || localStorage.getItem("safego_user_name") || "Driver Partner"
       }));
     } catch (e) {
       console.warn("Failed to persist accepted states in localStorage", e);
@@ -2326,6 +2693,9 @@ const DriverPortal = () => {
           requests={requests}
           activity={activity}
           activeRide={activeRide}
+          isOnline={isOnline}
+          onToggleOnline={() => handleToggleOnlineStatus()}
+          isTogglingOnline={isTogglingOnline}
           onAccept={handleAcceptRide}
           onDecline={handleDeclineRide}
           onDetails={(r) => { setSelectedRide(r); setDetailsOpen(true); }}
@@ -2341,6 +2711,8 @@ const DriverPortal = () => {
       case "rides": return (
         <AvailableRidesTab
           available={availableRides}
+          isOnline={isOnline}
+          onToggleOnline={() => handleToggleOnlineStatus(true)}
           onAccept={handleAcceptRide}
           onDetails={(r) => { setSelectedRide(r); setDetailsOpen(true); }}
           onRefresh={fetchDriverData}
@@ -2350,7 +2722,7 @@ const DriverPortal = () => {
       case "history": return <HistoryTab history={history} driver={driver} loading={loading} />;
       case "documents": return <DocumentsTab docList={docList} onView={handleViewDoc} onUpload={handleUploadClick} onRemove={handleRemoveDoc} />;
       case "earnings": return <EarningsTab history={history} driver={driver} />;
-      case "settings": return <SettingsTab />;
+      case "settings": return <SettingsTab driver={driver} onUpdateProfile={handleUpdateProfile} />;
       default: return null;
     }
   };
@@ -3013,7 +3385,43 @@ const DriverPortal = () => {
           <div className="p-6">
             <SafeGoLogo size={24} className="px-2" />
           </div>
-          <nav className="mt-4 flex flex-col gap-1.5 px-4 flex-1">
+
+          {/* Quick Availability Status Widget */}
+          <div className="mx-4 mb-3 p-3.5 rounded-2xl border bg-secondary/30 transition-all border-border shadow-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="relative flex h-3 w-3 shrink-0">
+                  {isOnline && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />}
+                  <span className={`relative inline-flex rounded-full h-3 w-3 ${isOnline ? "bg-emerald-500" : "bg-muted-foreground/60"}`} />
+                </span>
+                <div className="truncate">
+                  <p className="text-xs font-black text-foreground leading-tight">
+                    {isOnline ? "Available for Rides" : "Offline / Off-Duty"}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5 font-medium truncate">
+                    {isOnline ? "Accepting bookings" : "Requests paused"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleToggleOnlineStatus()}
+                disabled={isTogglingOnline}
+                title={isOnline ? "Go Offline" : "Go Online"}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  isOnline ? "bg-emerald-500" : "bg-muted-foreground/30"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                    isOnline ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          <nav className="mt-2 flex flex-col gap-1.5 px-4 flex-1">
             {navItems.map((item) => (
               <button
                 key={t(`dashboard.nav.${item.label.toLowerCase().replace(" ", "_")}`, item.label)}
@@ -3041,6 +3449,10 @@ const DriverPortal = () => {
                 localStorage.removeItem("safego_driver_activity");
                 localStorage.removeItem("safego_driver_available");
                 localStorage.removeItem("safego_driver_history");
+                localStorage.removeItem("safego_user_name");
+                localStorage.removeItem("safego_user_email");
+                localStorage.removeItem("safego_user_phone");
+                localStorage.removeItem("safego_driver_online_status");
                 window.location.href = "/login";
               }}
               className="flex items-center justify-center gap-3 rounded-2xl bg-[#ef4444] hover:bg-[#dc2626] px-4 py-3.5 text-[13px] font-bold text-white transition-all shadow-[0_4px_12px_rgba(239,68,68,0.2)] hover:shadow-[0_0_20px_rgba(239,68,68,0.5)] active:scale-[0.97] w-full text-left"
@@ -3054,6 +3466,20 @@ const DriverPortal = () => {
         <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between border-b border-border bg-background/80 backdrop-blur-md px-4 py-3 lg:hidden">
           <SafeGoLogo size={22} />
           <div className="flex items-center gap-2">
+            {/* Mobile Availability Toggle Button */}
+            <button
+              type="button"
+              onClick={() => handleToggleOnlineStatus()}
+              disabled={isTogglingOnline}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-black uppercase tracking-wider transition-all shadow-sm ${
+                isOnline
+                  ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
+                  : "bg-secondary/70 border-border text-muted-foreground"
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${isOnline ? "bg-emerald-500 animate-ping" : "bg-muted-foreground"}`} />
+              <span>{isOnline ? "Online" : "Offline"}</span>
+            </button>
             <LanguageSwitcher />
             <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="rounded-xl p-2.5 bg-secondary/50 border border-border/50 text-foreground shadow-sm">
               <Menu size={22} />
@@ -3066,11 +3492,45 @@ const DriverPortal = () => {
           <div className="fixed inset-0 z-[60] lg:hidden">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} />
             <div className="absolute top-0 right-0 bottom-0 w-[300px] bg-background p-6 flex flex-col animate-in slide-in-from-right duration-300 shadow-2xl">
-              <div className="flex justify-between items-center mb-10">
+              <div className="flex justify-between items-center mb-6">
                 <SafeGoLogo size={22} />
                 <button onClick={() => setMobileMenuOpen(false)} className="p-2 rounded-full bg-secondary">
                   <X size={20} />
                 </button>
+              </div>
+
+              {/* Mobile Drawer Availability Toggle */}
+              <div className="mb-6 p-3.5 rounded-2xl border bg-secondary/40 border-border shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="relative flex h-3 w-3 shrink-0">
+                      {isOnline && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />}
+                      <span className={`relative inline-flex rounded-full h-3 w-3 ${isOnline ? "bg-emerald-500" : "bg-muted-foreground/60"}`} />
+                    </span>
+                    <div>
+                      <p className="text-xs font-black text-foreground">
+                        {isOnline ? "Available for Rides" : "Offline / Off-Duty"}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {isOnline ? "Accepting bookings" : "Requests paused"}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleOnlineStatus()}
+                    disabled={isTogglingOnline}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      isOnline ? "bg-emerald-500" : "bg-muted-foreground/30"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                        isOnline ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
               <nav className="flex flex-col gap-2 flex-1">
                 {navItems.map((item) => (
@@ -3089,6 +3549,7 @@ const DriverPortal = () => {
               <button
                 onClick={() => {
                   localStorage.removeItem("token");
+                  localStorage.setItem("userRole", "");
                   localStorage.removeItem("safego_accepted_rides");
                   localStorage.removeItem("safego_declined_rides");
                   localStorage.removeItem("safego_driver_profile");
@@ -3096,6 +3557,10 @@ const DriverPortal = () => {
                   localStorage.removeItem("safego_driver_activity");
                   localStorage.removeItem("safego_driver_available");
                   localStorage.removeItem("safego_driver_history");
+                  localStorage.removeItem("safego_user_name");
+                  localStorage.removeItem("safego_user_email");
+                  localStorage.removeItem("safego_user_phone");
+                  localStorage.removeItem("safego_driver_online_status");
                   window.location.href = "/login";
                 }}
                 className="flex items-center justify-center gap-4 rounded-2xl bg-[#ef4444] hover:bg-[#dc2626] px-5 py-4 text-sm font-bold text-white transition-all shadow-[0_4px_12px_rgba(239,68,68,0.3)] hover:shadow-[0_0_20px_rgba(239,68,68,0.5)] mt-auto text-left w-full active:scale-[0.98]"

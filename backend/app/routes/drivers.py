@@ -3,51 +3,37 @@ import asyncio
 from typing import List, Optional
 from datetime import datetime, timezone
 
+from pydantic import BaseModel
 from beanie import PydanticObjectId
+from beanie.operators import In, Or, Eq, NE
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 
 from app.models import (
     User, Driver, Vehicle, DriverDocument, Ride, RideStatus, UserRole,
-    DocumentStatus, DocumentType, Rating, DriverStatus, SOSAlert, SOSSeverity, SOSStatus
+    DocumentStatus, DocumentType, Rating, DriverStatus, SOSAlert, SOSSeverity, SOSStatus,
+    RideMode, Gender
 )
 from app.schemas import (
     DriverRegister, DriverApplication, DriverResponse, DriverEarnings, DriverOnlineStatus,
-    DriverDocumentResponse, DocumentUpload, RideResponse, ReportViolationRequest
+    DriverDocumentResponse, DocumentUpload, RideResponse, ReportViolationRequest, DriverLocationUpdate
 )
 from app.services.driver_service import create_driver_profile
 from app.services.cloudinary_service import upload_driver_document
-from app.utils.dependencies import get_current_user, get_current_driver
+from app.utils.dependencies import get_current_user, get_current_driver, get_optional_user
 
 router = APIRouter(prefix="/api/drivers", tags=["drivers"])
 
 
 @router.get("/active", response_model=List[DriverResponse])
-async def get_active_drivers(current_user: User = Depends(get_current_user)):
+async def get_active_drivers(current_user: Optional[User] = Depends(get_optional_user)):
     """Fetch all approved and online drivers for live ride matching.
-    Only returns real fleet drivers (not auto-created profiles from passengers/admins).
+    Strictly returns drivers where status is approved AND is_online is True.
     """
     drivers = await Driver.find(
         Driver.status == DriverStatus.approved,
         Driver.is_online == True
     ).to_list()
-    
-    fleet_emails = [
-        "priya.singh@safego.in", "ananya.rao@safego.in", "diya.kapoor@safego.in", 
-        "neha.acharya@safego.in", "pooja.verma@safego.in",
-        "aarav.sharma@safego.in", "kabir.khan@safego.in",
-        "rohan.mehta@safego.in", "aditya.patel@safego.in", "vihaan.gupta@safego.in"
-    ]
-    
-    # Filter to strictly include ONLY official fleet drivers by email
-    fleet_drivers = []
-    for d in drivers:
-        user = await User.get(d.user_id)
-        if user and user.email in fleet_emails:
-            fleet_drivers.append(d)
-    
-    # Limit to max 10 fleet cabs (5 male, 5 female)
-    fleet_drivers = fleet_drivers[:10]
-    return await asyncio.gather(*[_driver_dict(d) for d in fleet_drivers])
+    return await asyncio.gather(*[_driver_dict(d) for d in drivers])
 
 
 async def _driver_dict(driver: Driver) -> dict:
@@ -427,6 +413,20 @@ async def _get_or_create_driver(user_id) -> Driver:
             certified_modes=["normal", "pink", "pwd", "premium", "elderly"]
         )
         await driver.insert()
+
+    veh = await Vehicle.find_one(Vehicle.driver_id == driver.id)
+    if not veh:
+        veh = Vehicle(
+            driver_id=driver.id,
+            make="Toyota",
+            model="Innova Crysta",
+            year=2024,
+            color="Silver",
+            plate_number=f"MH-02-{str(driver.id)[-4:].upper()}",
+            is_approved=True
+        )
+        await veh.insert()
+
     await _ensure_driver_documents(driver.id)
     return driver
 
@@ -434,9 +434,59 @@ async def _get_or_create_driver(user_id) -> Driver:
 @router.get("/me", response_model=DriverResponse)
 async def get_driver_profile(current_user: User = Depends(get_current_driver)):
     driver = await _get_or_create_driver(current_user.id)
-    if not driver.is_online:
-        driver.is_online = True
+    return await _driver_dict(driver)
+
+
+class DriverProfileUpdateRequest(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    license_number: Optional[str] = None
+    vehicle_make: Optional[str] = None
+    vehicle_model: Optional[str] = None
+    plate_number: Optional[str] = None
+
+
+@router.put("/me/profile", response_model=DriverResponse)
+async def update_driver_profile(payload: DriverProfileUpdateRequest, current_user: User = Depends(get_current_driver)):
+    driver = await _get_or_create_driver(current_user.id)
+    user = await User.get(driver.user_id)
+    if user:
+        if payload.full_name:
+            user.full_name = payload.full_name.strip()
+        if payload.phone:
+            user.phone = payload.phone.strip()
+        if payload.email:
+            user.email = payload.email.strip()
+        user.updated_at = datetime.now(timezone.utc)
+        await user.save()
+
+    if payload.license_number:
+        driver.license_number = payload.license_number.strip()
+        driver.updated_at = datetime.now(timezone.utc)
         await driver.save()
+
+    vehicle = await Vehicle.find_one(Vehicle.driver_id == driver.id)
+    if not vehicle:
+        vehicle = Vehicle(
+            driver_id=driver.id,
+            make=payload.vehicle_make or "Toyota",
+            model=payload.vehicle_model or "Innova Crysta",
+            year=2024,
+            color="Silver",
+            plate_number=payload.plate_number or f"MH-02-{str(driver.id)[-4:].upper()}",
+            is_approved=True
+        )
+        await vehicle.insert()
+    else:
+        if payload.vehicle_make:
+            vehicle.make = payload.vehicle_make.strip()
+        if payload.vehicle_model:
+            vehicle.model = payload.vehicle_model.strip()
+        if payload.plate_number:
+            vehicle.plate_number = payload.plate_number.strip().upper()
+        await vehicle.save()
+
     return await _driver_dict(driver)
 
 
@@ -450,6 +500,19 @@ async def get_driver_earnings(current_user: User = Depends(get_current_driver)):
     )
 
 
+@router.put("/me/location")
+async def update_driver_location(
+    payload: DriverLocationUpdate,
+    current_user: User = Depends(get_current_driver)
+):
+    driver = await _get_or_create_driver(current_user.id)
+    driver.current_latitude = payload.latitude
+    driver.current_longitude = payload.longitude
+    driver.updated_at = datetime.now(timezone.utc)
+    await driver.save()
+    return {"message": "Location updated", "latitude": payload.latitude, "longitude": payload.longitude}
+
+
 @router.put("/me/online-status", response_model=DriverResponse)
 async def toggle_online_status(payload: DriverOnlineStatus, current_user: User = Depends(get_current_driver)):
     driver = await _get_or_create_driver(current_user.id)
@@ -461,8 +524,25 @@ async def toggle_online_status(payload: DriverOnlineStatus, current_user: User =
 @router.get("/me/available-rides", response_model=List[RideResponse])
 async def get_available_rides(current_user: User = Depends(get_current_driver)):
     driver = await _get_or_create_driver(current_user.id)
-    # Return last 15 rides in the system to keep payload lightweight and ensure instant rendering
-    rides = await Ride.find().sort("-created_at").limit(15).to_list()
+
+    if driver.status != DriverStatus.approved or not driver.is_online:
+        return []
+
+    # Criteria: actively searching/pending, and either broadcast to all (None) or specifically requested to this driver
+    expressions = [
+        In(Ride.status, [RideStatus.searching, RideStatus.pending, "searching", "pending"]),
+        Or(
+            Eq(Ride.driver_id, None),
+            Eq(Ride.driver_id, driver.id),
+            Eq(Ride.driver_id, str(driver.id))
+        )
+    ]
+    
+    # Mode filtering: If driver is not female, exclude pink mode rides
+    if current_user.gender != Gender.female:
+        expressions.append(NE(Ride.mode, RideMode.pink))
+
+    rides = await Ride.find(*expressions).sort("-created_at").limit(15).to_list()
     
     # Batch load passengers to prevent N+1 query timeout
     passenger_ids = list(set(r.passenger_id for r in rides if r.passenger_id))
@@ -480,9 +560,6 @@ async def get_driver_history(current_user: User = Depends(get_current_driver)):
     driver = await _get_or_create_driver(current_user.id)
     rides = await Ride.find({"$or": [{"driver_id": driver.id}, {"driver_id": str(driver.id)}]}).sort("-created_at").to_list()
     
-    if not rides:
-        rides = await Ride.find().sort("-created_at").limit(15).to_list()
-    
     # Batch load passengers to prevent N+1 query timeout
     passenger_ids = list(set(r.passenger_id for r in rides if r.passenger_id))
     passengers = await User.find({"_id": {"$in": passenger_ids}}).to_list() if passenger_ids else []
@@ -495,8 +572,6 @@ async def get_driver_history(current_user: User = Depends(get_current_driver)):
 async def get_driver_activity(current_user: User = Depends(get_current_driver)):
     driver = await _get_or_create_driver(current_user.id)
     recent_rides = await Ride.find({"$or": [{"driver_id": driver.id}, {"driver_id": str(driver.id)}]}).sort("-updated_at").limit(10).to_list()
-    if not recent_rides:
-        recent_rides = await Ride.find().sort("-updated_at").limit(10).to_list()
     
     activities = []
     for r in recent_rides:
@@ -514,12 +589,6 @@ async def get_driver_activity(current_user: User = Depends(get_current_driver)):
             "time": time_str,
             "amount": f"₹{r.driver_compensation_amount or r.fare_amount}" if (r.driver_compensation_amount or r.fare_amount) else None
         })
-    
-    if not activities:
-        activities = [
-            {"id": "act_1", "type": "system", "text": "Pilot node synchronized with SafeGo Matrix", "time": "Just now"},
-            {"id": "act_2", "type": "auth", "text": "Identity credentials verified on network", "time": "Today"}
-        ]
         
     return activities
 

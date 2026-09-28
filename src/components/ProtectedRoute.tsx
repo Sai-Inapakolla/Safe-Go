@@ -5,9 +5,10 @@ import { toast } from "sonner";
 interface ProtectedRouteProps {
   children: ReactNode;
   allowedRoles?: string[];
+  redirectTo?: string;
 }
 
-export const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) => {
+export const ProtectedRoute = ({ children, allowedRoles, redirectTo }: ProtectedRouteProps) => {
   const location = useLocation();
   const token = localStorage.getItem("token");
   const userRole = localStorage.getItem("userRole");
@@ -29,10 +30,24 @@ export const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) 
   }
 
   if (allowedRoles && userRole && !allowedRoles.includes(userRole)) {
-    toast.error("Access Denied", {
-      description: "You do not have permission to access this page.",
-    });
-    return <Navigate to="/home" replace />;
+    if (userRole === "driver") {
+      if (!toastShown.current) {
+        toastShown.current = true;
+        toast.info("Driver Account Active", {
+          description: "Driver accounts are automatically redirected to the Driver Portal.",
+          duration: 4500,
+        });
+      }
+      return <Navigate to={redirectTo || "/driver"} replace />;
+    }
+
+    if (!toastShown.current) {
+      toastShown.current = true;
+      toast.error("Access Denied", {
+        description: "You do not have permission to access this page.",
+      });
+    }
+    return <Navigate to={redirectTo || "/home"} replace />;
   }
 
   return <>{children}</>;

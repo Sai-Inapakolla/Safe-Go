@@ -53,7 +53,7 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner position="top-right" expand={true} richColors closeButton />
-          <BrowserRouter>
+          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <ScrollToTop />
             <VoiceAssistantProvider>
               {/* <FloatingAssistant /> */}
@@ -63,10 +63,10 @@ const App = () => (
                   <Route path="/home" element={<Home />} />
                   <Route path="/login" element={<AuthPage />} />
                   <Route path="/signup" element={<AuthPage />} />
-                  <Route path="/book" element={<ProtectedRoute><BookingPage /></ProtectedRoute>} />
-                  <Route path="/book/:mode" element={<ProtectedRoute><BookingPage /></ProtectedRoute>} />
-                  <Route path="/booking" element={<ProtectedRoute><BookingPage /></ProtectedRoute>} />
-                  <Route path="/booking/:mode" element={<ProtectedRoute><BookingPage /></ProtectedRoute>} />
+                  <Route path="/book" element={<ProtectedRoute allowedRoles={["passenger", "admin"]} redirectTo="/driver"><BookingPage /></ProtectedRoute>} />
+                  <Route path="/book/:mode" element={<ProtectedRoute allowedRoles={["passenger", "admin"]} redirectTo="/driver"><BookingPage /></ProtectedRoute>} />
+                  <Route path="/booking" element={<ProtectedRoute allowedRoles={["passenger", "admin"]} redirectTo="/driver"><BookingPage /></ProtectedRoute>} />
+                  <Route path="/booking/:mode" element={<ProtectedRoute allowedRoles={["passenger", "admin"]} redirectTo="/driver"><BookingPage /></ProtectedRoute>} />
                   <Route path="/ride/tracking" element={<ProtectedRoute><RideTracking /></ProtectedRoute>} />
                   <Route path="/safety" element={<Safety />} />
                   <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
@@ -74,7 +74,7 @@ const App = () => (
                   <Route path="/admin" element={<ProtectedRoute allowedRoles={["admin"]}><AdminDashboard /></ProtectedRoute>} />
                   <Route path="/drive-with-us" element={<DriveWithUs />} />
                   <Route path="/apply-driver" element={<ApplyDriver />} />
-                  <Route path="/pwd-mode" element={<ProtectedRoute><PWDMode /></ProtectedRoute>} />
+                  <Route path="/pwd-mode" element={<ProtectedRoute allowedRoles={["passenger", "admin"]} redirectTo="/driver"><PWDMode /></ProtectedRoute>} />
                   <Route path="/about" element={<About />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>

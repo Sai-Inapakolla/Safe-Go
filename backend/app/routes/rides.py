@@ -7,7 +7,7 @@ from beanie.operators import In
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.models import User, Ride, Rating, Driver, Vehicle, RideStatus, RideMode
+from app.models import User, Ride, Rating, Driver, Vehicle, RideStatus, RideMode, UserRole
 from app.schemas import (
     RideRequest, RideResponse, RideStatusUpdate, RatingCreate, RatingResponse,
     RideOTPVerifyRequest, SplitJoinRequest, SplitDecisionRequest, SplitOTPVerifyRequest
@@ -107,6 +107,7 @@ async def _load_driver_brief(driver_id: Optional[PydanticObjectId | str]):
     return {
         "_id": str(driver.id),
         "average_rating": driver.average_rating,
+        "is_online": getattr(driver, "is_online", False),
         "user": {"full_name": user.full_name} if user else None,
         "vehicle": {"make": vehicle.make, "model": vehicle.model, "plate_number": vehicle.plate_number} if vehicle else None,
     }
@@ -172,7 +173,7 @@ async def get_my_rides(current_user: User = Depends(get_current_user)):
     return result
 
 
-@router.get("/active", response_model=RideResponse)
+@router.get("/active", response_model=Optional[RideResponse])
 async def get_active_ride(current_user: User = Depends(get_current_user)):
     active_statuses = [
         RideStatus.pending.value,
@@ -181,20 +182,39 @@ async def get_active_ride(current_user: User = Depends(get_current_user)):
         RideStatus.driver_arriving.value,
         RideStatus.in_progress.value
     ]
-    ride = await Ride.find_one(
-        {"passenger_id": current_user.id, "status": {"$in": active_statuses}}
-    )
+    # Check if passenger has an active ride (either primary passenger or split co-passenger)
+    ride = await Ride.find(
+        {
+            "$or": [
+                {"passenger_id": current_user.id},
+                {"split_passenger_id": current_user.id}
+            ],
+            "status": {"$in": active_statuses}
+        }
+    ).sort("-created_at").first_or_none()
+
     if not ride:
-        raise HTTPException(status_code=404, detail="No active ride found")
+        # Check if driver has an active ride
+        driver = await Driver.find_one(Driver.user_id == current_user.id)
+        if driver:
+            ride = await Ride.find(
+                {"driver_id": driver.id, "status": {"$in": active_statuses}}
+            ).sort("-created_at").first_or_none()
+
+    if not ride:
+        return None
+
     driver_brief = await _load_driver_brief(ride.driver_id)
     return _ride_dict(ride, driver_brief)
 
 
-@router.get("/latest", response_model=RideResponse)
+@router.get("/latest", response_model=Optional[RideResponse])
 async def get_latest_ride(current_user: User = Depends(get_current_user)):
-    ride = await Ride.find(Ride.passenger_id == current_user.id).sort("-created_at").first_or_none()
+    ride = await Ride.find(
+        {"$or": [{"passenger_id": current_user.id}, {"split_passenger_id": current_user.id}]}
+    ).sort("-created_at").first_or_none()
     if not ride:
-        raise HTTPException(status_code=404, detail="No ride found")
+        return None
     driver_brief = await _load_driver_brief(ride.driver_id)
     return _ride_dict(ride, driver_brief)
 
@@ -213,34 +233,47 @@ async def get_available_split_rides(
     Find active rides along the corridor that have opted into SafeGo Split.
     Strictly enforces Pink Mode female-only safety policies.
     """
-    active_statuses = [
-        RideStatus.searching.value,
-        RideStatus.matched.value,
-        RideStatus.driver_arriving.value,
-        RideStatus.in_progress.value
+    criteria = [
+        Ride.is_split_allowed == True,
+        Ride.is_split_active == False,
+        In(Ride.status, [
+            RideStatus.pending,
+            RideStatus.searching,
+            RideStatus.matched,
+            RideStatus.driver_arriving,
+            RideStatus.in_progress,
+            RideStatus.pending.value,
+            RideStatus.searching.value,
+            RideStatus.matched.value,
+            RideStatus.driver_arriving.value,
+            RideStatus.in_progress.value
+        ]),
+        In(Ride.split_status, ["none", "declined"])
     ]
-    query: dict = {
-        "is_split_allowed": True,
-        "is_split_active": False,
-        "status": {"$in": active_statuses},
-        "split_status": {"$in": ["none", "declined"]}
-    }
     if current_user and current_user.id:
-        query["passenger_id"] = {"$ne": current_user.id}
+        criteria.append(Ride.passenger_id != current_user.id)
 
     if mode == "pink":
         user_gender = getattr(current_user, "gender", None) or gender or "female"
         user_gender_val = user_gender.value if hasattr(user_gender, "value") else str(user_gender).lower()
         if user_gender_val == "male":
-            raise HTTPException(
-                status_code=403,
-                detail="Solo male passengers cannot join active Pink Mode Split cabs."
-            )
-        query["mode"] = RideMode.pink
+            return []
+        criteria.append(Ride.mode == RideMode.pink)
 
-    rides = await Ride.find(query).sort("-created_at").limit(10).to_list()
+    rides = await Ride.find(*criteria).sort("-created_at").limit(20).to_list()
     result = []
+    seen_drivers = set()
     for ride in rides:
+        if not ride.driver_id:
+            continue
+        driver = await Driver.get(ride.driver_id)
+        # Strictly verify driver exists and is currently ONLINE
+        if not driver or not getattr(driver, "is_online", False):
+            continue
+        driver_id_str = str(ride.driver_id)
+        if driver_id_str in seen_drivers:
+            continue
+        seen_drivers.add(driver_id_str)
         db = await _load_driver_brief(ride.driver_id)
         result.append(_ride_dict(ride, db))
     return result
@@ -452,57 +485,6 @@ async def verify_ride_start_otp(
     return _ride_dict(ride, driver_brief)
 
 
-@router.get("/active", response_model=RideResponse)
-async def get_active_ride(current_user: User = Depends(get_current_user)):
-    """
-    Get currently active ride for passenger or driver.
-    """
-    active_statuses = [
-        RideStatus.searching,
-        RideStatus.matched,
-        RideStatus.driver_arriving,
-        RideStatus.in_progress
-    ]
-    # Check if passenger has an active ride
-    ride = await Ride.find(
-        Ride.passenger_id == current_user.id,
-        {"status": {"$in": [s.value for s in active_statuses]}}
-    ).sort("-created_at").first_or_none()
-
-    if not ride:
-        # Check if driver has an active ride
-        driver = await Driver.find_one(Driver.user_id == current_user.id)
-        if driver:
-            ride = await Ride.find(
-                Ride.driver_id == driver.id,
-                {"status": {"$in": [s.value for s in active_statuses]}}
-            ).sort("-created_at").first_or_none()
-
-    if not ride:
-        raise HTTPException(status_code=404, detail="No active ride in progress")
-
-    driver_brief = await _load_driver_brief(ride.driver_id)
-    return _ride_dict(ride, driver_brief)
-
-
-@router.get("/latest", response_model=RideResponse)
-async def get_latest_ride(current_user: User = Depends(get_current_user)):
-    """
-    Get most recent ride for passenger or driver.
-    """
-    ride = await Ride.find(Ride.passenger_id == current_user.id).sort("-created_at").first_or_none()
-    if not ride:
-        driver = await Driver.find_one(Driver.user_id == current_user.id)
-        if driver:
-            ride = await Ride.find(Ride.driver_id == driver.id).sort("-created_at").first_or_none()
-    
-    if not ride:
-        raise HTTPException(status_code=404, detail="No rides found")
-    
-    driver_brief = await _load_driver_brief(ride.driver_id)
-    return _ride_dict(ride, driver_brief)
-
-
 @router.get("/{ride_id}", response_model=RideResponse)
 async def get_ride_by_id(ride_id: str, current_user: User = Depends(get_current_user)):
     if not PydanticObjectId.is_valid(ride_id):
@@ -510,6 +492,18 @@ async def get_ride_by_id(ride_id: str, current_user: User = Depends(get_current_
     ride = await Ride.get(PydanticObjectId(ride_id))
     if not ride:
         raise HTTPException(status_code=404, detail="Ride not found")
+    
+    # IDOR Prevention: Only rider, assigned driver, or admin can inspect private ride details
+    is_owner = ride.passenger_id == current_user.id or str(ride.passenger_id) == str(current_user.id)
+    is_driver = False
+    if ride.driver_id:
+        driver = await Driver.find_one(Driver.user_id == current_user.id)
+        if driver and (driver.id == ride.driver_id or str(driver.id) == str(ride.driver_id)):
+            is_driver = True
+    is_admin = getattr(current_user, "role", None) in [UserRole.admin, "admin"]
+    if not (is_owner or is_driver or is_admin):
+        raise HTTPException(status_code=403, detail="Access denied to private ride details")
+
     driver_brief = await _load_driver_brief(ride.driver_id)
     return _ride_dict(ride, driver_brief)
 
@@ -706,3 +700,41 @@ async def delete_selected_rides(
         {"$set": {"is_deleted_by_user": True}}
     )
     return None
+
+
+@router.post("/stop-all")
+async def stop_all_rides(current_user: Optional[User] = Depends(get_optional_user)):
+    """
+    Terminates / cancels all active, pending, searching, matched, driver_arriving, and in_progress rides across the system.
+    """
+    now = datetime.now(timezone.utc)
+    active_statuses = [
+        RideStatus.pending.value,
+        RideStatus.searching.value,
+        RideStatus.matched.value,
+        RideStatus.driver_arriving.value,
+        RideStatus.in_progress.value,
+        RideStatus.pending,
+        RideStatus.searching,
+        RideStatus.matched,
+        RideStatus.driver_arriving,
+        RideStatus.in_progress
+    ]
+    res = await Ride.get_motor_collection().update_many(
+        {"status": {"$in": [s.value if hasattr(s, "value") else str(s) for s in active_statuses]}},
+        {
+            "$set": {
+                "status": RideStatus.cancelled.value,
+                "cancelled_at": now,
+                "cancel_reason": "Ride stopped by user / system override",
+                "is_split_active": False,
+                "split_status": "none"
+            }
+        }
+    )
+    return {
+        "message": "All active rides stopped successfully",
+        "stopped_count": res.modified_count,
+        "status": "cancelled"
+    }
+

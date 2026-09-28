@@ -175,9 +175,10 @@ async def get_route(
         ai_safety_prediction=ai_prediction
     )
 
-    # 3. Calculate baseline fare and multiply by dynamic surge factor
+    # 3. Calculate baseline fare with flat surge fee policy (+₹25 during peak surge, ₹0 during normal/accessible)
     base_fare = calculate_fare(mode, distance_km)
-    fare_amount = round(base_fare * surge_multiplier, 2)
+    surge_fee = 25.0 if (surge_multiplier > 1.05 and mode.lower() not in ["pwd", "elderly"]) else 0.0
+    fare_amount = round(base_fare + surge_fee, 2)
 
     # Calculate driver -> pickup route if driver coordinates provided
     driver_to_pickup = None

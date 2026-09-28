@@ -18,7 +18,7 @@ async def get_current_user(
     token = credentials.credentials
 
     # 1. Development Shortcut & Role Fallbacks: Allow dummy & safego tokens
-    if token in ["admin-dummy-token", "safego-demo-admin"] or token.startswith("safego_token_") or token.startswith("safego_admin_"):
+    if token in ["admin-dummy-token", "safego-demo-admin"] or token.startswith("safego_admin_"):
         user = await User.find_one(User.role == UserRole.admin)
         if user:
             return user
@@ -26,8 +26,10 @@ async def get_current_user(
         user = await User.find_one(User.role == UserRole.driver)
         if user:
             return user
-    if token in ["google-dummy-token", "dummy-token"]:
-        user = await User.find_one()
+    if token in ["google-dummy-token", "dummy-token", "passenger-dummy-token"] or token.startswith("safego_token_"):
+        user = await User.find_one(User.role == UserRole.passenger)
+        if not user:
+            user = await User.find_one()
         if user:
             return user
         raise HTTPException(status_code=404, detail="No users in database to use as dummy")
@@ -78,17 +80,17 @@ async def get_current_user(
 
 
 async def get_current_passenger(user: User = Depends(get_current_user)) -> User:
-    role_val = user.role.value if hasattr(user.role, "value") else str(user.role)
-    if role_val not in (UserRole.passenger.value, UserRole.admin.value):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Operation restricted to passengers and administrators"
-        )
+    # Allow all authenticated users (including passengers, admins, and demo testers) to request rides
     return user
 
 
 async def get_current_driver(user: User = Depends(get_current_user)) -> User:
-    # In development/demo environment, allow authenticated passengers to simulate driver workflows seamlessly
+    role_val = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if role_val not in [UserRole.driver.value, UserRole.admin.value, "driver", "admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Driver privileges required"
+        )
     return user
 
 

@@ -28,12 +28,6 @@ const navItems = [
   { icon: Settings, label: "Settings", to: "/dashboard" },
 ];
 
-const defaultSampleRides = [
-  { _id: "ride_sample_1", id: "1", mode: "Pink", pickup_address: "Forum Mall, Koramangala", destination_address: "HSR Layout Sector 1", route: "Forum Mall → HSR Layout", created_at: new Date(Date.now() - 86400000 * 2).toISOString(), driver: { user: { full_name: "Ananya M." } }, status: "completed", rating: 5, fare: "₹240" },
-  { _id: "ride_sample_2", id: "2", mode: "Normal", pickup_address: "Indiranagar 100ft Rd", destination_address: "Marathahalli Bridge", route: "Indiranagar → Marathahalli", created_at: new Date(Date.now() - 86400000 * 3).toISOString(), driver: { user: { full_name: "Aarav Sharma" } }, status: "completed", rating: 4, fare: "₹180" },
-  { _id: "ride_sample_3", id: "3", mode: "PWD", pickup_address: "Whitefield Main Rd", destination_address: "Manipal Hospital HAL", route: "Whitefield → Manipal Hospital", created_at: new Date(Date.now() - 86400000 * 5).toISOString(), driver: { user: { full_name: "Carlos R." } }, status: "completed", rating: 5, fare: "₹150" },
-];
-
 const statusColors: Record<string, string> = {
   Completed: "bg-primary/10 text-primary",
   completed: "bg-primary/10 text-primary",
@@ -62,12 +56,12 @@ const Dashboard = () => {
   const [myRides, setMyRides] = useState<any[]>(() => {
     try {
       const c = localStorage.getItem("safego_passenger_rides") || localStorage.getItem("safego_rides");
-      if (!c) return defaultSampleRides;
+      if (!c) return [];
       const parsed = JSON.parse(c);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      return defaultSampleRides;
+      if (Array.isArray(parsed)) return parsed;
+      return [];
     } catch {
-      return defaultSampleRides;
+      return [];
     }
   });
   const [loadingRides, setLoadingRides] = useState(true);
@@ -310,7 +304,7 @@ const Dashboard = () => {
         return timeB - timeA;
       });
 
-      const finalRides = mergedList.length > 0 ? mergedList : defaultSampleRides;
+      const finalRides = mergedList;
       setMyRides(finalRides);
       try {
         localStorage.setItem("safego_passenger_rides", JSON.stringify(finalRides));
@@ -759,15 +753,6 @@ const Dashboard = () => {
     setVoiceEnabled(true);
     navigate("/pwd-mode");
   };
-
-  if (!profile.name) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center gap-4 text-white">
-        <Loader2 className="animate-spin text-primary" size={48} />
-        <p className="text-lg font-bold tracking-wider animate-pulse">Synchronizing SafeGo User Node...</p>
-      </div>
-    );
-  }
 
   return (
     <div className="flex min-h-screen">
