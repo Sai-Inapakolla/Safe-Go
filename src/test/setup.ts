@@ -2,6 +2,12 @@ import "@testing-library/jest-dom";
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 
+// Ensure safe environment variables for headless test runners
+if (typeof process !== "undefined" && process.env) {
+  process.env.VITE_FIREBASE_API_KEY = process.env.VITE_FIREBASE_API_KEY || "demo-api-key";
+  process.env.VITE_FIREBASE_PROJECT_ID = process.env.VITE_FIREBASE_PROJECT_ID || "demo-safego";
+}
+
 // Initialize i18next mock instance for all component tests
 if (!i18n.isInitialized) {
   i18n.use(initReactI18next).init({
