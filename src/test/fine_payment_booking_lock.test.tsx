@@ -131,4 +131,162 @@ describe("Fine Settlement & Ride Booking Lock Verification", () => {
     expect(allowedResult.allowed).toBe(true);
     expect(allowedResult.reason).toBeNull();
   });
+
+  it("should handle custom UPI ID selection, validation, and submission", async () => {
+    render(
+      <FinePaymentModal
+        isOpen={true}
+        onClose={vi.fn()}
+        penaltyAmount={500}
+      />
+    );
+
+    // Click Other UPI
+    const otherUpiBtn = screen.getByText("Other UPI");
+    fireEvent.click(otherUpiBtn);
+
+    // Empty submission should trigger validation toast
+    const payBtn = screen.getByText(/Pay ₹500 & Unlock Ride Booking/i);
+    fireEvent.click(payBtn);
+
+    // Enter valid UPI ID
+    const upiInput = screen.getByPlaceholderText(/Enter your VPA/i);
+    fireEvent.change(upiInput, { target: { value: "traveler@okhdfcbank" } });
+
+    // Submit valid UPI
+    fireEvent.click(payBtn);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Fine Settled Successfully!")).toBeInTheDocument();
+      },
+      { timeout: 3500 }
+    );
+  });
+
+  it("should handle Card validation, manual entry, and post-payment Book Ride button", async () => {
+    const handleClose = vi.fn();
+    const handleBook = vi.fn();
+
+    // Set stored rides in localStorage to test history sync
+    localStorage.setItem(
+      "safego_passenger_rides",
+      JSON.stringify([{ id: "r1", is_penalty_applied: true, is_penalty_paid: false }])
+    );
+    localStorage.setItem("token", "dummy_user_jwt");
+
+    // Mock fetch for backend /pay-penalty sync
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: "success", balance: 0 }),
+    }) as any;
+
+    render(
+      <FinePaymentModal
+        isOpen={true}
+        onClose={handleClose}
+        penaltyAmount={350}
+        onBookRide={handleBook}
+      />
+    );
+
+    // Switch to Card tab
+    fireEvent.click(screen.getByText("Card"));
+
+    // Attempt pay with empty card
+    const payBtn = screen.getByText(/Pay ₹350 & Unlock Ride Booking/i);
+    fireEvent.click(payBtn);
+
+    // Fill in card fields
+    const cardInput = screen.getByPlaceholderText(/Card Number/i);
+    const expiryInput = screen.getByPlaceholderText(/MM \/ YY/i);
+    const cvvInput = screen.getByPlaceholderText(/CVV/i);
+
+    fireEvent.change(cardInput, { target: { value: "5123 4567 8901 2345" } });
+    fireEvent.change(expiryInput, { target: { value: "09/29" } });
+    fireEvent.change(cvvInput, { target: { value: "321" } });
+
+    fireEvent.click(payBtn);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Fine Settled Successfully!")).toBeInTheDocument();
+      },
+      { timeout: 3500 }
+    );
+
+    // Verify stored rides updated with is_penalty_paid = true
+    const updatedRides = JSON.parse(localStorage.getItem("safego_passenger_rides") || "[]");
+    expect(updatedRides[0].is_penalty_paid).toBe(true);
+
+    // Click "Book Ride Now"
+    const bookRideBtn = screen.getByText(/Book Ride Now/i);
+    fireEvent.click(bookRideBtn);
+    expect(handleClose).toHaveBeenCalled();
+    expect(handleBook).toHaveBeenCalled();
+
+    global.fetch = originalFetch;
+  });
+
+  it("should handle Net Banking selection, bank change, and Return to Dashboard button", async () => {
+    const handleClose = vi.fn();
+
+    render(
+      <FinePaymentModal
+        isOpen={true}
+        onClose={handleClose}
+        penaltyAmount={400}
+      />
+    );
+
+    // Switch to Banking tab
+    fireEvent.click(screen.getByText("Banking"));
+
+    // Select different bank
+    const bankSelect = screen.getByRole("combobox");
+    fireEvent.change(bankSelect, { target: { value: "ICICI Bank" } });
+
+    // Submit payment
+    const payBtn = screen.getByText(/Pay ₹400 & Unlock Ride Booking/i);
+    fireEvent.click(payBtn);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Fine Settled Successfully!")).toBeInTheDocument();
+      },
+      { timeout: 3500 }
+    );
+
+    // Click Return to Dashboard
+    const returnBtn = screen.getByText("Return to Dashboard");
+    fireEvent.click(returnBtn);
+    expect(handleClose).toHaveBeenCalled();
+  });
+
+  it("should allow dismissing modal via Close (X) button when not processing", () => {
+    const handleClose = vi.fn();
+    render(
+      <FinePaymentModal
+        isOpen={true}
+        onClose={handleClose}
+        penaltyAmount={200}
+      />
+    );
+
+    const closeBtn = screen.getByRole("button", { name: /Close dialog/i });
+    fireEvent.click(closeBtn);
+    expect(handleClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("should return null when isOpen is false", () => {
+    const { container } = render(
+      <FinePaymentModal
+        isOpen={false}
+        onClose={vi.fn()}
+        penaltyAmount={200}
+      />
+    );
+    expect(container.firstChild).toBeNull();
+  });
 });

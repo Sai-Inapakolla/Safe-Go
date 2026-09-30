@@ -19,7 +19,7 @@ export interface SOSButtonProps {
   testerPhone?: string;
 }
 
-export const SOSButton = ({ onTrigger, contacts = [], testerPhone = "+919490969706" }: SOSButtonProps) => {
+export const SOSButton = ({ onTrigger, contacts = [], testerPhone = "+919876543210" }: SOSButtonProps) => {
   const [open, setOpen] = useState(false);
   const [activeSosId, setActiveSosId] = useState<string | null>(null);
   const [dispatchedStatus, setDispatchedStatus] = useState<string | null>(null);

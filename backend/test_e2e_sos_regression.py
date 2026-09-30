@@ -225,7 +225,7 @@ class TestSafeGoEndToEndAndRegression(unittest.TestCase):
                 "longitude": 72.8777,
                 "location_address": "Bandra Kurla Complex, Mumbai",
                 "emergency_contact_name": "Emergency Team",
-                "emergency_contact_phone": "+919490969706",
+                "emergency_contact_phone": "+919876543210",
                 "severity": "critical",
                 "idempotency_key": f"telephony_e2e_{int(time.time()*1000)}"
             }

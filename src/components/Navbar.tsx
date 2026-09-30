@@ -68,7 +68,9 @@ export const Navbar = ({ fullWidth = true }: { fullWidth?: boolean }) => {
             <>
               <button
                 onClick={async () => {
-                  await signOut(auth);
+                  try {
+                    await signOut(auth);
+                  } catch (_) {}
                   const keysToRemove = [
                     "token", "userRole", "safego_passenger_rides", 
                     "safego_driver_profile", "safego_driver_requests", "safego_driver_available", 
@@ -142,7 +144,9 @@ export const Navbar = ({ fullWidth = true }: { fullWidth?: boolean }) => {
                 <>
                   <button
                     onClick={async () => {
-                      await signOut(auth);
+                      try {
+                        await signOut(auth);
+                      } catch (_) {}
                       const keysToRemove = [
                         "token", "userRole", "safego_passenger_rides", 
                         "safego_driver_profile", "safego_driver_requests", "safego_driver_available", 

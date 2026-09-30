@@ -295,10 +295,12 @@ const AuthPage = () => {
           console.log("Local backend login check skipped, proceeding to Firebase...");
         }
 
-        // 2. Direct validation for pre-configured Admin and Tester accounts (e.g. on Vercel preview when backend is not running)
+        // 2. Direct validation for pre-configured Admin and Tester accounts (e.g. on preview deployments when backend is not running)
+        const adminDemoPass = import.meta.env.VITE_ADMIN_PASSWORD || "mock-admin-password-safego";
+        const testerDemoPass = import.meta.env.VITE_TESTER_PASSWORD || "mock-tester-password-safego";
         if (
-          (cleanEmail === "admin@safego.ph" && cleanPassword === "Admin@SafeGo2025") ||
-          (cleanEmail === "tester@safego.in" && cleanPassword === "Tester@SafeGo2025")
+          (cleanEmail === "admin@safego.ph" && cleanPassword === adminDemoPass) ||
+          (cleanEmail === "tester@safego.in" && cleanPassword === testerDemoPass)
         ) {
           const matchedRole = cleanEmail.includes("admin") ? "admin" : "passenger";
           const demoToken = `safego_token_${Date.now()}_${btoa(cleanEmail)}`;

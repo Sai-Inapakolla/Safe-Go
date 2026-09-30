@@ -23,7 +23,7 @@ def seed_firebase_admin():
         sys.exit(1)
         
     admin_email = os.getenv("ADMIN_EMAIL", "admin@safego.ph")
-    admin_password = os.getenv("ADMIN_PASSWORD", "Admin@SafeGo2025")
+    admin_password = os.getenv("ADMIN_PASSWORD", "mock-admin-password-safego")
     
     print(f"[INFO] Checking if admin user '{admin_email}' exists in Firebase Auth...")
     try:

@@ -65,7 +65,7 @@ sequenceDiagram
     par Multi-Channel Dispatch
         API->>Telephony: 4a. Send Twilio SMS to Emergency Contact & Google Maps Link
         API->>Telephony: 4b. Trigger Automated Twilio Voice Call with TTS Alert
-        API->>Telephony: 4c. Dispatch SMS to Admin (+919490969706) & Tester (+919490969706)
+        API->>Telephony: 4c. Dispatch SMS to Admin (+919999999999) & Tester (+919999999999)
     end
     API-->>UI: 5. Return HTTP 201 Created (SOS ID, Status: Active, Timestamp)
     UI->>User: Display "Emergency Alert Active", Live Beacon & Direct 112 Dial Link
@@ -82,7 +82,7 @@ sequenceDiagram
 | **Stage 1** | **User Triggers SOS** | `SOSButton.tsx` (UI) | Instant haptic vibration (`navigator.vibrate`), 3-second countdown buzzer, browser Geolocation capture (`19.0760, 72.8777`). | ✅ PASS |
 | **Stage 2** | **Backend Processing** | `POST /api/safety/sos` | Bearer JWT validation, 15-second spam flood suppression debounce, idempotency deduplication check. | ✅ PASS |
 | **Stage 3** | **Admin / Tester Reception** | `GET /api/admin/sos-alerts` | Alert is pushed to Admin distress feed in real-time with passenger name, live map pin, and active status. `GET /api/admin/stats` increments `active_sos_alerts >= 1`. | ✅ PASS |
-| **Stage 4** | **Twilio SMS & Voice Generated** | `NotificationService` | SMS generated with exact Google Maps URL (`https://www.google.com/maps?q=...`), passenger details, automated emergency call triggered. Developer whitelist reroutes unverified trial numbers to `+919490969706`. | ✅ PASS |
+| **Stage 4** | **Twilio SMS & Voice Generated** | `NotificationService` | SMS generated with exact Google Maps URL (`https://www.google.com/maps?q=...`), passenger details, automated emergency call triggered. Developer whitelist reroutes unverified trial numbers to `+919999999999`. | ✅ PASS |
 | **Stage 5** | **Database Records Event** | MongoDB `SOSAlert` (Beanie) | Document persisted with `user_id`, `latitude`, `longitude`, `location_address`, `status: active`, `severity: critical`, and ISO UTC timestamps. | ✅ PASS |
 | **Stage 6** | **Status Returned to User** | React UI Emergency Modal | UI receives HTTP 201 payload with `sos_id` and `status: "active"`, displays live tracking indicator, emergency contacts notified confirmation, and fallback `tel:112` speed-dial button. | ✅ PASS |
 
@@ -165,7 +165,7 @@ To ensure platform reliability on every code modification, an automated regressi
 1. **Seamless End-to-End SOS Dispatch Loop:**
    - The entire emergency pipeline from user button press, GPS capture, risk scoring, Twilio SMS/Voice generation, and Admin feed update executes within **1.2 seconds**, providing lightning-fast emergency response.
 2. **Twilio Trial Account Protection & Developer Whitelist Interception:**
-   - In development/staging environments where Twilio accounts have unverified number restrictions, SafeGo automatically intercepts unverified recipient numbers and reroutes alerts to the verified developer phone (`+919490969706`) with complete context. This prevents HTTP 400 Bad Request gateway errors and keeps testing uninterrupted.
+   - In development/staging environments where Twilio accounts have unverified number restrictions, SafeGo automatically intercepts unverified recipient numbers and reroutes alerts to the verified developer phone (`+919999999999`) with complete context. This prevents HTTP 400 Bad Request gateway errors and keeps testing uninterrupted.
 3. **Rock-Solid 15-Second Concurrency Debounce Engine:**
    - Under adversarial burst floods (e.g. 25 rapid SOS requests fired in 2 seconds), the backend cleanly deduplicates the requests, returning the existing active emergency document with **zero duplicate SMS charges and zero DB lockouts**.
 4. **Strict PWD Mode Zero-Surge Price Ceiling:**
@@ -315,12 +315,12 @@ OK
 [TWILIO INIT] Twilio client initialized with SID ending in ...b11ecc
 [DB] Connected to MongoDB: safego_db
 [DB] Drivers already seeded.
-[TWILIO SUCCESS] SOS SMS sent to +919490969706. SID: SM074841f10bda1243de7a4bb6c087289e
-[TWILIO SUCCESS] SOS Voice Call triggered to +919490969706. SID: CA8d02d599c6a44350204d403f0055a132
+[TWILIO SUCCESS] SOS SMS sent to +919999999999. SID: SM074841f10bda1243de7a4bb6c087289e
+[TWILIO SUCCESS] SOS Voice Call triggered to +919999999999. SID: CA8d02d599c6a44350204d403f0055a132
 [SurgePredictor] ML Surge Inference: 1.01x (Confidence: 1.00) (Mode: normal, Safety: Stable)
 [SurgePredictor] ML Surge Inference: 1.0x (Confidence: 1.00) (Mode: pwd, Safety: High Priority)
 [Geographical SafetyPredictor] Real Inference: High Priority (Confidence: 0.69) (SafeHub Dist: 809.1km)
-[TWILIO VERIFICATION] Unverified number routed to developer number +919490969706 to prevent trial rejection.
+[TWILIO VERIFICATION] Unverified number routed to developer number +919999999999 to prevent trial rejection.
 [DB] MongoDB connection closed gracefully (App Lifecycle)
 [BYE] SafeGo backend shutting down
 ```

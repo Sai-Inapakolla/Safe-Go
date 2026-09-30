@@ -261,7 +261,7 @@ class TestSafeGoFullStackIntegration(unittest.TestCase):
             "destination_longitude": 77.6245,
             "passenger_count": 1,
             "emergency_contact_name": "Priya Contact",
-            "emergency_contact_phone": "+919490969706"
+            "emergency_contact_phone": "+919876543210"
         }
         create_res = self.client.post("/api/rides/request", json=ride_payload, headers=headers)
         self.assertEqual(create_res.status_code, 201)
@@ -294,7 +294,7 @@ class TestSafeGoFullStackIntegration(unittest.TestCase):
             "longitude": 73.1812,
             "location_address": "Alkapuri, Vadodara, Gujarat",
             "severity": "critical",
-            "emergency_contact_phone": "+919490969706"
+            "emergency_contact_phone": "+919876543210"
         }
 
         # 1. Trigger SOS Alert

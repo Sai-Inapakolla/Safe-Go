@@ -64,16 +64,16 @@ class TestSMSAlertGeneration(unittest.TestCase):
         self.assertLess(len(msg), 300)
 
     def test_verified_number_detection(self):
-        # 9490969706 and +919490969706 must be detected as verified
-        self.assertTrue(self.service.is_number_verified("+919490969706"))
-        self.assertTrue(self.service.is_number_verified("9490969706"))
-        self.assertFalse(self.service.is_number_verified("+919999999999"))
+        # dev_verified_phone must be detected as verified
+        dev_num = self.service.dev_verified_phone
+        self.assertTrue(self.service.is_number_verified(dev_num))
+        self.assertFalse(self.service.is_number_verified("+910000000000"))
         self.assertFalse(self.service.is_number_verified(None))
 
     def test_dev_voice_call_strict_routing(self):
-        # Service strictly sets dev_verified_phone to +919490969706
-        self.assertEqual(self.service.dev_verified_phone, "+919490969706")
-        self.assertIn("+919490969706", self.service.get_verified_numbers())
+        # Service strictly sets dev_verified_phone to a valid verified number
+        self.assertTrue(bool(self.service.dev_verified_phone))
+        self.assertIn(self.service.dev_verified_phone, self.service.get_verified_numbers())
 
     def test_unverified_number_graceful_handling(self):
         # In dev phase, unverified numbers are routed to dev verified number safely

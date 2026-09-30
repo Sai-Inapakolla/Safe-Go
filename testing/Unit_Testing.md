@@ -49,7 +49,7 @@ Every individual module, component, utility, route, service, and ML engine acros
 
 | # | Individual Service / Route Module | Test File | Key Behaviors Verified | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| 1 | **NotificationService (`notification_service.py`)** | `test_specific_features.py` | Developer number whitelist (`+919490969706`), trial phase SMS rerouting, pre-dispatch verification, voice call lock. | ✅ Tested |
+| 1 | **NotificationService (`notification_service.py`)** | `test_specific_features.py` | Developer number whitelist (`+919999999999`), trial phase SMS rerouting, pre-dispatch verification, voice call lock. | ✅ Tested |
 | 2 | **Safety Route & SOS (`routes/safety.py`)** | `test_sos_concurrency_abuse.py` | Idempotency lookup, 15s burst suppression, DB connection failure 503 fallback, isolated notification failure handling. | ✅ Tested |
 | 3 | **GeoService (`services/geo_service.py`)** | `test_all_safego.py` | In-memory indexing of 4,231 Indian cities, fuzzy keyword search, bounding box spatial filtering. | ✅ Tested |
 | 4 | **Safety Classifier (`ml/predictor.py`)** | `test_all_safego.py` | 12-feature location-aware inference, safe hub distance penalty, high-risk hotspot weighting, feature name DataFrame passing. | ✅ Tested |
@@ -109,7 +109,7 @@ OK
 [Geographical SafetyPredictor] Location-aware model loaded and active.
 [SurgePredictor] Dynamic Fare Surge pricing model loaded and active.
 [TWILIO INIT] Twilio client initialized.
-[TWILIO VERIFICATION] Unverified number routed to verified developer number +919490969706.
+[TWILIO VERIFICATION] Unverified number routed to verified developer number +919999999999.
 [SOS DB ERROR] Critical database error caught and handled (503 Fallback)
 ```
 

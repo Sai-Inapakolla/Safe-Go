@@ -7,9 +7,9 @@ import datetime
 
 logger = logging.getLogger(__name__)
 
-# Development Phase Twilio Verified Numbers
-DEV_VERIFIED_PHONE = "+919042862878"
-FALLBACK_VERIFIED_PHONE = "+919490969706"
+# Development Phase Twilio Verified Numbers (configured via environment)
+DEV_VERIFIED_PHONE = getattr(settings, "ADMIN_PHONE", "+919999999999")
+FALLBACK_VERIFIED_PHONE = getattr(settings, "TESTER_PHONE", "+919999999999")
 
 
 def _normalize_phone(num: str | None) -> str:

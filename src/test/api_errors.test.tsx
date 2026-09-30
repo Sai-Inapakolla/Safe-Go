@@ -78,4 +78,14 @@ describe("API Error Handling & Network Resilience", () => {
     const err = parseApiError(500);
     expect(err.message).toContain("SafeGo server is currently busy");
   });
+
+  it("should resolve getApiUrl from localStorage custom URL and sanitize trailing slashes", async () => {
+    const { getApiUrl } = await import("@/lib/api");
+
+    localStorage.setItem("safego_backend_url", "https://api.safego-cloud.com///");
+    expect(getApiUrl()).toBe("https://api.safego-cloud.com");
+
+    localStorage.removeItem("safego_backend_url");
+    expect(getApiUrl()).toBe("http://localhost:8000");
+  });
 });

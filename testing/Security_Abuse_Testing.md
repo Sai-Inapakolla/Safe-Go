@@ -96,7 +96,7 @@ Phase 3 conducted an adversarial external black-box and gray-box penetration att
 - **Idempotency Key Hashing:** SOS payloads with matching `idempotency_key` are deduplicated immediately at the database layer.
 
 ### 3.4 Twilio Communication Hardening & Quota Guard
-- **Trial Whitelist Protection:** In sandbox and trial environments, numbers not yet verified on Twilio are automatically redirected to the developer/tester trial number (`+919490969706`), preventing unhandled `HTTP 400 Bad Request` exceptions from halting the server.
+- **Trial Whitelist Protection:** In sandbox and trial environments, numbers not yet verified on Twilio are automatically redirected to the developer/tester trial number (`+919999999999`), preventing unhandled `HTTP 400 Bad Request` exceptions from halting the server.
 - **Rate Limit & Quota Resilience:** When Twilio returns `HTTP 429 Quota Exceeded` (e.g., exceeding trial message limits), the backend logs the carrier status cleanly while completing the internal database emergency record and local emergency dialer fallback.
 
 ---

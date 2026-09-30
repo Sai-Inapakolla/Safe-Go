@@ -214,7 +214,7 @@ class TestSOSConcurrencyAndAbuse(unittest.TestCase):
         res = self.client.post("/api/safety/sos", json={
             "latitude": 12.9716,
             "longitude": 77.5946,
-            "emergency_contact_phone": "+919490969706",
+            "emergency_contact_phone": "+919876543210",
             "idempotency_key": "SMS_FAIL_TEST_001"
         }, headers=self.headers)
 
@@ -233,7 +233,7 @@ class TestSOSConcurrencyAndAbuse(unittest.TestCase):
         res = self.client.post("/api/safety/sos", json={
             "latitude": 12.9716,
             "longitude": 77.5946,
-            "emergency_contact_phone": "+919490969706",
+            "emergency_contact_phone": "+919876543210",
             "idempotency_key": "VOICE_FAIL_TEST_001"
         }, headers=self.headers)
 
@@ -250,7 +250,7 @@ class TestSOSConcurrencyAndAbuse(unittest.TestCase):
         res = self.client.post("/api/safety/sos", json={
             "latitude": 12.9716,
             "longitude": 77.5946,
-            "emergency_contact_phone": "+919490969706",
+            "emergency_contact_phone": "+919876543210",
             "idempotency_key": "NO_ADMIN_TEST_001"
         }, headers=self.headers)
 

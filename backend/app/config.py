@@ -26,7 +26,7 @@ for _env_f in (_ROOT_DIR / ".env", _BACKEND_DIR / ".env"):
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "mongodb://127.0.0.1:27017/safego_db"
-    SECRET_KEY: str = "safego-super-secret-key-change-me-in-production-2025"
+    SECRET_KEY: str = "mock-secret-key-replace-in-env-before-production-32chars"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -34,11 +34,11 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
     ADMIN_EMAIL: str = "admin@safego.ph"
-    ADMIN_PASSWORD: str = "Admin@SafeGo2025"
-    ADMIN_PHONE: str = "+919490969706"
+    ADMIN_PASSWORD: str = "mock-admin-password-safego"
+    ADMIN_PHONE: str = "+919999999999"
     TESTER_EMAIL: str = "tester@safego.in"
-    TESTER_PASSWORD: str = "Tester@SafeGo2025"
-    TESTER_PHONE: str = "+919490969706"
+    TESTER_PASSWORD: str = "mock-tester-password-safego"
+    TESTER_PHONE: str = "+919999999999"
     OSRM_BASE_URL: str = "http://router.project-osrm.org"
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""

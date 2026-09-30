@@ -4,12 +4,12 @@ import { BrowserRouter } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
-const signOutMock = vi.fn(() => Promise.resolve());
+const signOutMock = vi.fn((..._args: any[]) => Promise.resolve());
 vi.mock("firebase/auth", async () => {
   const actual = await vi.importActual<typeof import("firebase/auth")>("firebase/auth");
   return {
     ...actual,
-    signOut: (...args: any[]) => signOutMock(...args),
+    signOut: (auth?: any) => signOutMock(auth),
   };
 });
 
@@ -142,6 +142,20 @@ describe("Navbar & Navigation Header", () => {
     expect(localStorage.getItem("token")).toBeNull();
     expect(localStorage.getItem("userRole")).toBeNull();
     expect(localStorage.getItem("safego_driver_profile")).toBeNull();
+  });
+
+  it("should close mobile menu when mobile navigation link is clicked", () => {
+    renderNavbar();
+
+    // Open mobile drawer
+    const hamburgerBtn = screen.getByRole("button", { name: /Toggle menu/i });
+    fireEvent.click(hamburgerBtn);
+
+    const mobileLinks = screen.getAllByText("Book");
+    // Click the mobile link (second one in the DOM)
+    fireEvent.click(mobileLinks[mobileLinks.length - 1]);
+
+    // Drawer closes
     expect(screen.queryByText("App Theme")).not.toBeInTheDocument();
   });
 });

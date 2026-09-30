@@ -21,15 +21,10 @@ try {
   app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
-} catch (err) {
-  try {
-    app = getApps().length > 0 ? getApp() : initializeApp({ apiKey: "demo-api-key", projectId: "demo-safego" });
-    auth = getAuth(app);
-    db = getFirestore(app);
-  } catch (_) {
-    auth = { currentUser: null, onAuthStateChanged: () => () => {}, signOut: async () => {} };
-    db = {};
-  }
+} catch (_) {
+  app = null;
+  auth = null;
+  db = null;
 }
 
 export { auth, db };

@@ -199,7 +199,7 @@ describe("Safety Components & Emergency SOS Functionality", () => {
         json: async () => ({ status: "success" }),
       });
 
-      render(<SOSButton testerPhone="+919490969706" />);
+      render(<SOSButton testerPhone="+919876543210" />);
       fireEvent.click(screen.getByRole("button", { name: /Emergency SOS Alert/i }));
 
       await waitFor(() => {
@@ -207,7 +207,7 @@ describe("Safety Components & Emergency SOS Functionality", () => {
           expect.stringContaining("/api/safety/public-sos"),
           expect.objectContaining({
             method: "POST",
-            body: expect.stringContaining('"emergency_contact_phone":"+919490969706"'),
+            body: expect.stringContaining('"emergency_contact_phone":"+919876543210"'),
           })
         );
       });
@@ -345,7 +345,7 @@ describe("Safety Components & Emergency SOS Functionality", () => {
           json: async () => ({ status: "critical", notes: "Escalated" }),
         });
 
-      render(<SOSButton testerPhone="+919490969706" />);
+      render(<SOSButton testerPhone="+919876543210" />);
       fireEvent.click(screen.getByRole("button", { name: /Emergency SOS Alert/i }));
 
       await waitFor(() => {
@@ -393,7 +393,7 @@ describe("Safety Components & Emergency SOS Functionality", () => {
         })
         .mockRejectedValueOnce(new Error("Escalation API 500 error"));
 
-      render(<SOSButton testerPhone="+919490969706" />);
+      render(<SOSButton testerPhone="+919876543210" />);
       fireEvent.click(screen.getByRole("button", { name: /Emergency SOS Alert/i }));
 
       await waitFor(() => {

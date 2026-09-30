@@ -105,12 +105,12 @@ describe("Driver Assignment & Fleet Matching", () => {
     const { render, screen } = await import("@testing-library/react");
     const { DriverNavigationMap } = await import("@/components/DriverNavigationMap");
 
-    render(
+    const { unmount } = render(
       <DriverNavigationMap
         pickup="Sayaji Baug, Vadodara"
         destination="Vadodara Central Station"
         passengerName="Kavita Rao"
-        passengerPhone="+919490969706"
+        passengerPhone="+919876543210"
         fare="₹250"
         isOtpVerified={true}
       />
@@ -119,6 +119,85 @@ describe("Driver Assignment & Fleet Matching", () => {
     expect(screen.getByText("DRIVER NAVIGATION")).toBeInTheDocument();
     expect(screen.getByText("On Road ➔ Destination")).toBeInTheDocument();
     expect(screen.getByText("Call Rider")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Call Rider/i })).toHaveAttribute("href", "tel:+919490969706");
+    expect(screen.getByRole("link", { name: /Call Rider/i })).toHaveAttribute("href", "tel:+919876543210");
+    unmount();
+  });
+
+  it("should initialize Leaflet satellite map, plot route polyline, and handle recenter click", async () => {
+    const { render, screen, fireEvent, waitFor } = await import("@testing-library/react");
+    const { DriverNavigationMap } = await import("@/components/DriverNavigationMap");
+
+    const mockMap = {
+      setView: vi.fn().mockReturnThis(),
+      fitBounds: vi.fn().mockReturnThis(),
+      remove: vi.fn(),
+    };
+    const mockPolyline: any = {
+      addTo: vi.fn(),
+      getBounds: vi.fn().mockReturnValue([[22.3, 73.3], [22.4, 73.4]]),
+    };
+    mockPolyline.addTo.mockReturnValue(mockPolyline);
+
+    const mockMarker: any = {
+      addTo: vi.fn(),
+      bindPopup: vi.fn(),
+    };
+    mockMarker.addTo.mockReturnValue(mockMarker);
+    mockMarker.bindPopup.mockReturnValue(mockMarker);
+
+    const mockTileLayer: any = {
+      addTo: vi.fn(),
+    };
+    mockTileLayer.addTo.mockReturnValue(mockTileLayer);
+
+    (window as any).L = {
+      map: vi.fn().mockReturnValue(mockMap),
+      tileLayer: vi.fn().mockReturnValue(mockTileLayer),
+      divIcon: vi.fn().mockReturnValue({}),
+      marker: vi.fn().mockReturnValue(mockMarker),
+      polyline: vi.fn().mockReturnValue(mockPolyline),
+    };
+
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        distance_km: 14.5,
+        duration_minutes: 18,
+        route_polyline: JSON.stringify({
+          coordinates: [[73.3762, 22.3023], [73.24, 22.35]],
+        }),
+      }),
+    }) as any;
+
+    const { unmount } = render(
+      <DriverNavigationMap
+        pickup="Sayaji Baug, Vadodara"
+        pickupLat={22.3023}
+        pickupLng={73.3762}
+        destination="Vadodara Central Station"
+        destLat={22.35}
+        destLng={73.24}
+        isOtpVerified={false}
+      />
+    );
+
+    expect(screen.getByText("Heading to Pickup")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText("14.5 km")).toBeInTheDocument();
+    });
+
+    // Verify recenter button triggers fitBounds
+    const recenterBtn = screen.getByTitle("Recenter Route");
+    fireEvent.click(recenterBtn);
+
+    expect(mockMap.fitBounds).toHaveBeenCalled();
+
+    unmount();
+    expect(mockMap.remove).toHaveBeenCalled();
+
+    global.fetch = originalFetch;
+    delete (window as any).L;
   });
 });

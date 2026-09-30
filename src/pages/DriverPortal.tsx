@@ -199,7 +199,7 @@ const DashboardTab = ({
               destLat={activeRide.destination_latitude}
               destLng={activeRide.destination_longitude}
               passengerName={activeRide.passenger_name || activeRide.passenger || "Rider"}
-              passengerPhone={activeRide.passenger_phone || "+91 9490969706"}
+              passengerPhone={activeRide.passenger_phone || "+91 9876543210"}
               fare={activeRide.fare}
               isOtpVerified={activeRide.is_otp_verified}
             />

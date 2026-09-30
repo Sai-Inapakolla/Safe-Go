@@ -1031,19 +1031,19 @@ Create a `.env` file in the project root:
 DATABASE_URL=mongodb://127.0.0.1:27017/safego_db
 
 # Security & Tokens
-SECRET_KEY=safego-super-secret-key-change-me-in-production-2025
+SECRET_KEY=your-secret-key-minimum-32-characters-long-here
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=60
 
 # Administrative Credentials
 ADMIN_EMAIL=admin@safego.ph
-ADMIN_PASSWORD=Admin@SafeGo2025
-ADMIN_PHONE=+919490969706
+ADMIN_PASSWORD=your_admin_secure_password
+ADMIN_PHONE=+919999999999
 
 # Tester Credentials
 TESTER_EMAIL=tester@safego.in
-TESTER_PASSWORD=Tester@SafeGo2025
-TESTER_PHONE=+919490969706
+TESTER_PASSWORD=your_tester_secure_password
+TESTER_PHONE=+919999999999
 
 # Twilio Telephony Credentials
 TWILIO_ACCOUNT_SID=your_twilio_account_sid
@@ -1119,10 +1119,10 @@ Log in with default development accounts:
 * **Admin Command Center**:
   * **URL**: `http://localhost:5173/admin`
   * **Email**: `admin@safego.ph`
-  * **Password**: `Admin@SafeGo2025`
+  * **Password**: `[Configured in .env / ADMIN_PASSWORD]`
 * **Tester Account**:
   * **Email**: `tester@safego.in`
-  * **Password**: `Tester@SafeGo2025`
+  * **Password**: `[Configured in .env / TESTER_PASSWORD]`
 * **Driver Onboarding**:
   * Navigate to `http://localhost:5173/drive-with-us` or `http://localhost:5173/apply-driver`.
   * Fill in vehicle details and upload test documents to test the Cloudinary pipeline.

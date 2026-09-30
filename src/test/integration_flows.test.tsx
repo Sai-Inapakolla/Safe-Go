@@ -52,7 +52,7 @@ describe("SafeGo Comprehensive Frontend Integration Tests 🚀", () => {
             full_name: "Priya Patel",
             email: "priya@safego.in",
             role: "passenger",
-            phone: "+919490969706",
+            phone: "+919876543210",
           }),
         };
       }
@@ -247,7 +247,7 @@ describe("SafeGo Comprehensive Frontend Integration Tests 🚀", () => {
 
     it("should display emergency contacts section in distress modal", async () => {
       const mockContacts = [
-        { id: "c1", name: "Rahul Contact", phone: "+919490969706", relationship: "Brother" }
+        { id: "c1", name: "Rahul Contact", phone: "+919876543210", relationship: "Brother" }
       ];
 
       render(
@@ -264,7 +264,7 @@ describe("SafeGo Comprehensive Frontend Integration Tests 🚀", () => {
       await waitFor(() => {
         expect(screen.getByText(/distress signal active/i)).toBeInTheDocument();
         expect(screen.getByText(/rahul contact/i)).toBeInTheDocument();
-        expect(screen.getByText(/\+919490969706/i)).toBeInTheDocument();
+        expect(screen.getByText(/\+919876543210/i)).toBeInTheDocument();
       });
     });
   });

@@ -1299,7 +1299,7 @@ const BookingPage = () => {
     return localStorage.getItem("safego_emergency_name") || "Primary Emergency Contact";
   });
   const [emergencyContactPhone, setEmergencyContactPhone] = useState(() => {
-    return localStorage.getItem("safego_emergency_phone") || localStorage.getItem("admin_phone") || "+919042862878";
+    return localStorage.getItem("safego_emergency_phone") || localStorage.getItem("admin_phone") || "+919876543210";
   });
   const [sosModalOpen, setSosModalOpen] = useState(false);
   const [sosDispatching, setSosDispatching] = useState(false);

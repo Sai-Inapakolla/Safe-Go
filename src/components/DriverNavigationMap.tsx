@@ -29,7 +29,7 @@ export const DriverNavigationMap = ({
   destLat = 22.3500,
   destLng = 73.2400,
   passengerName = "Rider",
-  passengerPhone = "+91 9490969706",
+  passengerPhone = "+91 9876543210",
   fare,
   isOtpVerified = false
 }: DriverNavigationMapProps) => {

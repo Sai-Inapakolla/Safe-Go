@@ -119,7 +119,7 @@ describe("🔥 Phase 3 — Frontend Security, Auth Attack & Abuse Resilience Tes
         {
           id: "xss_1",
           name: "<script>window.__xss_compromised=true;</script>Hacker",
-          phone: "+919490969706",
+          phone: "+919876543210",
           relationship: "<img src=x onerror=alert(1)>Emergency Contact",
         },
       ];
