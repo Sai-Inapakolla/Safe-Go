@@ -47,5 +47,6 @@ coverage/
 # Vite temporary files
 vite.config.ts.timestamp*
 *.timestamp-*.mjs
-
-
+# Project Details & Architecture Spec
+All_details.md
+All-Details.md
