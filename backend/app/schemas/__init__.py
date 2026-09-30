@@ -80,6 +80,21 @@ class UserBrief(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PayPenaltyRequest(BaseModel):
+    amount: Optional[float] = None
+    payment_method: Optional[str] = "upi"
+    transaction_id: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class PayPenaltyResponse(BaseModel):
+    message: str
+    amount_paid: float
+    remaining_penalty_balance: float
+    transaction_id: str
+    status: str
+
+
 # ==================== VEHICLE ====================
 
 class VehicleCreate(BaseModel):
@@ -307,6 +322,8 @@ class RideResponse(BaseModel):
     is_penalty_applied: Optional[bool] = False
     penalty_reason: Optional[str] = None
     driver_compensation_amount: Optional[float] = None
+    is_penalty_paid: Optional[bool] = False
+    penalty_paid_at: Optional[datetime] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
     otp: Optional[str] = None

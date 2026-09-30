@@ -12,11 +12,12 @@ import {
   Star, TrendingUp, ArrowRight, User, Lock, Bell, Moon, MapPin,
   Accessibility, Mic, Check, Trash2, Loader2, Plus, X, Eye, EyeOff,
   ShieldAlert, AlertCircle, Calendar, Clock, KeyRound, CheckCircle2, Info,
-  Sparkles, Leaf
+  Sparkles, Leaf, Unlock
 } from "lucide-react";
 import { useVoiceAssistant } from "@/contexts/VoiceAssistantContext";
 import { useElderMode } from "@/contexts/ElderModeContext";
 import { getApiUrl } from "@/lib/api";
+import { FinePaymentModal } from "@/components/FinePaymentModal";
 
 const API_URL = getApiUrl();
 
@@ -85,6 +86,7 @@ const Dashboard = () => {
     const p = localStorage.getItem("safego_penalty_balance");
     return p ? Number(p) : 0;
   });
+  const [isFinePaymentModalOpen, setIsFinePaymentModalOpen] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [selectedRides, setSelectedRides] = useState<Set<string>>(new Set());
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -405,12 +407,21 @@ const Dashboard = () => {
       fetchProfile();
     };
 
+    const handleCustomPenaltyCleared = () => {
+      setPenaltyBalance(0);
+      localStorage.setItem("safego_penalty_balance", "0");
+      fetchProfile();
+      fetchRides();
+    };
+
     window.addEventListener("storage", handleStorageChange);
     window.addEventListener("safego_ride_cancelled", handleCustomCancellation);
+    window.addEventListener("safego_penalty_cleared", handleCustomPenaltyCleared);
 
     return () => {
       window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener("safego_ride_cancelled", handleCustomCancellation);
+      window.removeEventListener("safego_penalty_cleared", handleCustomPenaltyCleared);
     };
   }, []);
 
@@ -826,38 +837,40 @@ const Dashboard = () => {
           <>
             {/* Outstanding Penalty Alert Banner */}
             {penaltyBalance > 0 && (
-              <div className="mb-6 rounded-3xl border-2 border-rose-500/40 bg-rose-500/10 p-6 shadow-xl animate-in fade-in slide-in-from-top-2">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-start gap-3.5">
-                    <div className="p-3 rounded-2xl bg-rose-500 text-white shrink-0 shadow-lg shadow-rose-500/30">
-                      <AlertCircle size={24} />
+              <div className="mb-6 rounded-3xl border-2 border-rose-500/50 bg-gradient-to-r from-rose-500/15 via-rose-500/10 to-amber-500/10 p-6 shadow-xl animate-in fade-in slide-in-from-top-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+                  <div className="flex items-start gap-4">
+                    <div className="p-3.5 rounded-2xl bg-rose-600 text-white shrink-0 shadow-lg shadow-rose-600/30">
+                      <ShieldAlert size={26} />
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-display font-black text-sm uppercase tracking-wider text-rose-600 dark:text-rose-400">
-                          Outstanding Safety Policy Penalty
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-display font-black text-sm uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                          <Lock size={14} /> Account Restricted: Ride Booking Disabled
                         </h4>
                         <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-600 text-white">
                           Action Required
                         </span>
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                          Fine Stated: ₹{penaltyBalance}
+                        </span>
                       </div>
-                      <p className="text-xs font-semibold text-rose-800 dark:text-rose-200 mt-1 leading-relaxed">
-                        A penalty fee has been charged to your account due to a reported SafeGo Pink Mode policy violation (Solo Male Booking / No Accompanying Female Traveler Present).
+                      <p className="text-xs font-semibold text-rose-900/90 dark:text-rose-200/90 mt-1.5 leading-relaxed max-w-2xl">
+                        An outstanding fine has been levied on your account due to a reported safety policy violation (Pink Mode Solo Male Restriction). 
+                        To maintain passenger trust and safety protocols, <strong>you cannot book another ride until this fine is paid and settled</strong>.
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4 shrink-0 sm:border-l sm:border-rose-500/20 sm:pl-6">
+                  <div className="flex items-center gap-4 shrink-0 sm:border-l sm:border-rose-500/25 sm:pl-6">
                     <div className="text-right">
                       <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Amount Due</span>
                       <p className="text-2xl font-black text-rose-600 dark:text-rose-400">₹{penaltyBalance}</p>
                     </div>
                     <button
-                      onClick={() => {
-                        toast.success(`SafeGo Secure Pay gateway opened for ₹${penaltyBalance} penalty settlement.`);
-                      }}
-                      className="px-5 py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black uppercase tracking-wider shadow-xl shadow-rose-600/25 transition-all active:scale-95"
+                      onClick={() => setIsFinePaymentModalOpen(true)}
+                      className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-700 hover:to-rose-800 text-white text-xs font-black uppercase tracking-widest shadow-xl shadow-rose-600/30 transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
                     >
-                      Pay & Clear
+                      <Unlock size={14} /> Pay Fine & Unlock
                     </button>
                   </div>
                 </div>
@@ -875,18 +888,52 @@ const Dashboard = () => {
 
             {/* Quick book */}
             <div className="mt-8">
-              <h3 className="font-display text-lg font-bold text-foreground">Quick Book</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="font-display text-lg font-bold text-foreground">Quick Book</h3>
+                {penaltyBalance > 0 && (
+                  <span className="text-xs font-black text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                    <Lock size={12} /> Booking Locked (Pay Fine to Unlock)
+                  </span>
+                )}
+              </div>
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {modes.map((m) => (
-                  <Link key={m.id} to={`/book/${m.id}`} className="safego-card flex items-center gap-3 p-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: m.lightBg }}>
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => {
+                      if (penaltyBalance > 0) {
+                        toast.error(`Ride Booking Locked: Please pay your outstanding fine of ₹${penaltyBalance} before booking another ride.`);
+                        setIsFinePaymentModalOpen(true);
+                      } else {
+                        navigate(`/book/${m.id}`);
+                      }
+                    }}
+                    className={`safego-card flex items-center gap-3 p-4 text-left transition-all relative ${
+                      penaltyBalance > 0
+                        ? "border-rose-500/30 opacity-85 hover:opacity-100 hover:border-rose-500/60 cursor-pointer"
+                        : "cursor-pointer"
+                    }`}
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full shrink-0" style={{ backgroundColor: m.lightBg }}>
                       <m.icon size={18} style={{ color: m.accent }} />
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-foreground">{m.name.replace(" Mode", "")}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-foreground flex items-center gap-1.5 truncate">
+                        {m.name.replace(" Mode", "")}
+                      </p>
+                      {penaltyBalance > 0 && (
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase text-rose-600 dark:text-rose-400">
+                          <Lock size={9} /> Locked
+                        </span>
+                      )}
                     </div>
-                    <ArrowRight size={14} className="text-muted-foreground" />
-                  </Link>
+                    {penaltyBalance > 0 ? (
+                      <Lock size={14} className="text-rose-500 shrink-0" />
+                    ) : (
+                      <ArrowRight size={14} className="text-muted-foreground shrink-0" />
+                    )}
+                  </button>
                 ))}
               </div>
             </div>
@@ -2033,14 +2080,27 @@ const Dashboard = () => {
                 {(selectedRideModal.status === "cancelled" && (selectedRideModal.mode === "Pink" || selectedRideModal.mode === "pink")) ? (
                   <button
                     onClick={() => {
+                      if (penaltyBalance > 0) {
+                        toast.error(`Ride Booking Locked: Please pay your outstanding fine of ₹${penaltyBalance} before re-booking.`);
+                        setIsFinePaymentModalOpen(true);
+                        return;
+                      }
                       const p = selectedRideModal.pickup_address || "";
                       const d = selectedRideModal.destination_address || "";
                       setSelectedRideModal(null);
                       navigate("/booking/normal", { state: { pickup: p, destination: d } });
                     }}
-                    className="flex-1 py-3.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-700 hover:to-rose-800 text-white font-black text-xs uppercase tracking-wider shadow-lg flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                    className="flex-1 py-3.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-700 hover:to-rose-800 text-white font-black text-xs uppercase tracking-wider shadow-lg flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
                   >
-                    <Car size={15} /> Switch & Book Normal Mode
+                    {penaltyBalance > 0 ? (
+                      <>
+                        <Lock size={15} /> Pay Fine (₹{penaltyBalance}) to Re-book
+                      </>
+                    ) : (
+                      <>
+                        <Car size={15} /> Switch & Book Normal Mode
+                      </>
+                    )}
                   </button>
                 ) : null}
                 <button
@@ -2053,6 +2113,22 @@ const Dashboard = () => {
             </div>
           </div>
         )}
+
+        {/* SafeGo Secure Pay Fine Settlement Modal */}
+        <FinePaymentModal
+          isOpen={isFinePaymentModalOpen}
+          onClose={() => setIsFinePaymentModalOpen(false)}
+          penaltyAmount={penaltyBalance}
+          penaltyReason="Pink Mode Safety Policy Violation (Solo Male Booking)"
+          onSuccess={() => {
+            setPenaltyBalance(0);
+            fetchProfile();
+            fetchRides();
+          }}
+          onBookRide={() => {
+            navigate("/book/normal");
+          }}
+        />
 
       </main>
     </div>

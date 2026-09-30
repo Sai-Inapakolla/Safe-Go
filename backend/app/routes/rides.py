@@ -57,6 +57,8 @@ def _ride_dict(ride: Ride, driver_brief=None) -> dict:
         "is_penalty_applied": getattr(ride, "is_penalty_applied", False),
         "penalty_reason": getattr(ride, "penalty_reason", None),
         "driver_compensation_amount": getattr(ride, "driver_compensation_amount", None),
+        "is_penalty_paid": getattr(ride, "is_penalty_paid", False),
+        "penalty_paid_at": _format_dt(getattr(ride, "penalty_paid_at", None)),
         "emergency_contact_name": getattr(ride, "emergency_contact_name", None),
         "emergency_contact_phone": getattr(ride, "emergency_contact_phone", None),
         "otp": getattr(ride, "otp", None) or f"{(abs(hash(str(ride.id))) % 9000) + 1000}",
@@ -117,6 +119,11 @@ async def _load_driver_brief(driver_id: Optional[PydanticObjectId | str]):
 async def request_ride(payload: RideRequest, current_user: User = Depends(get_current_passenger)):
     if not current_user.id:
         raise HTTPException(status_code=400, detail="User ID is required")
+    if (getattr(current_user, "penalty_balance", 0.0) or 0.0) > 0:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Ride booking blocked: You have an outstanding fine of ₹{current_user.penalty_balance:.2f}. Please pay the fine in your Dashboard before booking another ride."
+        )
     ride = await create_ride(
         passenger_id=current_user.id,
         mode=payload.mode,
@@ -288,6 +295,12 @@ async def request_join_split_ride(
     Passenger B requests to join an active shared cab along the corridor.
     Transitions state to 'pending_driver' (Step 1 of Double-Approval).
     """
+    if (getattr(current_user, "penalty_balance", 0.0) or 0.0) > 0:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Ride booking blocked: You have an outstanding fine of ₹{current_user.penalty_balance:.2f}. Please pay the fine in your Dashboard before joining a ride."
+        )
+
     if not PydanticObjectId.is_valid(payload.ride_id):
         raise HTTPException(status_code=400, detail="Invalid ride ID")
     

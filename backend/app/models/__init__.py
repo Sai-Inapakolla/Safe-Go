@@ -184,6 +184,8 @@ class Ride(Document):
     is_penalty_applied: bool = False
     penalty_reason: Optional[str] = None
     driver_compensation_amount: Optional[float] = None
+    is_penalty_paid: bool = False
+    penalty_paid_at: Optional[datetime] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
     otp: Optional[str] = None

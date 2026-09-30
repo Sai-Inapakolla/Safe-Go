@@ -10,11 +10,12 @@ import {
   ArrowLeft, Star, MessageCircle, Shield, Loader2, CheckCircle2,
   MapPin, Navigation, Car, AlertCircle, Locate, Send, X, Users, Zap, Activity,
   ShieldAlert, Phone, Siren, Radio, Copy, ShieldCheck, Lock, Search, Target,
-  Leaf, Sparkles, Percent, Timer, UserCheck
+  Leaf, Sparkles, Percent, Timer, UserCheck, Unlock
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { getApiUrl } from "@/lib/api";
+import { FinePaymentModal } from "@/components/FinePaymentModal";
 
 const API_URL = getApiUrl();
 
@@ -1321,6 +1322,17 @@ const BookingPage = () => {
     const p = localStorage.getItem("safego_penalty_balance");
     return p ? Number(p) : 0;
   });
+  const [isFinePaymentModalOpen, setIsFinePaymentModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handlePenaltyCleared = () => {
+      setUserPenaltyBalance(0);
+    };
+    window.addEventListener("safego_penalty_cleared", handlePenaltyCleared);
+    return () => {
+      window.removeEventListener("safego_penalty_cleared", handlePenaltyCleared);
+    };
+  }, []);
 
   // ─── SafeGo Split (Dynamic Co-Riding) States & Handlers ───────────────────
   const [isSplitAllowed, setIsSplitAllowed] = useState<boolean>(false);
@@ -1517,6 +1529,11 @@ const BookingPage = () => {
   };
 
   const handleRequestJoinCorridorCab = async (cab: any) => {
+    if (userPenaltyBalance > 0) {
+      toast.error(`Ride Booking Locked: Please pay your outstanding fine of ₹${userPenaltyBalance} before requesting a shared ride.`);
+      setIsFinePaymentModalOpen(true);
+      return;
+    }
     setIsJoiningSplitCab(true);
     let token = localStorage.getItem("token");
     if (!token) {
@@ -2663,6 +2680,11 @@ const BookingPage = () => {
   };
 
   const handleAskDriver = async () => {
+    if (userPenaltyBalance > 0) {
+      toast.error(`Ride Booking Locked: Please pay your outstanding fine of ₹${userPenaltyBalance} before requesting a driver.`);
+      setIsFinePaymentModalOpen(true);
+      return;
+    }
     setAskStatus("asking");
     setChatOpen(false);
     setChatMsgs([]);
@@ -2980,6 +3002,17 @@ const BookingPage = () => {
   };
 
   const handleConfirmRide = async (overrideDriver?: any) => {
+    // 0. Outstanding Fine / Penalty Check
+    if (userPenaltyBalance > 0) {
+      toast.error(`Ride Booking Locked: You have an outstanding fine of ₹${userPenaltyBalance}. Please pay the fine to unlock booking.`, {
+        duration: 6000,
+        icon: <ShieldAlert size={18} className="text-red-500" />
+      });
+      setAskStatus("idle");
+      setIsFinePaymentModalOpen(true);
+      return;
+    }
+
     // 1. Pink Mode Policy Checks
     if (mode.id === "pink" && userGender === "male") {
       if (passengers === 1) {
@@ -3604,23 +3637,32 @@ const BookingPage = () => {
                 )}
                 {/* Outstanding Penalty Warning Banner */}
                 {userPenaltyBalance > 0 && (
-                  <div className="mt-4 rounded-[2rem] border-2 border-red-500/40 bg-red-500/10 p-5 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="mt-4 rounded-[2rem] border-2 border-red-500/50 bg-red-500/15 p-5 animate-in fade-in slide-in-from-top-2 duration-300 shadow-lg">
                     <div className="flex items-start gap-3.5">
-                      <div className="p-2.5 rounded-2xl bg-red-500/20 text-red-600 dark:text-red-400 shrink-0">
-                        <AlertCircle size={22} />
+                      <div className="p-2.5 rounded-2xl bg-red-500 text-white shrink-0 shadow-md">
+                        <Lock size={22} />
                       </div>
                       <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-xs font-black uppercase tracking-widest text-red-600 dark:text-red-400">
-                            Outstanding Policy Penalty
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <h4 className="text-xs font-black uppercase tracking-widest text-red-600 dark:text-red-400 flex items-center gap-1.5">
+                            Booking Disabled: Outstanding Fine Due
                           </h4>
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-500 text-white">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-600 text-white">
                             ₹{userPenaltyBalance} Fine
                           </span>
                         </div>
-                        <p className="text-[11px] font-semibold text-red-700/90 dark:text-red-300/80 mt-1 leading-relaxed">
-                          Your account has an unpaid penalty from a prior SafeGo Pink Mode policy violation. Please settle this in your Dashboard.
+                        <p className="text-[11px] font-semibold text-red-800 dark:text-red-200 mt-1 leading-relaxed">
+                          Your account is restricted from requesting or joining rides due to an unpaid policy violation fine. Pay the fine now to immediately unlock ride booking.
                         </p>
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            onClick={() => setIsFinePaymentModalOpen(true)}
+                            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black uppercase tracking-wider shadow-md flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                          >
+                            <Unlock size={14} /> Pay Fine Now (₹{userPenaltyBalance}) & Unlock
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -4389,24 +4431,36 @@ const BookingPage = () => {
                                   </button>
                                   <button
                                     onClick={
-                                      selectedDriver?.is_active_corridor_ride
-                                        ? () => handleRequestJoinCorridorCab(selectedDriver.raw_ride || selectedDriver)
-                                        : (askStatus === "accepted" ? handleConfirmRide : handleAskDriver)
+                                      userPenaltyBalance > 0
+                                        ? () => {
+                                            toast.error(`Ride Booking Locked: Please pay your outstanding fine of ₹${userPenaltyBalance} to unlock bookings.`);
+                                            setIsFinePaymentModalOpen(true);
+                                          }
+                                        : selectedDriver?.is_active_corridor_ride
+                                          ? () => handleRequestJoinCorridorCab(selectedDriver.raw_ride || selectedDriver)
+                                          : (askStatus === "accepted" ? handleConfirmRide : handleAskDriver)
                                     }
-                                    disabled={askStatus === "asking" || isJoiningSplitCab || (mode.id === "pink" && userGender === "male" && (passengers === 1 || !isAccompaniedDeclared || !femaleCompanionName.trim()))}
-                                    className="flex-1 group relative rounded-2xl py-4 text-xs font-black uppercase tracking-widest text-white transition-all shadow-xl hover:shadow-2xl hover:brightness-110 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden"
+                                    disabled={userPenaltyBalance > 0 ? false : (askStatus === "asking" || isJoiningSplitCab || (mode.id === "pink" && userGender === "male" && (passengers === 1 || !isAccompaniedDeclared || !femaleCompanionName.trim())))}
+                                    className="flex-1 group relative rounded-2xl py-4 text-xs font-black uppercase tracking-widest text-white transition-all shadow-xl hover:shadow-2xl hover:brightness-110 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden cursor-pointer"
                                     style={{
-                                      backgroundColor: askStatus === "accepted"
-                                        ? "#10b981"
-                                        : askStatus === "rejected"
-                                          ? "#ef4444"
-                                          : selectedDriver.is_split_allowed
-                                            ? "#6366f1"
-                                            : mode.accent
+                                      backgroundColor: userPenaltyBalance > 0
+                                        ? "#e11d48"
+                                        : askStatus === "accepted"
+                                          ? "#10b981"
+                                          : askStatus === "rejected"
+                                            ? "#ef4444"
+                                            : selectedDriver.is_split_allowed
+                                              ? "#6366f1"
+                                              : mode.accent
                                     }}
                                   >
                                     <div className="flex items-center justify-center gap-2">
-                                      {mode.id === "pink" && userGender === "male" && passengers === 1 ? (
+                                      {userPenaltyBalance > 0 ? (
+                                        <>
+                                          <Lock size={14} />
+                                          PAY FINE (₹{userPenaltyBalance}) TO BOOK
+                                        </>
+                                      ) : mode.id === "pink" && userGender === "male" && passengers === 1 ? (
                                         <>
                                           <ShieldAlert size={14} />
                                           SOLO MALE RESTRICTED
@@ -4878,12 +4932,27 @@ const BookingPage = () => {
                     <button
                       type="button"
                       onClick={() => {
+                        const effectivePenalty = userPenaltyBalance || cancellationData.penalty || 750;
+                        if (effectivePenalty > 0) {
+                          toast.error(`Please pay the fine of ₹${effectivePenalty} to unlock ride bookings.`);
+                          setCancellationModalOpen(false);
+                          setIsFinePaymentModalOpen(true);
+                          return;
+                        }
                         setCancellationModalOpen(false);
                         navigate("/booking/normal", { state: { pickup, destination } });
                       }}
                       className="w-full py-4 px-4 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-700 hover:to-rose-800 text-white font-black text-xs uppercase tracking-widest shadow-xl shadow-rose-600/30 flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer"
                     >
-                      <Car size={16} /> Switch to Normal Mode & Re-book Now
+                      {(userPenaltyBalance > 0 || cancellationData.penalty > 0) ? (
+                        <>
+                          <Lock size={16} /> Pay Fine (₹{userPenaltyBalance || cancellationData.penalty || 750}) to Re-book
+                        </>
+                      ) : (
+                        <>
+                          <Car size={16} /> Switch to Normal Mode & Re-book Now
+                        </>
+                      )}
                     </button>
                     <div className="flex gap-2.5">
                       <button
@@ -5383,6 +5452,21 @@ const BookingPage = () => {
           </div>
         )}
       </AnimatePresence>
+
+      {/* SafeGo Secure Pay Fine Settlement Modal */}
+      <FinePaymentModal
+        isOpen={isFinePaymentModalOpen}
+        onClose={() => setIsFinePaymentModalOpen(false)}
+        penaltyAmount={userPenaltyBalance || 750}
+        penaltyReason="Pink Mode Safety Policy Violation (Solo Male Booking)"
+        onSuccess={() => {
+          setUserPenaltyBalance(0);
+          localStorage.setItem("safego_penalty_balance", "0");
+        }}
+        onBookRide={() => {
+          setIsFinePaymentModalOpen(false);
+        }}
+      />
     </div>
   );
 };

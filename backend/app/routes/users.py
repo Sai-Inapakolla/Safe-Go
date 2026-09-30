@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import List
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.models import User, EmergencyContact, Notification, Gender, RideMode
+from app.models import User, EmergencyContact, Notification, Gender, RideMode, Ride
 from app.schemas import (
     UserResponse,
     UserUpdate,
@@ -13,6 +14,8 @@ from app.schemas import (
     EmergencyContactUpdate,
     EmergencyContactResponse,
     NotificationResponse,
+    PayPenaltyRequest,
+    PayPenaltyResponse,
 )
 from app.utils.dependencies import get_current_user
 
@@ -50,6 +53,75 @@ async def update_my_profile(
 
     await current_user.save()
     return _user_to_response(current_user)
+
+
+@router.post("/pay-penalty", response_model=PayPenaltyResponse)
+async def pay_user_penalty(
+    payload: PayPenaltyRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Settles user's outstanding fine/penalty, resets penalty balance,
+    and updates associated violation rides to paid status.
+    """
+    current_balance = getattr(current_user, "penalty_balance", 0.0) or 0.0
+    txn_id = payload.transaction_id or f"TXN_FINE_{int(datetime.now().timestamp())}"
+    
+    if current_balance <= 0:
+        return PayPenaltyResponse(
+            message="No outstanding penalty on this account.",
+            amount_paid=0.0,
+            remaining_penalty_balance=0.0,
+            transaction_id=txn_id,
+            status="already_cleared",
+        )
+
+    pay_amount = payload.amount if (payload.amount is not None and payload.amount > 0) else current_balance
+    new_balance = max(0.0, current_balance - pay_amount)
+    current_user.penalty_balance = new_balance
+    await current_user.save()
+
+    # Mark user's rides with penalty as paid if fully cleared
+    if new_balance == 0.0:
+        try:
+            rides_with_penalty = await Ride.find(
+                Ride.passenger_id == current_user.id,
+                Ride.is_penalty_applied == True,
+            ).to_list()
+            now = datetime.now(timezone.utc)
+            for r in rides_with_penalty:
+                r.is_penalty_paid = True
+                r.penalty_paid_at = now
+                await r.save()
+        except Exception:
+            pass
+
+    # Create confirmation notification for user
+    try:
+        notif = Notification(
+            user_id=current_user.id,
+            title="Policy Fine Settled Successfully",
+            message=f"Your outstanding penalty fine of ₹{pay_amount:.2f} has been settled via {payload.payment_method or 'SafeGo Pay'}. Ride booking privileges have been restored.",
+            type="penalty_cleared",
+            is_read=False,
+            data={
+                "amount_paid": pay_amount,
+                "transaction_id": txn_id,
+                "payment_method": payload.payment_method or "upi",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        await notif.insert()
+    except Exception:
+        pass
+
+    return PayPenaltyResponse(
+        message="Penalty settled successfully. Ride booking is now unlocked.",
+        amount_paid=pay_amount,
+        remaining_penalty_balance=new_balance,
+        transaction_id=txn_id,
+        status="paid_and_unlocked",
+    )
 
 
 # ==================== EMERGENCY CONTACTS ====================
