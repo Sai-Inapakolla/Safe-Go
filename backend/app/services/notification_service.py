@@ -8,7 +8,7 @@ import datetime
 logger = logging.getLogger(__name__)
 
 # Development Phase Twilio Verified Numbers
-DEV_VERIFIED_PHONE = "+919042862878"
+DEV_VERIFIED_PHONE = "+919490969706"
 FALLBACK_VERIFIED_PHONE = "+919490969706"
 
 
@@ -184,4 +184,3 @@ class NotificationService:
 
 
 notification_service = NotificationService()
-

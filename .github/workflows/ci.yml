@@ -72,10 +72,10 @@ jobs:
       SECRET_KEY: ${{ secrets.SECRET_KEY || 'ci-cd-testing-secret-key-minimum-32-chars-long' }}
       ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL || 'admin@safego.ph' }}
       ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD || 'Admin@SafeGo2025' }}
-      ADMIN_PHONE: ${{ secrets.ADMIN_PHONE || '+919999999999' }}
+      ADMIN_PHONE: ${{ secrets.ADMIN_PHONE || '+919042862878' }}
       TESTER_EMAIL: ${{ secrets.TESTER_EMAIL || 'tester@safego.ph' }}
       TESTER_PASSWORD: ${{ secrets.TESTER_PASSWORD || 'Tester@SafeGo2025' }}
-      TESTER_PHONE: ${{ secrets.TESTER_PHONE || '+919999999999' }}
+      TESTER_PHONE: ${{ secrets.TESTER_PHONE || '+919490969706' }}
       TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID || 'AC00000000000000000000000000000000' }}
       TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN || '00000000000000000000000000000000' }}
       TWILIO_PHONE_NUMBER: ${{ secrets.TWILIO_PHONE_NUMBER || '+15005550006' }}
