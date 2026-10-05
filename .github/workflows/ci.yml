@@ -75,7 +75,7 @@ jobs:
       ADMIN_PHONE: ${{ secrets.ADMIN_PHONE || '+919999999999' }}
       TESTER_EMAIL: ${{ secrets.TESTER_EMAIL || 'tester@safego.ph' }}
       TESTER_PASSWORD: ${{ secrets.TESTER_PASSWORD || 'mock-tester-password-safego' }}
-      TESTER_PHONE: ${{ secrets.TESTER_PHONE || '+919999999999' }}
+      TESTER_PHONE: ${{ secrets.TESTER_PHONE || '+919999999998' }}
       TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID || 'AC00000000000000000000000000000000' }}
       TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN || '00000000000000000000000000000000' }}
       TWILIO_PHONE_NUMBER: ${{ secrets.TWILIO_PHONE_NUMBER || '+15005550006' }}
