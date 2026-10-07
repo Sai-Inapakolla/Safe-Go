@@ -296,6 +296,26 @@ async def approve_driver(driver_id: str, payload: DriverApproval, admin: User = 
         return await _driver_dict(driver)
 
 
+
+@router.put("/drivers/bulk-online-status")
+async def bulk_toggle_drivers_online(payload: DriverOnlineStatus, admin: User = Depends(get_current_admin)):
+    """
+    Master Fleet Switch: Toggle online availability for all approved drivers at once.
+    """
+    updated_at = datetime.now(timezone.utc)
+    # Bulk update all approved drivers in the fleet
+    await Driver.find({"$or": [{"status": DriverStatus.approved}, {"status": "approved"}]}).update(
+        {"$set": {"is_online": payload.is_online, "updated_at": updated_at}}
+    )
+    all_approved = await Driver.find({"$or": [{"status": DriverStatus.approved}, {"status": "approved"}]}).to_list()
+    return {
+        "success": True,
+        "is_online": payload.is_online,
+        "affected_count": len(all_approved),
+        "drivers": [await _driver_dict(d) for d in all_approved]
+    }
+
+
 @router.put("/drivers/{driver_id}/online-status", response_model=DriverResponse)
 async def toggle_driver_online(driver_id: str, payload: DriverOnlineStatus, admin: User = Depends(get_current_admin)):
     if not PydanticObjectId.is_valid(driver_id):

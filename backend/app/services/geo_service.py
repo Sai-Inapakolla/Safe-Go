@@ -59,19 +59,46 @@ class IndianGeoService:
             return []
 
         q = query.strip().lower()
+        primary_token = q.split(",")[0].strip()
         results = []
+        seen = set()
 
-        # 1. Exact prefix matches
-        for loc in self.locations:
-            if loc["name"].lower().startswith(q):
+        def add_loc(loc):
+            key = (loc["name"], loc["state"])
+            if key not in seen:
+                seen.add(key)
                 results.append(loc)
+
+        # 1. Exact display_name match or exact name match
+        for loc in self.locations:
+            name_lower = loc["name"].lower()
+            disp_lower = loc.get("display_name", "").lower()
+            if disp_lower == q or name_lower == primary_token or name_lower == q:
+                add_loc(loc)
                 if len(results) >= limit:
                     return results
 
-        # 2. Substring matches
+        # 2. Name starts with primary token or q starts with name
         for loc in self.locations:
-            if loc not in results and (q in loc["name"].lower() or q in loc["state"].lower()):
-                results.append(loc)
+            name_lower = loc["name"].lower()
+            if name_lower.startswith(primary_token) or (len(name_lower) >= 3 and primary_token.startswith(name_lower)):
+                add_loc(loc)
+                if len(results) >= limit:
+                    return results
+
+        # 3. Substring match in name or display_name
+        for loc in self.locations:
+            name_lower = loc["name"].lower()
+            disp_lower = loc.get("display_name", "").lower()
+            if primary_token in name_lower or name_lower in q or q in disp_lower:
+                add_loc(loc)
+                if len(results) >= limit:
+                    return results
+
+        # 4. State match fallback if still have room
+        for loc in self.locations:
+            if primary_token in loc["state"].lower():
+                add_loc(loc)
                 if len(results) >= limit:
                     return results
 

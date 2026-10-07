@@ -16,6 +16,7 @@ import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { getApiUrl } from "@/lib/api";
 import { FinePaymentModal } from "@/components/FinePaymentModal";
+import { searchClientLocations, findClientCoords } from "@/lib/geoData";
 
 const API_URL = getApiUrl();
 
@@ -753,7 +754,18 @@ const MapPanel = ({
       : null;
 
     const activeTarget = validPickup || validCenter;
-    if (activeTarget) {
+
+    if (validPickup && validDest) {
+      try {
+        const bounds = L.latLngBounds([
+          [validPickup.lat, validPickup.lng],
+          [validDest.lat, validDest.lng]
+        ]);
+        mapInstanceRef.current.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
+      } catch (e) {
+        console.warn("Fit bounds failed:", e);
+      }
+    } else if (activeTarget) {
       // Only move/center map camera if the target position actually changed significantly
       const hasTargetChanged =
         !prevTargetRef.current ||
@@ -775,6 +787,9 @@ const MapPanel = ({
           console.warn("Camera pan failed:", e);
         }
       }
+    }
+
+    if (activeTarget) {
       const fallbackCabs = generateNearbyCabs(activeTarget.lat, activeTarget.lng, mode, activeDrivers);
       let combinedCabs = fallbackCabs;
       if (availableSplitRides && availableSplitRides.length > 0) {
@@ -2619,6 +2634,16 @@ const BookingPage = () => {
     setShowPickupDropdown(true);
     setIsSearchingPickup(true);
 
+    const clientPickupMatches = searchClientLocations(val, 8);
+    if (clientPickupMatches.length > 0) {
+      setPickupSuggestions(clientPickupMatches.map(loc => ({
+        display_name: loc.display_name,
+        lat: loc.lat.toString(),
+        lon: loc.lng.toString()
+      })));
+      setIsSearchingPickup(false);
+    }
+
     if (pickupTimeoutRef.current) clearTimeout(pickupTimeoutRef.current);
     setRouteFound(false);
     pickupTimeoutRef.current = setTimeout(async () => {
@@ -2694,6 +2719,16 @@ const BookingPage = () => {
 
     setShowDestDropdown(true);
     setIsSearchingDest(true);
+
+    const clientDestMatches = searchClientLocations(val, 8);
+    if (clientDestMatches.length > 0) {
+      setDestSuggestions(clientDestMatches.map(loc => ({
+        display_name: loc.display_name,
+        lat: loc.lat.toString(),
+        lon: loc.lng.toString()
+      })));
+      setIsSearchingDest(false);
+    }
 
     if (destTimeoutRef.current) clearTimeout(destTimeoutRef.current);
     setRouteFound(false);
@@ -2787,7 +2822,22 @@ const BookingPage = () => {
   };
 
   const handleRouteExtracted = (km: number) => {
-    setRideDetails(prev => ({ ...prev, distance: `${km.toFixed(1)} km`, distanceNum: km }));
+    setRideDetails(prev => {
+      const isClose = Math.abs(prev.distanceNum - km) < 1.0;
+      if (isClose && prev.fare > 0 && prev.etaNum > 0) {
+        return { ...prev, distance: `${km.toFixed(1)} km`, distanceNum: km };
+      }
+      const basePerKm = mode.id === "pink" ? 12 : mode.id === "pwd" ? 13 : mode.id === "elderly" ? 10.5 : 10;
+      const recomputedFare = Math.max(30, Math.round(30 + km * basePerKm));
+      const recomputedEta = Math.max(2, Math.round((km / 28) * 60));
+      return {
+        ...prev,
+        distance: `${km.toFixed(1)} km`,
+        distanceNum: km,
+        fare: recomputedFare,
+        etaNum: recomputedEta
+      };
+    });
   };
 
   const handleSelectMapDestination = (coords: { lat: number, lng: number }, address: string) => {
@@ -2844,10 +2894,17 @@ const BookingPage = () => {
 
     try {
       const LOCAL_GEOCODE_MAP: Record<string, { lat: number, lng: number }> = {
+        "vaghodia": { lat: 22.3023, lng: 73.3762 },
         "waghodia": { lat: 22.3023, lng: 73.3762 },
-        "chowkdi": { lat: 22.3120, lng: 73.2250 },
+        "vadodara": { lat: 22.2994, lng: 73.2081 },
+        "baroda": { lat: 22.2994, lng: 73.2081 },
         "alkapuri": { lat: 22.3129, lng: 73.1706 },
         "sayajigunj": { lat: 22.3106, lng: 73.1878 },
+        "chowkdi": { lat: 22.3120, lng: 73.2250 },
+        "gotri": { lat: 22.3168, lng: 73.1491 },
+        "manjalpur": { lat: 22.2684, lng: 73.1956 },
+        "fatehgunj": { lat: 22.3255, lng: 73.1884 },
+        "karelibaug": { lat: 22.3217, lng: 73.2033 },
         "namakkal": { lat: 11.2189, lng: 78.1672 },
         "hsr": { lat: 12.9141, lng: 77.6411 },
         "indiranagar": { lat: 12.9719, lng: 77.6412 },
@@ -2864,17 +2921,22 @@ const BookingPage = () => {
 
       const resolveLocalCoords = async (query: string): Promise<{ lat: number, lng: number } | null> => {
         if (!query) return null;
-        const q = query.toLowerCase();
+        // Check offline client dataset first (0ms, 4,231 Indian cities & Vadodara landmarks)
+        const clientFound = findClientCoords(query);
+        if (clientFound) return clientFound;
+
+        const q = query.toLowerCase().trim();
+        const primary = q.split(",")[0].trim();
         for (const [key, coords] of Object.entries(LOCAL_GEOCODE_MAP)) {
-          if (q.includes(key)) return coords;
+          if (q.includes(key) || primary.includes(key) || key.includes(primary)) return coords;
         }
 
         try {
-          const res = await fetch(`${API_URL}/api/map/locations?q=${encodeURIComponent(query)}`);
+          const res = await fetch(`${API_URL}/api/map/locations?q=${encodeURIComponent(primary || query)}`);
           if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data) && data.length > 0) {
-              return { lat: data[0].lat, lng: data[0].lng };
+              return { lat: Number(data[0].lat), lng: Number(data[0].lng) };
             }
           }
         } catch (e) { }
@@ -2887,14 +2949,15 @@ const BookingPage = () => {
         if (pickup.toLowerCase().includes("current location") || pickup.toLowerCase().includes("my location") || pickup.trim() === "") {
           finalPickupCoords = mapCenter || { lat: 22.3023, lng: 73.3762 };
         } else {
-          finalPickupCoords = await resolveLocalCoords(pickup);
+          finalPickupCoords = findClientCoords(pickup) || await resolveLocalCoords(pickup);
         }
 
         if (!finalPickupCoords) {
           try {
+            const cleanPickup = pickup.toLowerCase().includes("india") ? pickup : `${pickup}, India`;
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2500);
-            const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(pickup + ", India")}&limit=1&lang=en`, { signal: controller.signal });
+            const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(cleanPickup)}&limit=1&lang=en`, { signal: controller.signal });
             clearTimeout(timeoutId);
             if (res.ok) {
               const data = await res.json();
@@ -2930,18 +2993,21 @@ const BookingPage = () => {
         }
 
         if (!finalPickupCoords) {
-          finalPickupCoords = { lat: 22.3023, lng: 73.3762 }; // Waghodia default fallback
+          finalPickupCoords = { lat: 22.3000, lng: 73.3833 }; // Waghodia INA default fallback
         }
       }
 
-      // Resolve Destination Coordinates
-      finalDestCoords = await resolveLocalCoords(destination);
+      // Resolve Destination Coordinates (preserve user-selected coords if already available)
+      if (!finalDestCoords) {
+        finalDestCoords = findClientCoords(destination) || await resolveLocalCoords(destination);
+      }
 
       if (!finalDestCoords) {
         try {
+          const cleanDest = destination.toLowerCase().includes("india") ? destination : `${destination}, India`;
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 2500);
-          const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(destination + ", India")}&limit=1&lang=en`, { signal: controller.signal });
+          const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(cleanDest)}&limit=1&lang=en`, { signal: controller.signal });
           clearTimeout(timeoutId);
           if (res.ok) {
             const data = await res.json();
@@ -2977,11 +3043,19 @@ const BookingPage = () => {
       }
 
       if (!finalDestCoords) {
-        // Fallback relative to pickup point in local city area (5km local trip)
-        finalDestCoords = {
-          lat: (finalPickupCoords?.lat || 22.3023) + 0.025,
-          lng: (finalPickupCoords?.lng || 73.3762) + 0.025
-        };
+        // Safe city center resolution — never dump destination into random farmland
+        const destLower = destination.toLowerCase();
+        if (destLower.includes("vadodara") || destLower.includes("baroda")) {
+          finalDestCoords = { lat: 22.3072, lng: 73.1812 };
+        } else if (destLower.includes("ahmedabad")) {
+          finalDestCoords = { lat: 23.0225, lng: 72.5714 };
+        } else if (destLower.includes("surat")) {
+          finalDestCoords = { lat: 21.1702, lng: 72.8311 };
+        } else if (destLower.includes("mumbai")) {
+          finalDestCoords = { lat: 19.0760, lng: 72.8777 };
+        } else {
+          finalDestCoords = { lat: 22.3072, lng: 73.1812 };
+        }
       }
 
       if (finalPickupCoords) setPickupCoords(finalPickupCoords);
@@ -3123,7 +3197,7 @@ const BookingPage = () => {
         is_split_allowed: isSplit,
         eta: matchingCab.eta,
         rating: matchingCab.rating,
-        driver_id: matchingCab.driver_id
+        driver_id: null // Broadcast to fleet so all available online drivers receive it
       };
     }
     setSelectedDriver(defaultDriverObj);
@@ -3512,6 +3586,16 @@ const BookingPage = () => {
                           onChange={handlePickupChange}
                           onFocus={() => setShowPickupDropdown(true)}
                           onBlur={() => setTimeout(() => setShowPickupDropdown(false), 200)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              if (!pickupCoords && pickupSuggestions.length > 0) {
+                                selectPickup(pickupSuggestions[0]);
+                              } else {
+                                handleFindRoute();
+                              }
+                              setShowPickupDropdown(false);
+                            }
+                          }}
                           className="w-full rounded-xl border border-border dark:border-white/10 bg-secondary/60 dark:bg-white/5 px-4 py-3 text-sm outline-none focus:border-primary transition-colors pr-10 dark:text-white dark:placeholder:text-white/30"
                           placeholder={t('booking.pickup_location', 'Pickup location')}
                         />
@@ -3564,7 +3648,11 @@ const BookingPage = () => {
                           onBlur={() => setTimeout(() => setShowDestDropdown(false), 200)}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
-                              handleFindRoute();
+                              if (!destinationCoords && destSuggestions.length > 0) {
+                                selectDest(destSuggestions[0]);
+                              } else {
+                                handleFindRoute();
+                              }
                               setShowDestDropdown(false);
                             }
                           }}
