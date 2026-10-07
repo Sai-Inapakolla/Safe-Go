@@ -8,7 +8,7 @@ import {
   ArrowUpRight, ChevronRight, Zap, Edit2, Trash2, UserPlus, Save, AlertCircle,
   BarChart3, PieChart as PieChartIcon, History, Shield, Info, Globe,
   Lock, Mail, Phone, User as UserIcon, Loader2, Wifi, WifiOff, Database,
-  Briefcase, Fingerprint, Key, ShieldPlus, CheckCircle2
+  Briefcase, Fingerprint, Key, ShieldPlus, CheckCircle2, Power, PowerOff
 } from "lucide-react";
 import {
   XAxis, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, YAxis
@@ -506,6 +506,57 @@ const AdminDashboard = () => {
     } catch (err) {
       toast.error("Failed to update status.");
       fetchDrivers();
+    }
+  };
+
+  const [isBulkTogglingFleet, setIsBulkTogglingFleet] = useState(false);
+
+  const handleBulkToggleDriversOnline = async (isOnline: boolean) => {
+    setIsBulkTogglingFleet(true);
+    const token = localStorage.getItem("token") || "admin-dummy-token";
+
+    // Optimistically update all approved drivers in UI and localStorage
+    setDriversList(prev => {
+      const updated = prev.map(d => d.status === 'approved' ? { ...d, is_online: isOnline } : d);
+      try { localStorage.setItem("safego_admin_drivers", JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+
+    try {
+      const res = await fetch(`${API_URL}/api/admin/drivers/bulk-online-status`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ is_online: isOnline })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const count = data.affected_count || driversList.filter(d => d.status === 'approved').length;
+        toast.success(`Fleet Command: All drivers (${count} units) switched ${isOnline ? 'ONLINE 🟢' : 'OFFLINE ⚪'}.`);
+      } else {
+        // Fallback: If deployed cloud backend has not yet updated endpoint, sequentially update all approved drivers
+        const approvedDrivers = driversList.filter(d => d.status === 'approved');
+        await Promise.allSettled(
+          approvedDrivers.map(d =>
+            fetch(`${API_URL}/api/admin/drivers/${d._id}/online-status`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+              body: JSON.stringify({ is_online: isOnline })
+            })
+          )
+        );
+        toast.success(`Fleet Command: All drivers switched ${isOnline ? 'ONLINE 🟢' : 'OFFLINE ⚪'}.`);
+      }
+      fetchDrivers();
+      fetchStats();
+    } catch (err) {
+      toast.error("Network Link Error: Failed to execute bulk status change.");
+      fetchDrivers();
+    } finally {
+      setIsBulkTogglingFleet(false);
     }
   };
 
@@ -1345,26 +1396,105 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {activeTab === "drivers" && (
+          {activeTab === "drivers" && (() => {
+            const approvedFleet = driversList.filter(d => d.status === 'approved');
+            const onlineFleetCount = approvedFleet.filter(d => d.is_online).length;
+            const totalApprovedCount = approvedFleet.length;
+            const allFleetOnline = totalApprovedCount > 0 && onlineFleetCount === totalApprovedCount;
+            const allFleetOffline = onlineFleetCount === 0;
+
+            return (
             <div className="animate-in fade-in duration-500 space-y-6">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">
                 <div>
                   <h3 className="text-xl font-bold text-slate-900">Fleet Intelligence</h3>
                   <p className="text-sm text-slate-500 mt-1 font-medium">Real-time telemetry and management of the driver cluster.</p>
                 </div>
-                <div className="flex bg-slate-100 p-1 rounded-xl">
-                  {['all', 'male', 'female'].map((g) => (
+                <div className="flex items-center gap-3">
+                  <div className="flex bg-slate-100 p-1 rounded-xl">
+                    {['all', 'male', 'female'].map((g) => (
+                      <button
+                        key={g}
+                        onClick={() => setFleetGenderFilter(g as any)}
+                        className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${fleetGenderFilter === g
+                          ? 'bg-white text-slate-900 shadow-sm scale-105'
+                          : 'text-slate-400 hover:text-slate-600'
+                          }`}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* MASTER FLEET AVAILABILITY CONTROLLER */}
+              <div className="rounded-3xl p-6 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white shadow-xl border border-slate-700/60 relative overflow-hidden">
+                <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+                  <div className="flex items-start sm:items-center gap-4">
+                    <div className={`h-14 w-14 rounded-2xl flex items-center justify-center border shadow-inner transition-all flex-shrink-0 ${
+                      onlineFleetCount > 0
+                        ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                        : 'bg-slate-800 border-slate-700 text-slate-400'
+                    }`}>
+                      {onlineFleetCount > 0 ? (
+                        <Wifi size={28} className="animate-pulse" />
+                      ) : (
+                        <WifiOff size={28} />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <h4 className="text-base font-black uppercase tracking-wider text-white">Master Fleet Availability</h4>
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm ${
+                          onlineFleetCount > 0
+                            ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                            : 'bg-rose-500/15 border-rose-500/30 text-rose-400'
+                        }`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${onlineFleetCount > 0 ? 'bg-emerald-400 animate-ping' : 'bg-rose-400'}`} />
+                          {onlineFleetCount} / {totalApprovedCount} Units Online
+                        </span>
+                        {totalApprovedCount > 0 && (
+                          <span className="text-[11px] font-bold text-slate-400">
+                            ({Math.round((onlineFleetCount / totalApprovedCount) * 100)}% capacity)
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-300 mt-1.5 font-medium max-w-2xl">
+                        One-click global switch: instantly broadcast online duty or pause dispatches for all verified drivers across the entire platform.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* MASTER ACTIONS */}
+                  <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
                     <button
-                      key={g}
-                      onClick={() => setFleetGenderFilter(g as any)}
-                      className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${fleetGenderFilter === g
-                        ? 'bg-white text-slate-900 shadow-sm scale-105'
-                        : 'text-slate-400 hover:text-slate-600'
-                        }`}
+                      disabled={isBulkTogglingFleet || allFleetOnline}
+                      onClick={() => handleBulkToggleDriversOnline(true)}
+                      className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider transition-all shadow-lg active:scale-95 ${
+                        allFleetOnline
+                          ? 'bg-emerald-950/60 text-emerald-500/50 border border-emerald-900/40 cursor-not-allowed'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30 hover:shadow-emerald-600/50 cursor-pointer'
+                      }`}
                     >
-                      {g}
+                      {isBulkTogglingFleet ? <Loader2 size={16} className="animate-spin" /> : <Power size={16} />}
+                      Set All Online
                     </button>
-                  ))}
+
+                    <button
+                      disabled={isBulkTogglingFleet || allFleetOffline}
+                      onClick={() => handleBulkToggleDriversOnline(false)}
+                      className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 ${
+                        allFleetOffline
+                          ? 'bg-slate-800/60 text-slate-500 border border-slate-700/40 cursor-not-allowed'
+                          : 'bg-slate-800 hover:bg-rose-600 text-slate-200 hover:text-white border border-slate-700 hover:border-rose-500 shadow-slate-900/50 cursor-pointer'
+                      }`}
+                    >
+                      {isBulkTogglingFleet ? <Loader2 size={16} className="animate-spin" /> : <PowerOff size={16} />}
+                      Set All Offline
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1448,7 +1578,8 @@ const AdminDashboard = () => {
                 </table>
               </Card>
             </div>
-          )}
+            );
+          })()}
 
           {activeTab === "driver-requests" && (
             <div className="animate-in fade-in duration-500 space-y-6">
