@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { SafeGoLogo } from "@/components/SafeGoLogo";
 import { 
   AlertCircle, Loader2, Eye, EyeOff, ShieldCheck, ArrowRight, 
-  Heart, Accessibility, Users, Car, Sparkles, Check
+  Heart, Accessibility, Users, Car, Sparkles, Check, ChevronDown
 } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { 
@@ -47,104 +47,65 @@ const AuthPage = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Rider Profile & Modes: Gender, Age, Has Disability
+  // Rider Profile & Modes: Gender & Preference
   const [gender, setGender] = useState<string>(() => {
-    return localStorage.getItem("safego_user_gender") || "female"; // Default female -> Pink Mode
-  });
-  const [age, setAge] = useState<number | string>(() => {
-    const stored = localStorage.getItem("safego_user_age");
-    return stored ? parseInt(stored, 10) || 24 : 24;
-  });
-  const [hasDisability, setHasDisability] = useState<boolean>(() => {
-    return localStorage.getItem("safego_has_disability") === "true";
+    return localStorage.getItem("safego_user_gender") || "female";
   });
   const [selectedMode, setSelectedMode] = useState<AppRideMode>(() => {
     const stored = localStorage.getItem("safego_preferred_mode") as AppRideMode;
-    if (stored && ["pink", "elderly", "pwd", "normal"].includes(stored)) return stored;
-    return "pink"; // By default user has Pink mode
+    const storedGender = localStorage.getItem("safego_user_gender") || "female";
+    if (stored && ["pink", "elderly", "pwd", "normal"].includes(stored)) {
+      if (stored === "pink" && storedGender !== "female") return "normal";
+      return stored;
+    }
+    return storedGender === "female" ? "pink" : "normal";
   });
 
-  const activeHeroMode: AppRideMode = isLogin
-    ? ((localStorage.getItem("safego_preferred_mode") as AppRideMode) || "normal")
-    : selectedMode;
+  const activeHeroMode: AppRideMode = selectedMode;
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Sync mode based on gender, age, hasDisability
+  // When gender changes, only female riders can have Pink Mode enabled
   const handleGenderChange = (newGender: string) => {
     setGender(newGender);
-    if (!hasDisability && Number(age) < 60) {
-      if (newGender === "female") {
-        setSelectedMode("pink");
-        setPinkMode(true);
-      } else if (selectedMode === "pink") {
-        setSelectedMode("normal");
-      }
-    }
-  };
-
-  const handleAgeChange = (val: string | number) => {
-    if (val === "" || val === null || val === undefined) {
-      setAge("");
-      return;
-    }
-    const num = typeof val === "number" ? val : parseInt(val, 10);
-    if (isNaN(num)) {
-      setAge("");
-      return;
-    }
-    setAge(num);
-    if (!hasDisability) {
-      if (num >= 60) {
-        setSelectedMode("elderly");
-        setElderMode(true);
-      } else if (selectedMode === "elderly") {
-        if (gender === "female") {
-          setSelectedMode("pink");
-          setPinkMode(true);
-        } else {
-          setSelectedMode("normal");
-        }
-      }
-    }
-  };
-
-  const handleToggleDisability = () => {
-    const nextVal = !hasDisability;
-    setHasDisability(nextVal);
-    if (nextVal) {
-      setSelectedMode("pwd");
-      setDisabilityMode(true);
-    } else {
-      if (Number(age) >= 60) {
-        setSelectedMode("elderly");
-        setElderMode(true);
-      } else if (gender === "female") {
-        setSelectedMode("pink");
-        setPinkMode(true);
-      } else {
-        setSelectedMode("normal");
-      }
-    }
-  };
-
-  const handleSelectModeOverride = (modeKey: AppRideMode) => {
-    setSelectedMode(modeKey);
-    if (modeKey === "pink") {
-      setGender("female");
-      setHasDisability(false);
+    if (newGender === "female") {
+      // Female riders default to Pink Mode
+      setSelectedMode("pink");
       setPinkMode(true);
-    } else if (modeKey === "elderly") {
-      setHasDisability(false);
-      if (Number(age) < 60) setAge(65);
+      setElderMode(false);
+      setDisabilityMode(false);
+    } else {
+      // Non-female riders cannot have Pink Mode active
+      if (selectedMode === "pink") {
+        setSelectedMode("normal");
+        setPinkMode(false);
+      }
+    }
+  };
+
+  const handlePreferenceChange = (newMode: AppRideMode) => {
+    if (newMode === "pink" && gender !== "female") {
+      toast.error("Pink Mode is exclusively enabled for women riders.");
+      return;
+    }
+    setSelectedMode(newMode);
+    if (newMode === "pink") {
+      setPinkMode(true);
+      setElderMode(false);
+      setDisabilityMode(false);
+    } else if (newMode === "elderly") {
       setElderMode(true);
-    } else if (modeKey === "pwd") {
-      setHasDisability(true);
+      setPinkMode(false);
+      setDisabilityMode(false);
+    } else if (newMode === "pwd") {
       setDisabilityMode(true);
-    } else if (modeKey === "normal") {
-      setHasDisability(false);
-      if (gender === "female") setGender("male");
-      if (Number(age) >= 60) setAge(28);
+      setPinkMode(false);
+      setElderMode(false);
+    } else {
+      setPinkMode(false);
+      setElderMode(false);
+      setDisabilityMode(false);
     }
   };
 
@@ -243,14 +204,13 @@ const AuthPage = () => {
 
       // Sync with backend if reachable
       try {
-        const syncPayload: any = { role };
-        if (!isLogin) {
-          syncPayload.gender = gender;
-          syncPayload.age = Number(age) || undefined;
-          syncPayload.has_disability = hasDisability;
-          syncPayload.is_elder = selectedMode === "elderly" || Number(age) >= 60;
-          syncPayload.preferred_mode = selectedMode;
-        }
+        const syncPayload: any = { 
+          role,
+          gender: role === "passenger" ? gender : undefined,
+          has_disability: role === "passenger" ? selectedMode === "pwd" : false,
+          is_elder: role === "passenger" ? selectedMode === "elderly" : false,
+          preferred_mode: role === "passenger" ? selectedMode : undefined,
+        };
 
         const res = await fetch(`${API_URL}/api/auth/firebase`, {
           method: "POST",
@@ -281,58 +241,16 @@ const AuthPage = () => {
       localStorage.setItem("safego_user_email", result.user.email || "");
       if (result.user.displayName) localStorage.setItem("safego_user_name", result.user.displayName);
       
-      if (!isLogin) {
-        // Save rider preferences on sign up
+      if (finalRole === "passenger") {
         localStorage.setItem("safego_user_gender", gender);
-        localStorage.setItem("safego_user_age", String(age));
-        localStorage.setItem("safego_has_disability", hasDisability ? "true" : "false");
         localStorage.setItem("safego_preferred_mode", selectedMode);
+        localStorage.setItem("safego_has_disability", selectedMode === "pwd" ? "true" : "false");
         setRiderPreferences({
           gender,
-          age: Number(age) || undefined,
-          hasDisability,
+          hasDisability: selectedMode === "pwd",
           mode: selectedMode,
         });
-
-        if (finalRole === "passenger") {
-          notifyModeWelcome(selectedMode);
-        }
-      } else {
-        // On Login, load and apply returning user's saved preferences
-        try {
-          const token = localStorage.getItem("token");
-          const meRes = await fetch(`${API_URL}/api/auth/me`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          if (meRes.ok) {
-            const meData = await meRes.json();
-            const restoredGender = meData.gender || localStorage.getItem("safego_user_gender") || "female";
-            const restoredAge = meData.age != null ? meData.age : (Number(localStorage.getItem("safego_user_age")) || 24);
-            const restoredDisability = meData.has_disability ?? (localStorage.getItem("safego_has_disability") === "true");
-            const restoredMode = meData.preferred_mode || localStorage.getItem("safego_preferred_mode") || "normal";
-
-            localStorage.setItem("safego_user_gender", restoredGender);
-            localStorage.setItem("safego_user_age", String(restoredAge));
-            localStorage.setItem("safego_has_disability", restoredDisability ? "true" : "false");
-            localStorage.setItem("safego_preferred_mode", restoredMode);
-
-            setRiderPreferences({
-              gender: restoredGender,
-              age: restoredAge,
-              hasDisability: restoredDisability,
-              mode: restoredMode as any,
-            });
-
-            if (finalRole === "passenger" && restoredMode !== "normal") {
-              notifyModeWelcome(restoredMode as any);
-            }
-          }
-        } catch {
-          const storedPref = localStorage.getItem("safego_preferred_mode") as AppRideMode;
-          if (storedPref && storedPref !== "normal") {
-            notifyModeWelcome(storedPref);
-          }
-        }
+        notifyModeWelcome(selectedMode);
       }
 
       const destination = from || (finalRole === "admin" ? "/admin" : finalRole === "driver" ? "/driver" : "/home");
@@ -433,16 +351,14 @@ const AuthPage = () => {
     try {
       let idToken = "";
       
-      if (!isLogin) {
-        // Save rider preferences immediately to localStorage & Context for new registration
+      if (role === "passenger") {
+        // Save selected rider preferences immediately to localStorage & Context
         localStorage.setItem("safego_user_gender", gender);
-        localStorage.setItem("safego_user_age", String(age));
-        localStorage.setItem("safego_has_disability", hasDisability ? "true" : "false");
         localStorage.setItem("safego_preferred_mode", selectedMode);
+        localStorage.setItem("safego_has_disability", selectedMode === "pwd" ? "true" : "false");
         setRiderPreferences({
           gender,
-          age: Number(age) || undefined,
-          hasDisability,
+          hasDisability: selectedMode === "pwd",
           mode: selectedMode,
         });
       }
@@ -465,7 +381,7 @@ const AuthPage = () => {
             localStorage.setItem("userRole", finalRole);
             localStorage.setItem("safego_user_email", cleanEmail);
             
-            // Restore returning user's saved preferences from backend
+            // Sync user profile & update preferences in backend
             try {
               const meRes = await fetch(`${API_URL}/api/auth/me`, {
                 headers: { Authorization: `Bearer ${data.access_token}` }
@@ -475,32 +391,28 @@ const AuthPage = () => {
                 if (meData.full_name) localStorage.setItem("safego_user_name", meData.full_name);
                 if (meData.phone) localStorage.setItem("safego_user_phone", meData.phone);
                 if (meData.email) localStorage.setItem("safego_user_email", meData.email);
+              }
 
-                const restoredGender = meData.gender || localStorage.getItem("safego_user_gender") || "female";
-                const restoredAge = meData.age != null ? meData.age : (Number(localStorage.getItem("safego_user_age")) || 24);
-                const restoredDisability = meData.has_disability ?? (localStorage.getItem("safego_has_disability") === "true");
-                const restoredMode = meData.preferred_mode || localStorage.getItem("safego_preferred_mode") || "normal";
-
-                localStorage.setItem("safego_user_gender", restoredGender);
-                localStorage.setItem("safego_user_age", String(restoredAge));
-                localStorage.setItem("safego_has_disability", restoredDisability ? "true" : "false");
-                localStorage.setItem("safego_preferred_mode", restoredMode);
-
-                setRiderPreferences({
-                  gender: restoredGender,
-                  age: restoredAge,
-                  hasDisability: restoredDisability,
-                  mode: restoredMode as any,
+              if (finalRole === "passenger") {
+                await fetch(`${API_URL}/api/auth/me`, {
+                  method: "PUT",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${data.access_token}`
+                  },
+                  body: JSON.stringify({
+                    gender,
+                    preferred_mode: selectedMode,
+                    is_elder: selectedMode === "elderly",
+                    has_disability: selectedMode === "pwd",
+                  })
                 });
               }
             } catch {}
 
             setLoading(false);
             if (finalRole === "passenger") {
-              const activeSavedMode = (localStorage.getItem("safego_preferred_mode") as AppRideMode) || "normal";
-              if (activeSavedMode !== "normal") {
-                notifyModeWelcome(activeSavedMode);
-              }
+              notifyModeWelcome(selectedMode);
             }
             if (finalRole === "admin") navigate("/admin");
             else if (finalRole === "driver") navigate("/driver");
@@ -528,10 +440,7 @@ const AuthPage = () => {
           localStorage.removeItem("safego_declined_rides");
           setLoading(false);
           if (matchedRole === "passenger") {
-            const activeSavedMode = (localStorage.getItem("safego_preferred_mode") as AppRideMode) || "normal";
-            if (activeSavedMode !== "normal") {
-              notifyModeWelcome(activeSavedMode);
-            }
+            notifyModeWelcome(selectedMode);
           }
           if (matchedRole === "admin") navigate("/admin");
           else navigate(from || "/home");
@@ -562,14 +471,11 @@ const AuthPage = () => {
           role,
           full_name: fullName,
           phone: phone,
+          gender: role === "passenger" ? gender : undefined,
+          has_disability: role === "passenger" ? selectedMode === "pwd" : false,
+          is_elder: role === "passenger" ? selectedMode === "elderly" : false,
+          preferred_mode: role === "passenger" ? selectedMode : undefined,
         };
-        if (!isLogin) {
-          syncPayload.gender = gender;
-          syncPayload.age = Number(age) || undefined;
-          syncPayload.has_disability = hasDisability;
-          syncPayload.is_elder = selectedMode === "elderly" || Number(age) >= 60;
-          syncPayload.preferred_mode = selectedMode;
-        }
 
         const res = await fetch(`${API_URL}/api/auth/firebase`, {
           method: "POST",
@@ -598,39 +504,8 @@ const AuthPage = () => {
       if (fullName) localStorage.setItem("safego_user_name", fullName);
       if (phone) localStorage.setItem("safego_user_phone", phone);
 
-      if (!isLogin) {
-        if (finalRole === "passenger") {
-          notifyModeWelcome(selectedMode);
-        }
-      } else {
-        try {
-          const meRes = await fetch(`${API_URL}/api/auth/me`, {
-            headers: { Authorization: `Bearer ${finalToken}` }
-          });
-          if (meRes.ok) {
-            const meData = await meRes.json();
-            const restoredGender = meData.gender || localStorage.getItem("safego_user_gender") || "female";
-            const restoredAge = meData.age != null ? meData.age : (Number(localStorage.getItem("safego_user_age")) || 24);
-            const restoredDisability = meData.has_disability ?? (localStorage.getItem("safego_has_disability") === "true");
-            const restoredMode = meData.preferred_mode || localStorage.getItem("safego_preferred_mode") || "normal";
-
-            localStorage.setItem("safego_user_gender", restoredGender);
-            localStorage.setItem("safego_user_age", String(restoredAge));
-            localStorage.setItem("safego_has_disability", restoredDisability ? "true" : "false");
-            localStorage.setItem("safego_preferred_mode", restoredMode);
-
-            setRiderPreferences({
-              gender: restoredGender,
-              age: restoredAge,
-              hasDisability: restoredDisability,
-              mode: restoredMode as any,
-            });
-
-            if (finalRole === "passenger" && restoredMode !== "normal") {
-              notifyModeWelcome(restoredMode as any);
-            }
-          }
-        } catch {}
+      if (finalRole === "passenger") {
+        notifyModeWelcome(selectedMode);
       }
 
       if (finalRole === "admin") {
@@ -913,243 +788,95 @@ const AuthPage = () => {
                 </div>
               )}
 
-              {/* Rider Identity & Accessibility Card (Gender, Age, Has Disability button & Live Mode Preview) - Only for Sign Up */}
-              {!isLogin && role === "passenger" && (
-                <div className="mb-5 p-4 sm:p-5 rounded-2xl border border-border/80 bg-background/60 backdrop-blur-sm space-y-3.5 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Sparkles size={15} className="text-primary" />
-                      <span className="text-xs font-black uppercase tracking-wider text-foreground">
-                        Rider Mode & Accessibility Setup
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                      Smart Theme
-                    </span>
-                  </div>
-
-                  {/* Gender Selector */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between ml-1">
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                        Gender
-                      </label>
-                      {gender === "female" && (
-                        <span className="text-[10px] font-bold text-pink-600 dark:text-pink-400 flex items-center gap-1">
-                          <Heart size={11} className="fill-pink-500" /> Defaults to Pink Mode
-                        </span>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <button
-                        type="button"
-                        id="gender-female-btn"
-                        onClick={() => handleGenderChange("female")}
-                        className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border select-none ${
-                          gender === "female"
-                            ? "bg-pink-500 text-white border-pink-500 shadow-md shadow-pink-500/25 ring-2 ring-pink-400/40"
-                            : "bg-background/80 hover:bg-muted border-border/70 text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        <Heart size={13} className={gender === "female" ? "fill-white" : "text-pink-500"} />
-                        <span>Female</span>
-                      </button>
-                      <button
-                        type="button"
-                        id="gender-male-btn"
-                        onClick={() => handleGenderChange("male")}
-                        className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border select-none ${
-                          gender === "male"
-                            ? "bg-primary text-primary-foreground border-primary shadow-sm ring-2 ring-primary/30"
-                            : "bg-background/80 hover:bg-muted border-border/70 text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        <span>♂ Male</span>
-                      </button>
-                      <button
-                        type="button"
-                        id="gender-other-btn"
-                        onClick={() => handleGenderChange("other")}
-                        className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border select-none ${
-                          gender === "other"
-                            ? "bg-primary text-primary-foreground border-primary shadow-sm ring-2 ring-primary/30"
-                            : "bg-background/80 hover:bg-muted border-border/70 text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        <span>⚧ Other</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Age and Has Disability Button */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-0.5">
-                    {/* Manual Age Input */}
+              {/* Rider Gender & Preference Selector (Passenger Only - Available on both Sign In & Sign Up) */}
+              {role === "passenger" && (
+                <div className="mb-4 p-3.5 sm:p-4 rounded-2xl border border-border/80 bg-background/60 backdrop-blur-sm space-y-2.5 shadow-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Select Gender */}
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between ml-1">
-                        <label htmlFor="rider-age-input" className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                          Age
+                        <label htmlFor="rider-gender-select" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                          Select Gender
                         </label>
-                        {Number(age) >= 60 && (
-                          <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
-                            Senior (60+)
+                        {gender === "female" && (
+                          <span className="text-[10px] font-bold text-pink-600 dark:text-pink-400">
+                            Women
                           </span>
                         )}
                       </div>
                       <div className="relative">
-                        <input
-                          id="rider-age-input"
-                          type="number"
-                          min="1"
-                          max="120"
-                          placeholder="Enter your age"
-                          value={age === "" ? "" : age}
-                          onChange={(e) => handleAgeChange(e.target.value)}
-                          className="w-full h-10 rounded-xl border border-border/80 bg-background/50 px-3.5 py-2 text-sm font-bold text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground/60 placeholder:font-normal"
-                        />
-                        {Number(age) >= 60 && (
-                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-400 pointer-events-none">
-                            Senior 60+
+                        <select
+                          id="rider-gender-select"
+                          value={gender}
+                          onChange={(e) => handleGenderChange(e.target.value)}
+                          className="w-full h-11 rounded-xl border border-border/80 bg-background px-3.5 pr-9 text-xs font-bold text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 cursor-pointer appearance-none shadow-xs"
+                        >
+                          <option value="female">Female</option>
+                          <option value="male">Male</option>
+                          <option value="other">Other</option>
+                        </select>
+                        <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                      </div>
+                    </div>
+
+                    {/* Select your Preference */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between ml-1">
+                        <label htmlFor="rider-preference-select" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                          Select your Preference
+                        </label>
+                        {selectedMode === "pink" ? (
+                          <span className="text-[10px] font-bold text-pink-600 dark:text-pink-400 flex items-center gap-1">
+                            <Heart size={10} className="fill-pink-500" /> Pink Mode
+                          </span>
+                        ) : selectedMode === "elderly" ? (
+                          <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                            <Users size={10} /> Senior Mode
+                          </span>
+                        ) : selectedMode === "pwd" ? (
+                          <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 flex items-center gap-1">
+                            <Accessibility size={10} /> Disability
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-muted-foreground flex items-center gap-1">
+                            <Car size={10} /> Normal
                           </span>
                         )}
                       </div>
-                    </div>
-
-                    {/* (Has Disability) Button */}
-                    <div className="space-y-1.5 flex flex-col justify-end">
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground ml-1">
-                        Disability Needs
-                      </label>
-                      <button
-                        type="button"
-                        id="has-disability-btn"
-                        onClick={handleToggleDisability}
-                        className={`w-full h-10 rounded-xl px-3 text-xs font-bold transition-all flex items-center justify-center gap-2 border select-none ${
-                          hasDisability
-                            ? "bg-purple-600 text-white border-purple-600 shadow-md shadow-purple-600/30 ring-2 ring-purple-400/50"
-                            : "bg-background/80 hover:bg-purple-500/10 border-border/70 text-muted-foreground hover:text-purple-600 hover:border-purple-300 dark:hover:text-purple-300"
-                        }`}
-                        aria-pressed={hasDisability}
-                      >
-                        <Accessibility size={16} className={hasDisability ? "text-white" : "text-purple-500"} />
-                        <span>{hasDisability ? "Has Disability (PWD On)" : "Has Disability"}</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Active Dynamic Mode Banner */}
-                  <div className={`p-3.5 rounded-xl border transition-all ${
-                    selectedMode === "pink"
-                      ? "bg-pink-500/10 border-pink-500/40 text-pink-950 dark:text-pink-100"
-                      : selectedMode === "elderly"
-                      ? "bg-amber-500/10 border-amber-500/40 text-amber-950 dark:text-amber-100"
-                      : selectedMode === "pwd"
-                      ? "bg-purple-500/10 border-purple-500/40 text-purple-950 dark:text-purple-100"
-                      : "bg-muted/40 border-border/70 text-foreground"
-                  }`}>
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-2">
-                        {selectedMode === "pink" ? (
-                          <Heart size={16} className="text-pink-500 fill-pink-500" />
-                        ) : selectedMode === "elderly" ? (
-                          <Users size={16} className="text-amber-500" />
-                        ) : selectedMode === "pwd" ? (
-                          <Accessibility size={16} className="text-purple-500" />
-                        ) : (
-                          <Car size={16} className="text-primary" />
-                        )}
-                        <span className="text-xs font-black uppercase tracking-tight">
-                          {selectedMode === "pink"
-                            ? "Pink Mode Active"
-                            : selectedMode === "elderly"
-                            ? "Senior Mode Active"
-                            : selectedMode === "pwd"
-                            ? "Disability (PWD) Mode Active"
-                            : "Standard Commute Active"}
-                        </span>
+                      <div className="relative">
+                        <select
+                          id="rider-preference-select"
+                          value={selectedMode}
+                          onChange={(e) => handlePreferenceChange(e.target.value as AppRideMode)}
+                          className={`w-full h-11 rounded-xl border px-3.5 pr-9 text-xs font-bold outline-none transition-all focus:ring-2 cursor-pointer appearance-none shadow-xs ${
+                            selectedMode === "pink"
+                              ? "border-pink-500/50 bg-pink-500/10 text-pink-950 dark:text-pink-100 focus:border-pink-500 focus:ring-pink-500/20"
+                              : selectedMode === "elderly"
+                              ? "border-amber-500/50 bg-amber-500/10 text-amber-950 dark:text-amber-100 focus:border-amber-500 focus:ring-amber-500/20"
+                              : selectedMode === "pwd"
+                              ? "border-purple-500/50 bg-purple-500/10 text-purple-950 dark:text-purple-100 focus:border-purple-500 focus:ring-purple-500/20"
+                              : "border-border/80 bg-background text-foreground focus:border-primary focus:ring-primary/20"
+                          }`}
+                        >
+                          <option value="normal">Normal Mode</option>
+                          <option value="pink" disabled={gender !== "female"}>
+                            {gender === "female" ? "Pink Mode (Women Only)" : "Pink Mode (Women Only - Disabled)"}
+                          </option>
+                          <option value="elderly">Senior Mode (60+)</option>
+                          <option value="pwd">Disability Mode (PWD)</option>
+                        </select>
+                        <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                       </div>
-                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-background/80 shadow-xs">
-                        {selectedMode === "pink"
-                          ? "For Women"
-                          : selectedMode === "elderly"
-                          ? "Senior Friendly"
-                          : selectedMode === "pwd"
-                          ? "Accessible"
-                          : "Standard"}
-                      </span>
                     </div>
-                    <p className="text-[11px] opacity-90 leading-relaxed font-medium">
-                      {selectedMode === "pink"
-                        ? "Verified female drivers preferred, lit safety corridors, and automatic family tracking."
-                        : selectedMode === "elderly"
-                        ? "116% enlarged typography, high-contrast readability, patient drivers & doorstep support."
-                        : selectedMode === "pwd"
-                        ? "Wheelchair ramp vehicles, audio guidance assistance, and physical boarding support."
-                        : "Fast city pickups, real-time tracking, and background-checked drivers."}
-                    </p>
                   </div>
 
-                  {/* Quick Mode Override Buttons */}
-                  <div className="pt-0.5">
-                    <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 ml-1">
-                      Quick Mode Selector:
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                      <button
-                        type="button"
-                        id="quick-mode-pink-btn"
-                        onClick={() => handleSelectModeOverride("pink")}
-                        className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all border flex items-center justify-center gap-1 ${
-                          selectedMode === "pink"
-                            ? "bg-pink-500 text-white border-pink-500 shadow-sm"
-                            : "bg-background hover:bg-muted text-muted-foreground border-border/70"
-                        }`}
-                      >
-                        <Heart size={12} className={selectedMode === "pink" ? "fill-white" : "text-pink-500"} />
-                        <span>Pink Mode</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        id="quick-mode-elderly-btn"
-                        onClick={() => handleSelectModeOverride("elderly")}
-                        className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all border flex items-center justify-center gap-1 ${
-                          selectedMode === "elderly"
-                            ? "bg-amber-500 text-white border-amber-500 shadow-sm"
-                            : "bg-background hover:bg-muted text-muted-foreground border-border/70"
-                        }`}
-                      >
-                        <Users size={12} className={selectedMode === "elderly" ? "text-white" : "text-amber-500"} />
-                        <span>Senior Mode</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        id="quick-mode-pwd-btn"
-                        onClick={() => handleSelectModeOverride("pwd")}
-                        className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all border flex items-center justify-center gap-1 ${
-                          selectedMode === "pwd"
-                            ? "bg-purple-600 text-white border-purple-600 shadow-sm"
-                            : "bg-background hover:bg-muted text-muted-foreground border-border/70"
-                        }`}
-                      >
-                        <Accessibility size={12} className={selectedMode === "pwd" ? "text-white" : "text-purple-500"} />
-                        <span>Disability Mode</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        id="quick-mode-normal-btn"
-                        onClick={() => handleSelectModeOverride("normal")}
-                        className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all border flex items-center justify-center gap-1 ${
-                          selectedMode === "normal"
-                            ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                            : "bg-background hover:bg-muted text-muted-foreground border-border/70"
-                        }`}
-                      >
-                        <Car size={12} className={selectedMode === "normal" ? "text-white" : "text-primary"} />
-                        <span>Normal Mode</span>
-                      </button>
-                    </div>
+                  <div className="text-[11px] text-muted-foreground/80 flex items-center gap-1.5 px-1 pt-0.5">
+                    <Heart size={11} className={gender === "female" ? "text-pink-500 fill-pink-500 shrink-0" : "text-pink-400 shrink-0"} />
+                    <span>
+                      {gender === "female"
+                        ? "Note: Pink Mode is active for women riders."
+                        : "Note: For only women users Pink mode is enabled."}
+                    </span>
                   </div>
                 </div>
               )}
