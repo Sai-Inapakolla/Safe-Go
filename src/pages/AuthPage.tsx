@@ -61,7 +61,7 @@ const AuthPage = () => {
     return storedGender === "female" ? "pink" : "normal";
   });
 
-  const activeHeroMode: AppRideMode = selectedMode;
+  const activeHeroMode: AppRideMode = isLogin ? "normal" : selectedMode;
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -242,15 +242,20 @@ const AuthPage = () => {
       if (result.user.displayName) localStorage.setItem("safego_user_name", result.user.displayName);
       
       if (finalRole === "passenger") {
-        localStorage.setItem("safego_user_gender", gender);
-        localStorage.setItem("safego_preferred_mode", selectedMode);
-        localStorage.setItem("safego_has_disability", selectedMode === "pwd" ? "true" : "false");
-        setRiderPreferences({
-          gender,
-          hasDisability: selectedMode === "pwd",
-          mode: selectedMode,
-        });
-        notifyModeWelcome(selectedMode);
+        if (!isLogin) {
+          localStorage.setItem("safego_user_gender", gender);
+          localStorage.setItem("safego_preferred_mode", selectedMode);
+          localStorage.setItem("safego_has_disability", selectedMode === "pwd" ? "true" : "false");
+          setRiderPreferences({
+            gender,
+            hasDisability: selectedMode === "pwd",
+            mode: selectedMode,
+          });
+          notifyModeWelcome(selectedMode);
+        } else {
+          const currentMode = (localStorage.getItem("safego_preferred_mode") as AppRideMode) || "normal";
+          notifyModeWelcome(currentMode);
+        }
       }
 
       const destination = from || (finalRole === "admin" ? "/admin" : finalRole === "driver" ? "/driver" : "/home");
@@ -391,9 +396,18 @@ const AuthPage = () => {
                 if (meData.full_name) localStorage.setItem("safego_user_name", meData.full_name);
                 if (meData.phone) localStorage.setItem("safego_user_phone", meData.phone);
                 if (meData.email) localStorage.setItem("safego_user_email", meData.email);
+                if (meData.gender) localStorage.setItem("safego_user_gender", meData.gender);
+                if (meData.preferred_mode) {
+                  localStorage.setItem("safego_preferred_mode", meData.preferred_mode);
+                  setRiderPreferences({
+                    gender: meData.gender || "female",
+                    hasDisability: !!meData.has_disability,
+                    mode: meData.preferred_mode as AppRideMode,
+                  });
+                }
               }
 
-              if (finalRole === "passenger") {
+              if (!isLogin && finalRole === "passenger") {
                 await fetch(`${API_URL}/api/auth/me`, {
                   method: "PUT",
                   headers: {
@@ -412,7 +426,8 @@ const AuthPage = () => {
 
             setLoading(false);
             if (finalRole === "passenger") {
-              notifyModeWelcome(selectedMode);
+              const activeMode = (!isLogin ? selectedMode : (localStorage.getItem("safego_preferred_mode") as AppRideMode)) || "normal";
+              notifyModeWelcome(activeMode);
             }
             if (finalRole === "admin") navigate("/admin");
             else if (finalRole === "driver") navigate("/driver");
@@ -788,8 +803,8 @@ const AuthPage = () => {
                 </div>
               )}
 
-              {/* Rider Gender & Preference Selector (Passenger Only - Available on both Sign In & Sign Up) */}
-              {role === "passenger" && (
+              {/* Rider Gender & Preference Selector (Passenger Only - Sign Up Only) */}
+              {!isLogin && role === "passenger" && (
                 <div className="mb-4 p-3.5 sm:p-4 rounded-2xl border border-border/80 bg-background/60 backdrop-blur-sm space-y-2.5 shadow-xs">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {/* Select Gender */}
