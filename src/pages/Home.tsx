@@ -1181,7 +1181,7 @@ const Home = () => {
             {/* Mobile & Desktop CTA Action Buttons */}
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3.5">
               <Link
-                to="/book/normal"
+                to="/book"
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-2xl bg-primary text-primary-foreground font-extrabold text-sm uppercase tracking-wider shadow-lg shadow-primary/25 hover:brightness-110 active:scale-95 transition-all"
               >
                 <span>Book a Safe Ride</span>

@@ -17,6 +17,8 @@ class UserRegister(BaseModel):
     gender: str = Field(default="male")
     age: Optional[int] = None
     is_elder: Optional[bool] = False
+    has_disability: Optional[bool] = False
+    preferred_mode: Optional[str] = None
 
 
 class UserLogin(BaseModel):
@@ -41,6 +43,13 @@ class SetPasswordRequest(BaseModel):
 
 class FirebaseSyncRequest(BaseModel):
     role: str = "passenger"
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    gender: Optional[str] = None
+    age: Optional[int] = None
+    is_elder: Optional[bool] = False
+    has_disability: Optional[bool] = False
+    preferred_mode: Optional[str] = None
 
 
 class UserResponse(BaseModel):
@@ -56,6 +65,7 @@ class UserResponse(BaseModel):
     age: Optional[int] = None
     profile_photo: Optional[str] = None
     is_elder: Optional[bool] = False
+    has_disability: Optional[bool] = False
     is_active: bool
     is_verified: bool
     penalty_balance: Optional[float] = 0.0
@@ -72,6 +82,7 @@ class UserUpdate(BaseModel):
     age: Optional[int] = None
     preferred_mode: Optional[str] = None
     is_elder: Optional[bool] = None
+    has_disability: Optional[bool] = None
 
 
 class UserBrief(BaseModel):

@@ -76,7 +76,10 @@ async def register(payload: UserRegister):
             password=payload.password,
             role=payload.role,
             gender=payload.gender,
+            age=payload.age,
             is_elder=bool(payload.is_elder),
+            has_disability=bool(payload.has_disability),
+            preferred_mode=payload.preferred_mode,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -134,6 +137,28 @@ async def firebase_auth(
     """
     user = await get_or_create_firebase_user(decoded_token, role=payload.role)
     
+    if payload.gender:
+        try:
+            user.gender = Gender(payload.gender)
+        except:
+            pass
+    if payload.age is not None:
+        user.age = payload.age
+    if payload.has_disability is not None:
+        user.has_disability = bool(payload.has_disability)
+    if payload.is_elder is not None:
+        user.is_elder = bool(payload.is_elder)
+    if payload.preferred_mode:
+        try:
+            user.preferred_mode = RideMode(payload.preferred_mode)
+        except:
+            pass
+    if payload.full_name:
+        user.full_name = payload.full_name
+    if payload.phone:
+        user.phone = payload.phone
+    await user.save()
+
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is deactivated")
 
@@ -185,10 +210,14 @@ async def update_me(payload: UserUpdate, current_user: User = Depends(get_curren
         current_user.phone = payload.phone
     if payload.gender is not None:
         current_user.gender = Gender(payload.gender) if payload.gender else None
+    if payload.age is not None:
+        current_user.age = payload.age
     if payload.preferred_mode is not None:
         current_user.preferred_mode = RideMode(payload.preferred_mode) if payload.preferred_mode else None
     if payload.is_elder is not None:
         current_user.is_elder = payload.is_elder
+    if payload.has_disability is not None:
+        current_user.has_disability = payload.has_disability
     
     await current_user.save()
     return _user_to_response(current_user)
@@ -204,8 +233,10 @@ def _user_to_response(user: User) -> dict:
         "role": user.role.value if hasattr(user.role, "value") else user.role,
         "preferred_mode": user.preferred_mode.value if user.preferred_mode and hasattr(user.preferred_mode, "value") else user.preferred_mode,
         "gender": user.gender.value if user.gender and hasattr(user.gender, "value") else user.gender,
+        "age": getattr(user, "age", None),
         "profile_photo": user.profile_photo,
         "is_elder": getattr(user, "is_elder", False),
+        "has_disability": getattr(user, "has_disability", False),
         "is_active": user.is_active,
         "is_verified": user.is_verified,
         "created_at": user.created_at,

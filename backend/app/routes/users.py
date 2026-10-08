@@ -50,6 +50,8 @@ async def update_my_profile(
             current_user.preferred_mode = payload.preferred_mode  # type: ignore
     if payload.is_elder is not None:
         current_user.is_elder = payload.is_elder
+    if payload.has_disability is not None:
+        current_user.has_disability = payload.has_disability
 
     await current_user.save()
     return _user_to_response(current_user)
@@ -260,6 +262,7 @@ def _user_to_response(user: User) -> dict:
         "age": getattr(user, "age", None),
         "profile_photo": user.profile_photo,
         "is_elder": getattr(user, "is_elder", False),
+        "has_disability": getattr(user, "has_disability", False),
         "is_active": user.is_active,
         "is_verified": user.is_verified,
         "penalty_balance": getattr(user, "penalty_balance", 0.0),

@@ -465,3 +465,50 @@ html.elder-mode {
   border-color: hsl(var(--foreground) / 0.18) !important;
 }
 
+/* ==========================================================================
+   PINK MODE SYSTEM
+   Vibrant rose tones, female safety badges, pink-focused aesthetics
+   ========================================================================== */
+html.pink-mode {
+  --primary: 330 81% 55%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 330 81% 55%;
+  --accent: 330 81% 55%;
+}
+
+html.pink-mode.dark {
+  --primary: 330 81% 64%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 330 81% 64%;
+  --accent: 330 81% 64%;
+}
+
+.pink-mode .safego-card:hover {
+  border-color: hsl(330 81% 60% / 0.35);
+}
+
+/* ==========================================================================
+   DISABILITY / PWD ACCESSIBILITY MODE SYSTEM
+   Accessible purple tones, enhanced focus rings, high tactile clarity
+   ========================================================================== */
+html.disability-mode {
+  --primary: 262 83% 58%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 262 83% 58%;
+  --accent: 262 83% 58%;
+}
+
+html.disability-mode.dark {
+  --primary: 262 83% 65%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 262 83% 65%;
+  --accent: 262 83% 65%;
+}
+
+.disability-mode button:not(.btn-compact),
+.disability-mode a.btn,
+.disability-mode input {
+  min-height: 3rem;
+}
+
+

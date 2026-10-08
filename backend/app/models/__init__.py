@@ -94,6 +94,7 @@ class User(Document):
     age: Optional[int] = None
     profile_photo: Optional[str] = None
     is_elder: bool = False
+    has_disability: bool = False
     is_active: bool = True
     is_verified: bool = False
     penalty_balance: float = 0.0

@@ -1377,7 +1377,9 @@ const BookingPage = () => {
   const navigate = useNavigate();
   const voiceState = location.state as { pickup?: string, destination?: string, auto_search?: boolean, auto_confirm?: boolean };
 
-  const mode = getModeConfig((modeId as RideMode) || "normal");
+  const savedPreferredMode = (localStorage.getItem("safego_preferred_mode") as RideMode) || "normal";
+  const effectiveMode = (modeId as RideMode) || savedPreferredMode || "normal";
+  const mode = getModeConfig(effectiveMode);
   const { speak } = useVoiceAssistant();
 
   // If a driver navigates to BookingPage, redirect them to Driver Portal

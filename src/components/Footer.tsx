@@ -14,7 +14,7 @@ export const Footer = () => {
             <h4 className="font-display text-sm font-bold">Product</h4>
             <div className="mt-3 flex flex-col gap-2">
               <Link to="/home" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Home</Link>
-              <Link to="/book/normal" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Book a Ride</Link>
+              <Link to="/book" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Book a Ride</Link>
             </div>
           </div>
           <div>

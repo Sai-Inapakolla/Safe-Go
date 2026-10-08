@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { ThemeToggle } from "./ThemeToggle";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { ElderModeToggle } from "./ElderModeToggle";
+import { ModeQuickSwitcher } from "./ModeQuickSwitcher";
 import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
 import { useTranslation } from "react-i18next";
@@ -24,8 +25,8 @@ export const Navbar = ({ fullWidth = true }: { fullWidth?: boolean }) => {
     ...(isDriver
       ? [{ label: t('nav.driver_portal', 'Driver Portal'), to: "/driver" }]
       : isAdmin
-        ? [{ label: t('nav.admin_portal', 'Admin Portal'), to: "/admin" }, { label: t('nav.book', 'Book'), to: "/book/normal" }]
-        : [{ label: t('nav.book', 'Book'), to: "/book/normal" }]),
+        ? [{ label: t('nav.admin_portal', 'Admin Portal'), to: "/admin" }, { label: t('nav.book', 'Book'), to: "/book" }]
+        : [{ label: t('nav.book', 'Book'), to: "/book" }]),
     ...(!isDriver ? [{ label: t('nav.drive_with_us', 'Drive With Us'), to: "/drive-with-us" }] : []),
     { label: t('nav.dashboard', 'Dashboard'), to: "/dashboard" },
     { label: t('nav.about', 'About'), to: "/about" },
@@ -61,6 +62,7 @@ export const Navbar = ({ fullWidth = true }: { fullWidth?: boolean }) => {
         </div>
 
         <div className="hidden items-center gap-3 md:flex">
+          <ModeQuickSwitcher />
           <ElderModeToggle />
           <LanguageSwitcher />
           <ThemeToggle />
@@ -127,6 +129,10 @@ export const Navbar = ({ fullWidth = true }: { fullWidth?: boolean }) => {
             </Link>
           ))}
           <div className="mt-4 border-t border-border pt-4 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-muted-foreground">Active Ride Mode</span>
+              <ModeQuickSwitcher />
+            </div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-muted-foreground">Senior Vision</span>
               <ElderModeToggle showLabel={true} />

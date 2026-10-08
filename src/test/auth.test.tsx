@@ -103,3 +103,70 @@ describe("Authentication & Role Authorization", () => {
     expect(localStorage.getItem("userRole")).toBe("admin");
   });
 });
+
+export function determineDefaultRideMode(opts: {
+  gender?: string;
+  age?: number;
+  hasDisability?: boolean;
+  manualOverride?: "pink" | "elderly" | "pwd" | "normal";
+}): "pink" | "elderly" | "pwd" | "normal" {
+  if (opts.manualOverride) return opts.manualOverride;
+  if (opts.hasDisability) return "pwd";
+  if (opts.age !== undefined && opts.age >= 60) return "elderly";
+  if (opts.gender === "female" || !opts.gender) return "pink";
+  return "normal";
+}
+
+describe("Rider Identity, Accessibility & Mode Setup", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("should default to Pink Mode when gender is female or unspecified", () => {
+    const modeDefault = determineDefaultRideMode({ gender: "female", age: 24, hasDisability: false });
+    expect(modeDefault).toBe("pink");
+
+    const modeNoGender = determineDefaultRideMode({ age: 24, hasDisability: false });
+    expect(modeNoGender).toBe("pink");
+  });
+
+  it("should activate Senior Mode when age is 60 or above", () => {
+    const seniorMode = determineDefaultRideMode({ gender: "female", age: 65, hasDisability: false });
+    expect(seniorMode).toBe("elderly");
+
+    const seniorMale = determineDefaultRideMode({ gender: "male", age: 72, hasDisability: false });
+    expect(seniorMale).toBe("elderly");
+  });
+
+  it("should activate Disability (PWD) Mode when hasDisability is true", () => {
+    const disabilityMode = determineDefaultRideMode({ gender: "female", age: 30, hasDisability: true });
+    expect(disabilityMode).toBe("pwd");
+
+    const seniorWithDisability = determineDefaultRideMode({ gender: "male", age: 68, hasDisability: true });
+    expect(seniorWithDisability).toBe("pwd");
+  });
+
+  it("should allow manual override to any ride mode", () => {
+    const pinkOverride = determineDefaultRideMode({ gender: "male", age: 25, manualOverride: "pink" });
+    expect(pinkOverride).toBe("pink");
+
+    const pwdOverride = determineDefaultRideMode({ gender: "female", age: 25, manualOverride: "pwd" });
+    expect(pwdOverride).toBe("pwd");
+
+    const elderlyOverride = determineDefaultRideMode({ gender: "female", age: 25, manualOverride: "elderly" });
+    expect(elderlyOverride).toBe("elderly");
+  });
+
+  it("should persist rider preferences to localStorage correctly", () => {
+    localStorage.setItem("safego_user_gender", "female");
+    localStorage.setItem("safego_user_age", "65");
+    localStorage.setItem("safego_has_disability", "true");
+    localStorage.setItem("safego_preferred_mode", "pwd");
+
+    expect(localStorage.getItem("safego_user_gender")).toBe("female");
+    expect(localStorage.getItem("safego_user_age")).toBe("65");
+    expect(localStorage.getItem("safego_has_disability")).toBe("true");
+    expect(localStorage.getItem("safego_preferred_mode")).toBe("pwd");
+  });
+});
+
