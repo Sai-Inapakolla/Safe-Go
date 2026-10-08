@@ -30,7 +30,7 @@ export interface AppModeContextType {
   age: number;
   setRiderPreferences: (prefs: {
     gender?: string;
-    age?: number;
+    age?: number | string;
     hasDisability?: boolean;
     mode?: AppRideMode;
   }) => void;
@@ -287,16 +287,19 @@ export const ElderModeProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const setRiderPreferences = (prefs: {
     gender?: string;
-    age?: number;
+    age?: number | string;
     hasDisability?: boolean;
     mode?: AppRideMode;
   }) => {
     if (prefs.gender !== undefined) setGender(prefs.gender);
     if (prefs.age !== undefined) {
-      setAge(prefs.age);
-      if (prefs.age >= 60 && !prefs.hasDisability && prefs.mode === undefined) {
-        setIsElderMode(true);
-        setActiveModeState("elderly");
+      const numAge = typeof prefs.age === "number" ? prefs.age : parseInt(prefs.age, 10);
+      if (!isNaN(numAge)) {
+        setAge(numAge);
+        if (numAge >= 60 && !prefs.hasDisability && prefs.mode === undefined) {
+          setIsElderMode(true);
+          setActiveModeState("elderly");
+        }
       }
     }
     if (prefs.hasDisability !== undefined) {

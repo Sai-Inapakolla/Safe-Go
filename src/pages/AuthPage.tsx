@@ -289,7 +289,7 @@ const AuthPage = () => {
         localStorage.setItem("safego_preferred_mode", selectedMode);
         setRiderPreferences({
           gender,
-          age,
+          age: Number(age) || undefined,
           hasDisability,
           mode: selectedMode,
         });
@@ -441,7 +441,7 @@ const AuthPage = () => {
         localStorage.setItem("safego_preferred_mode", selectedMode);
         setRiderPreferences({
           gender,
-          age,
+          age: Number(age) || undefined,
           hasDisability,
           mode: selectedMode,
         });

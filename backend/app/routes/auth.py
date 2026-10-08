@@ -145,9 +145,9 @@ async def firebase_auth(
     if payload.age is not None:
         user.age = payload.age
     if payload.has_disability is not None:
-        user.has_disability = bool(payload.has_disability)
+        user.has_disability = payload.has_disability
     if payload.is_elder is not None:
-        user.is_elder = bool(payload.is_elder)
+        user.is_elder = payload.is_elder
     if payload.preferred_mode:
         try:
             user.preferred_mode = RideMode(payload.preferred_mode)

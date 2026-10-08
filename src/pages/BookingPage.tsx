@@ -1818,6 +1818,7 @@ const BookingPage = () => {
     driverName?: string;
     notes?: string;
     timestamp?: number;
+    rideId?: string;
   } | null>(null);
 
   const handleRideCancellation = (cancelData?: any) => {
