@@ -89,7 +89,7 @@ describe("AuthPage - Gender, Age & Preference Selectors (SignUp Only)", () => {
     });
   });
 
-  it("allows entering manual age and highlights Senior (60+) badge when age >= 60", async () => {
+  it("allows entering manual age and highlights Senior (60+) badge when age >= 60 without resizing the Auth page", async () => {
     renderAuthPage("/signup");
 
     const ageInput = screen.getByLabelText(/^age$/i) as HTMLInputElement;
@@ -99,6 +99,7 @@ describe("AuthPage - Gender, Age & Preference Selectors (SignUp Only)", () => {
       expect(ageInput.value).toBe("68");
       expect(screen.getByText(/senior \(60\+\)/i)).toBeInTheDocument();
       expect(localStorage.getItem("safego_user_age")).toBe("68");
+      expect(document.documentElement.classList.contains("elder-mode")).toBe(false);
     });
   });
 

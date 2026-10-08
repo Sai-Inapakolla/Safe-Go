@@ -80,15 +80,6 @@ const AuthPage = () => {
         hasDisability: selectedMode === "pwd",
         mode: selectedMode,
       });
-      if (num >= 60 && selectedMode === "normal") {
-        setSelectedMode("elderly");
-        setElderMode(true);
-      } else if (num < 60 && selectedMode === "elderly") {
-        const fallback = gender === "female" ? "pink" : "normal";
-        setSelectedMode(fallback);
-        setElderMode(false);
-        if (fallback === "pink") setPinkMode(true);
-      }
     }
   };
 
@@ -153,6 +144,11 @@ const AuthPage = () => {
     setShowNewPassword(false);
     setShowConfirmNewPassword(false);
   }, [role, isLogin, step]);
+
+  // Keep Auth page typography crisp and standard
+  useEffect(() => {
+    document.documentElement.classList.remove("elder-mode");
+  }, [step]);
 
   const formatAuthError = (err: any): string => {
     const msg = err?.message || err?.detail || "";
