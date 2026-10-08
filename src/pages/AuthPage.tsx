@@ -47,9 +47,12 @@ const AuthPage = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Rider Profile & Modes: Gender, Age, Has Disability
-  // Rider Profile & Modes: Gender & Preference
+  // Rider Profile & Modes: Gender, Age & Preference
   const [gender, setGender] = useState<string>(() => {
     return localStorage.getItem("safego_user_gender") || "female";
+  });
+  const [age, setAge] = useState<number | string>(() => {
+    return localStorage.getItem("safego_user_age") || "24";
   });
   const [selectedMode, setSelectedMode] = useState<AppRideMode>(() => {
     const stored = localStorage.getItem("safego_preferred_mode") as AppRideMode;
@@ -65,6 +68,29 @@ const AuthPage = () => {
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const handleAgeChange = (val: string) => {
+    setAge(val);
+    const num = parseInt(val, 10);
+    if (!isNaN(num)) {
+      localStorage.setItem("safego_user_age", String(num));
+      setRiderPreferences({
+        gender,
+        age: num,
+        hasDisability: selectedMode === "pwd",
+        mode: selectedMode,
+      });
+      if (num >= 60 && selectedMode === "normal") {
+        setSelectedMode("elderly");
+        setElderMode(true);
+      } else if (num < 60 && selectedMode === "elderly") {
+        const fallback = gender === "female" ? "pink" : "normal";
+        setSelectedMode(fallback);
+        setElderMode(false);
+        if (fallback === "pink") setPinkMode(true);
+      }
+    }
+  };
 
   // When gender changes, only female riders can have Pink Mode enabled
   const handleGenderChange = (newGender: string) => {
@@ -207,6 +233,7 @@ const AuthPage = () => {
         const syncPayload: any = { 
           role,
           gender: role === "passenger" ? gender : undefined,
+          age: age ? parseInt(String(age), 10) : undefined,
           has_disability: role === "passenger" ? selectedMode === "pwd" : false,
           is_elder: role === "passenger" ? selectedMode === "elderly" : false,
           preferred_mode: role === "passenger" ? selectedMode : undefined,
@@ -244,10 +271,12 @@ const AuthPage = () => {
       if (finalRole === "passenger") {
         if (!isLogin) {
           localStorage.setItem("safego_user_gender", gender);
+          localStorage.setItem("safego_user_age", String(age));
           localStorage.setItem("safego_preferred_mode", selectedMode);
           localStorage.setItem("safego_has_disability", selectedMode === "pwd" ? "true" : "false");
           setRiderPreferences({
             gender,
+            age: age ? parseInt(String(age), 10) : undefined,
             hasDisability: selectedMode === "pwd",
             mode: selectedMode,
           });
@@ -359,10 +388,12 @@ const AuthPage = () => {
       if (role === "passenger") {
         // Save selected rider preferences immediately to localStorage & Context
         localStorage.setItem("safego_user_gender", gender);
+        localStorage.setItem("safego_user_age", String(age));
         localStorage.setItem("safego_preferred_mode", selectedMode);
         localStorage.setItem("safego_has_disability", selectedMode === "pwd" ? "true" : "false");
         setRiderPreferences({
           gender,
+          age: age ? parseInt(String(age), 10) : undefined,
           hasDisability: selectedMode === "pwd",
           mode: selectedMode,
         });
@@ -397,10 +428,12 @@ const AuthPage = () => {
                 if (meData.phone) localStorage.setItem("safego_user_phone", meData.phone);
                 if (meData.email) localStorage.setItem("safego_user_email", meData.email);
                 if (meData.gender) localStorage.setItem("safego_user_gender", meData.gender);
+                if (meData.age) localStorage.setItem("safego_user_age", String(meData.age));
                 if (meData.preferred_mode) {
                   localStorage.setItem("safego_preferred_mode", meData.preferred_mode);
                   setRiderPreferences({
                     gender: meData.gender || "female",
+                    age: meData.age,
                     hasDisability: !!meData.has_disability,
                     mode: meData.preferred_mode as AppRideMode,
                   });
@@ -416,6 +449,7 @@ const AuthPage = () => {
                   },
                   body: JSON.stringify({
                     gender,
+                    age: age ? parseInt(String(age), 10) : undefined,
                     preferred_mode: selectedMode,
                     is_elder: selectedMode === "elderly",
                     has_disability: selectedMode === "pwd",
@@ -487,6 +521,7 @@ const AuthPage = () => {
           full_name: fullName,
           phone: phone,
           gender: role === "passenger" ? gender : undefined,
+          age: age ? parseInt(String(age), 10) : undefined,
           has_disability: role === "passenger" ? selectedMode === "pwd" : false,
           is_elder: role === "passenger" ? selectedMode === "elderly" : false,
           preferred_mode: role === "passenger" ? selectedMode : undefined,
@@ -803,10 +838,10 @@ const AuthPage = () => {
                 </div>
               )}
 
-              {/* Rider Gender & Preference Selector (Passenger Only - Sign Up Only) */}
+              {/* Rider Gender, Age & Preference Selector (Passenger Only - Sign Up Only) */}
               {!isLogin && role === "passenger" && (
                 <div className="mb-4 p-3.5 sm:p-4 rounded-2xl border border-border/80 bg-background/60 backdrop-blur-sm space-y-2.5 shadow-xs">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {/* Select Gender */}
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between ml-1">
@@ -831,6 +866,32 @@ const AuthPage = () => {
                           <option value="other">Other</option>
                         </select>
                         <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                      </div>
+                    </div>
+
+                    {/* Age Column */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between ml-1">
+                        <label htmlFor="rider-age-input" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                          Age
+                        </label>
+                        {Number(age) >= 60 && (
+                          <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                            Senior (60+)
+                          </span>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <input
+                          id="rider-age-input"
+                          type="number"
+                          min={1}
+                          max={120}
+                          value={age}
+                          onChange={(e) => handleAgeChange(e.target.value)}
+                          placeholder="e.g. 24"
+                          className="w-full h-11 rounded-xl border border-border/80 bg-background px-3.5 text-xs font-bold text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-xs"
+                        />
                       </div>
                     </div>
 
@@ -906,6 +967,23 @@ const AuthPage = () => {
                       onChange={(e) => setFullName(e.target.value)}
                       className="w-full rounded-xl border border-border/80 bg-background/50 px-4 py-3.5 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 text-foreground"
                       placeholder="John Doe"
+                    />
+                  </div>
+                )}
+
+                {!isLogin && role === "driver" && (
+                  <div className="space-y-2">
+                    <label htmlFor="driver-age-input" className="text-xs font-bold uppercase tracking-wider text-muted-foreground ml-1">Age</label>
+                    <input
+                      id="driver-age-input"
+                      required
+                      type="number"
+                      min={18}
+                      max={80}
+                      value={age}
+                      onChange={(e) => handleAgeChange(e.target.value)}
+                      className="w-full rounded-xl border border-border/80 bg-background/50 px-4 py-3.5 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 text-foreground"
+                      placeholder="e.g. 28"
                     />
                   </div>
                 )}

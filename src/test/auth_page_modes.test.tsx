@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import AuthPage from "@/pages/AuthPage";
 import { ElderModeProvider } from "@/contexts/ElderModeContext";
 
-describe("AuthPage - Gender & Preference Selectors (SignUp Only)", () => {
+describe("AuthPage - Gender, Age & Preference Selectors (SignUp Only)", () => {
   beforeEach(() => {
     localStorage.clear();
   });
@@ -19,14 +19,15 @@ describe("AuthPage - Gender & Preference Selectors (SignUp Only)", () => {
     );
   };
 
-  it("does NOT render Gender & Preference selectors on the Login page (/login)", () => {
+  it("does NOT render Gender, Age, or Preference selectors on the Login page (/login)", () => {
     renderAuthPage("/login");
 
     // Welcome Back header is present
     expect(screen.getByText(/welcome back!/i)).toBeInTheDocument();
 
-    // Gender & Preference dropdowns should NOT be on login page
+    // Gender, Age & Preference inputs should NOT be on login page
     expect(screen.queryByLabelText(/select gender/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^age$/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/select your preference/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/rider mode & accessibility setup/i)).not.toBeInTheDocument();
 
@@ -37,18 +38,20 @@ describe("AuthPage - Gender & Preference Selectors (SignUp Only)", () => {
     expect(screen.getByRole("button", { name: /sign in with google/i })).toBeInTheDocument();
   });
 
-  it("renders 'Select Gender' and 'Select your Preference' on the SignUp page (/signup)", () => {
+  it("renders 'Select Gender', 'Age', and 'Select your Preference' on the SignUp page (/signup)", () => {
     renderAuthPage("/signup");
 
     // Join SafeGo header is present
     expect(screen.getByText(/join safego/i)).toBeInTheDocument();
 
-    // Clean dropdowns are present on signup
+    // Clean 3-column selectors are present on signup
     expect(screen.getByLabelText(/select gender/i)).toBeInTheDocument();
+    const ageInput = screen.getByLabelText(/^age$/i);
+    expect(ageInput).toBeInTheDocument();
+    expect(ageInput).toHaveAttribute("type", "number");
     expect(screen.getByLabelText(/select your preference/i)).toBeInTheDocument();
 
-    // Bulky old controls are removed
-    expect(screen.queryByPlaceholderText(/enter your age/i)).not.toBeInTheDocument();
+    // Bulky old card title is removed
     expect(screen.queryByText(/rider mode & accessibility setup/i)).not.toBeInTheDocument();
   });
 
@@ -86,6 +89,19 @@ describe("AuthPage - Gender & Preference Selectors (SignUp Only)", () => {
     });
   });
 
+  it("allows entering manual age and highlights Senior (60+) badge when age >= 60", async () => {
+    renderAuthPage("/signup");
+
+    const ageInput = screen.getByLabelText(/^age$/i) as HTMLInputElement;
+    fireEvent.change(ageInput, { target: { value: "68" } });
+
+    await waitFor(() => {
+      expect(ageInput.value).toBe("68");
+      expect(screen.getByText(/senior \(60\+\)/i)).toBeInTheDocument();
+      expect(localStorage.getItem("safego_user_age")).toBe("68");
+    });
+  });
+
   it("allows selecting Senior Mode (60+) or Disability Mode (PWD) on SignUp", async () => {
     renderAuthPage("/signup");
 
@@ -106,12 +122,12 @@ describe("AuthPage - Gender & Preference Selectors (SignUp Only)", () => {
     });
   });
 
-  it("hides gender and preference dropdowns on SignUp when driver or admin role is selected", async () => {
+  it("hides rider preferences on SignUp when driver or admin role is selected", async () => {
     renderAuthPage("/signup");
 
-    // Click Driver role
-    const driverBtn = screen.getByRole("button", { name: /^driver$/i });
-    fireEvent.click(driverBtn);
+    // Click Admin role
+    const adminBtn = screen.getByRole("button", { name: /^admin$/i });
+    fireEvent.click(adminBtn);
 
     await waitFor(() => {
       expect(screen.queryByLabelText(/select gender/i)).not.toBeInTheDocument();
