@@ -409,6 +409,12 @@ const AuthPage = () => {
             localStorage.setItem("token", data.access_token);
             localStorage.removeItem("safego_accepted_rides");
             localStorage.removeItem("safego_declined_rides");
+            localStorage.removeItem("safego_current_ride_id");
+            localStorage.removeItem("safego_current_ride_otp");
+            localStorage.removeItem("safego_current_ride_status");
+            localStorage.removeItem("safego_active_split_ride");
+            localStorage.removeItem("safego_split_passenger_role");
+            localStorage.removeItem("safego_active_driver_ride");
             const finalRole = (data.role === "admin" || cleanEmail.includes("admin")) ? "admin" : data.role;
             localStorage.setItem("userRole", finalRole);
             localStorage.setItem("safego_user_email", cleanEmail);
@@ -420,6 +426,7 @@ const AuthPage = () => {
               });
               if (meRes.ok) {
                 const meData = await meRes.json();
+                if (meData._id || meData.id) localStorage.setItem("safego_user_id", String(meData._id || meData.id));
                 if (meData.full_name) localStorage.setItem("safego_user_name", meData.full_name);
                 if (meData.phone) localStorage.setItem("safego_user_phone", meData.phone);
                 if (meData.email) localStorage.setItem("safego_user_email", meData.email);

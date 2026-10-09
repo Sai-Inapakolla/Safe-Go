@@ -276,6 +276,43 @@ const RideTracking = () => {
           </span>
         </div>
 
+        {/* SafeGo Split Active Status Card */}
+        {rideData?.is_split_active && (
+          <div className="mt-4 p-3.5 rounded-2xl bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-indigo-500/5 border border-indigo-500/30 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-md shadow-indigo-500/30">
+                👥
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
+                    SafeGo Split Active
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                    40% Discount
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Co-Rider: <span className="font-semibold text-foreground">{rideData.split_passenger_name || "Verified Traveler"}</span>
+                  {rideData.split_otp && (
+                    <span className="ml-2 px-1.5 py-0.5 rounded bg-secondary text-[10px] font-mono font-bold text-foreground">
+                      PIN: {rideData.split_otp}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-xs font-black text-indigo-600 dark:text-indigo-400">
+                ₹{rideData.discounted_fare || rideData.split_co_passenger_fare || rideData.fare_amount}
+              </p>
+              <p className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
+                🌱 1.8 kg CO₂ saved
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Safety */}
         <div className="mt-4 flex items-center gap-2 text-sm">
           <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />

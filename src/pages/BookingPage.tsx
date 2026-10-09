@@ -179,7 +179,7 @@ const generateNearbyCabs = (lat: number, lng: number, mode: string = "normal", d
       cabLng = safeBaseLng + (i % 3 === 0 ? 1 : -1) * (0.006 + i * 0.003);
     }
 
-    const isSplit = dbDriver?.is_split_allowed !== undefined ? Boolean(dbDriver.is_split_allowed) : false;
+    const isSplit = false;
     const name = dbDriver.user?.full_name || dbDriver.full_name || "SafeGo Pilot";
     const rating = dbDriver.average_rating ? Number(dbDriver.average_rating).toFixed(1) : "4.9";
 
@@ -196,7 +196,8 @@ const generateNearbyCabs = (lat: number, lng: number, mode: string = "normal", d
       name,
       rating,
       eta,
-      is_split_allowed: isSplit,
+      is_split_allowed: false,
+      is_active_corridor_ride: false,
       split_discount_percent: 40,
       corridor_name: null,
       seats_available: 0,
@@ -1592,11 +1593,13 @@ const BookingPage = () => {
       });
       if (res.ok) {
         const rides = await res.json();
-        const curId = currentRideId || localStorage.getItem("safego_current_ride_id");
+        const curId = currentRideId;
+        const currentUserId = localStorage.getItem("safego_user_id");
         const seenDriverIds = new Set<string>();
         const filtered = (rides || []).filter((r: any) => {
           const rId = String(r._id || r.id);
-          if (rId === curId) return false;
+          if (curId && rId === curId) return false;
+          if (currentUserId && (r.passenger_id === currentUserId || String(r.passenger_id) === currentUserId)) return false;
           // Strictly reject offline drivers
           if (r.driver && r.driver.is_online === false) return false;
           // Deduplicate so each driver appears at most once in split listings
@@ -1734,11 +1737,19 @@ const BookingPage = () => {
       }
       const lat = pickupCoords?.lat || mapCenter?.lat || 22.3023;
       const lng = pickupCoords?.lng || mapCenter?.lng || 73.3762;
-      const res = await fetch(`${API_URL}/api/rides/split/available?latitude=${lat}&longitude=${lng}&mode=${mode.id}&gender=${gender}`);
+      const token = localStorage.getItem("token") || "dummy-token";
+      const res = await fetch(`${API_URL}/api/rides/split/available?latitude=${lat}&longitude=${lng}&mode=${mode.id}&gender=${gender}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
       if (res.ok) {
         const cabs = await res.json();
+        const curId = currentRideId;
+        const currentUserId = localStorage.getItem("safego_user_id");
         const seenDriverIds = new Set<string>();
         const filtered = (cabs || []).filter((r: any) => {
+          const rId = String(r._id || r.id);
+          if (curId && rId === curId) return false;
+          if (currentUserId && (r.passenger_id === currentUserId || String(r.passenger_id) === currentUserId)) return false;
           if (r.driver && r.driver.is_online === false) return false;
           const dId = String(r.driver_id || r.driver?._id || r.driver?.id || "");
           if (dId) {
@@ -3355,8 +3366,10 @@ const BookingPage = () => {
     try {
       setAskStatus("asking");
 
-      const isSplitRide = driverObj?.is_split_allowed !== undefined ? Boolean(driverObj.is_split_allowed) : isSplitAllowed;
-      const chosenFare = isSplitRide && driverObj?.split_fare ? driverObj.split_fare : (driverObj?.price || rideDetails.fare || 180);
+      const isSplitRide = Boolean(isSplitAllowed);
+      const chosenFare = isSplitRide
+        ? Math.round((driverObj?.price || rideDetails.fare || 180) * 0.6)
+        : (driverObj?.price || rideDetails.fare || 180);
 
       const payload: any = {
         mode: mode.id,
@@ -4768,11 +4781,15 @@ const BookingPage = () => {
                             {displayedCabs.length === 0 ? (
                               <div className="p-8 text-center rounded-3xl bg-secondary/30 border border-border/40 space-y-2">
                                 <div className="w-10 h-10 rounded-full bg-secondary/80 flex items-center justify-center mx-auto text-muted-foreground">
-                                  <Car size={20} />
+                                  {operatorCategoryFilter === "split" ? <Users size={20} className="text-indigo-500" /> : <Car size={20} />}
                                 </div>
-                                <p className="text-sm font-bold text-foreground">No Drivers Online Nearby</p>
+                                <p className="text-sm font-bold text-foreground">
+                                  {operatorCategoryFilter === "split" ? "No Active Co-Riding Trips" : "No Drivers Online Nearby"}
+                                </p>
                                 <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-                                  There are currently no active approved drivers online matching this mode. Drivers will appear live as soon as they go online.
+                                  {operatorCategoryFilter === "split"
+                                    ? "There are currently no active rides booked with SafeGo Split along this corridor. Once a passenger books a ride with co-riding enabled, it will appear here immediately."
+                                    : "There are currently no active approved drivers online matching this mode. Drivers will appear live as soon as they go online."}
                                 </p>
                               </div>
                             ) : (

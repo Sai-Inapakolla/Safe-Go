@@ -151,9 +151,9 @@ async def request_ride(payload: RideRequest, current_user: User = Depends(get_cu
 @router.get("/me", response_model=List[RideResponse])
 async def get_my_rides(current_user: User = Depends(get_current_user)):
     from datetime import datetime
-    # Find rides for passenger
+    # Find rides for passenger (both primary rider and split co-rider)
     user_rides = await Ride.find(
-        Ride.passenger_id == current_user.id,
+        {"$or": [{"passenger_id": current_user.id}, {"split_passenger_id": current_user.id}]},
         Ride.is_deleted_by_user == False
     ).sort("-created_at").to_list()
     
@@ -506,8 +506,9 @@ async def get_ride_by_id(ride_id: str, current_user: User = Depends(get_current_
     if not ride:
         raise HTTPException(status_code=404, detail="Ride not found")
     
-    # IDOR Prevention: Only rider, assigned driver, or admin can inspect private ride details
-    is_owner = ride.passenger_id == current_user.id or str(ride.passenger_id) == str(current_user.id)
+    # IDOR Prevention: Only rider, assigned driver, split co-passenger, or admin can inspect private ride details
+    is_split_passenger = bool(getattr(ride, "split_passenger_id", None) and (ride.split_passenger_id == current_user.id or str(ride.split_passenger_id) == str(current_user.id)))
+    is_owner = ride.passenger_id == current_user.id or str(ride.passenger_id) == str(current_user.id) or is_split_passenger
     is_driver = False
     if ride.driver_id:
         driver = await Driver.find_one(Driver.user_id == current_user.id)
@@ -584,7 +585,8 @@ async def get_ride(ride_id: str, current_user: User = Depends(get_current_user))
     if not ride:
         raise HTTPException(status_code=404, detail="Ride not found")
     role_val = current_user.role.value if hasattr(current_user.role, 'value') else current_user.role
-    if role_val != "admin" and ride.passenger_id != current_user.id:
+    is_split_passenger = bool(getattr(ride, "split_passenger_id", None) and (ride.split_passenger_id == current_user.id or str(ride.split_passenger_id) == str(current_user.id)))
+    if role_val != "admin" and ride.passenger_id != current_user.id and not is_split_passenger:
         driver = await Driver.find_one(Driver.user_id == current_user.id)
         if not driver or ride.driver_id != driver.id:
             raise HTTPException(status_code=403, detail="Access denied")
