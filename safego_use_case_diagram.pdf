@@ -1,0 +1,496 @@
+# 🛡️ SafeGo: End-to-End UML Use Case Specification & Architecture Diagram
+
+## 1. Executive Summary & UML Boundary Overview
+
+**SafeGo** is an intelligent, safety-centric mobility and ride-hailing platform engineered around real-time telemetry, Scikit-Learn Machine Learning safety classifiers, dynamic pricing regression, live GPS route deviation detection, multi-modal emergency dispatching, and inclusive passenger safety policies.
+
+### System Boundary
+The **SafeGo Platform System Boundary** encapsulates all services, engines, and consoles:
+- **Client Interfaces**: React 18 Single-Page Application (Rider Booking Console, Driver Portal, Admin Command Center, Safety Hub, Voice Assistant).
+- **Backend Services**: Asynchronous FastAPI core engine, WebSocket Manager, Indian Cities Geocoding Engine, and Beanie ODM persistence.
+- **Embedded AI & ML**: Dual Scikit-Learn inference engines (`SafetyPredictor` Random Forest Classifier & `FareSurgePredictor` Random Forest Regressor) and NLP Sentiment Analysis (`TextBlob`).
+- **External Integration Services**: Twilio Emergency Voice & SMS Gateway, Cloudinary KYC storage, Photon/Nominatim OpenStreetMap geocoding, and National Emergency Services (112).
+
+---
+
+## 2. Global End-to-End Use Case Diagram
+
+```mermaid
+flowchart TB
+    %% ================= ACTORS DEFINITION =================
+    subgraph Primary_Actors ["👤 Primary Human Actors"]
+        Rider["👤 Passenger / Rider"]
+        PinkRider["👩 Pink Mode Passenger"]
+        PWDRider["♿ PWD Passenger"]
+        ElderRider["👴 Elderly Passenger"]
+        SplitRider["👥 Co-Passenger (Split)"]
+        Driver["🚗 Driver"]
+        Admin["👮 Safety Admin / Dispatcher"]
+        Guest["🌐 Guest / Public User"]
+    end
+
+    %% Actor Generalizations
+    PinkRider -->|is-a| Rider
+    PWDRider -->|is-a| Rider
+    ElderRider -->|is-a| Rider
+    SplitRider -->|is-a| Rider
+
+    subgraph External_Actors ["⚡ Supporting & External System Actors"]
+        ML_Safety[("🤖 ML Safety Classifier<br/>(RandomForest)")]
+        ML_Surge[("📈 ML Fare Surge Engine<br/>(RandomForest Regressor)")]
+        Twilio_API[("📞 Twilio Emergency Gateway<br/>(SMS & Voice Calls)")]
+        Cloudinary_API[("☁️ Cloudinary Storage<br/>(KYC & Documents)")]
+        Geo_Engine[("🗺️ Indian Cities 4.2k<br/>& OSRM Routing Engine")]
+        Police[("🚨 National Police / Authorities<br/>(Dial 112)")]
+        Speech_AI[("🎙️ Browser Speech AI<br/>(Web Speech Recognition)")]
+    end
+
+    %% ================= SYSTEM BOUNDARY =================
+    subgraph SafeGo_Platform ["🛡️ SafeGo Platform System Boundary"]
+
+        %% Subsystem 1: Identity & Profiles
+        subgraph Sub_Auth ["🔐 1. Identity, Access & Profiles"]
+            UC_Auth(["UC-01: Register & Login (JWT)"])
+            UC_Profile(["UC-02: Manage Profile & Accessibility"])
+            UC_Contacts(["UC-03: Manage Emergency Contacts"])
+            UC_PayPenalty(["UC-04: Pay Penalty Balance"])
+        end
+
+        %% Subsystem 2: Geocoding & Route Safety AI
+        subgraph Sub_Routing ["🗺️ 2. Geocoding & Route Safety AI"]
+            UC_SearchGeo(["UC-05: Search 4.2k+ Indian Cities"])
+            UC_CalcRoute(["UC-06: Compute Route & Directions"])
+            UC_PredSafety(["UC-07: Predict Route Safety Category"])
+            UC_PredSurge(["UC-08: Predict Dynamic Fare Surge"])
+        end
+
+        %% Subsystem 3: Ride Request & Inclusivity Modes
+        subgraph Sub_Booking ["🚖 3. Ride Booking & Inclusive Modes"]
+            UC_BookRide(["UC-09: Book Ride with Mode Selection"])
+            UC_PinkPolicy(["UC-10: Enforce Pink Mode Policy"])
+            UC_ScheduleRide(["UC-11: Schedule Future Ride"])
+            UC_CancelBooking(["UC-12: Cancel Active Booking"])
+        end
+
+        %% Subsystem 4: SafeGo Split (Co-Riding)
+        subgraph Sub_Split ["🤝 4. SafeGo Split (Dynamic Co-Riding)"]
+            UC_BrowseSplit(["UC-13: Discover Available Split Corridors"])
+            UC_JoinSplit(["UC-14: Request Join Split Ride"])
+            UC_SplitDecide(["UC-15: Driver & Rider Approve Split"])
+            UC_SplitOTP(["UC-16: Verify Co-Rider Boarding PIN"])
+            UC_SplitEcon(["UC-17: Calculate Discount & Green CO₂"])
+        end
+
+        %% Subsystem 5: Driver Fleet & KYC
+        subgraph Sub_DriverPortal ["🚘 5. Driver Onboarding & Operations"]
+            UC_DriverApply(["UC-18: Apply for Driver Onboarding"])
+            UC_UploadDocs(["UC-19: Upload KYC & Vehicle Documents"])
+            UC_ToggleOnline(["UC-20: Toggle Driver Online Status"])
+            UC_BrowseRides(["UC-21: View Nearby Ride Requests"])
+            UC_AcceptRide(["UC-22: Accept / Decline Ride"])
+            UC_ReportViolation(["UC-23: Report Policy Violation"])
+            UC_ViewEarnings(["UC-24: View Earnings & History"])
+        end
+
+        %% Subsystem 6: Live Telemetry & Verification
+        subgraph Sub_Telemetry ["📡 6. Real-Time Telemetry & In-Transit"]
+            UC_IssueOTP(["UC-25: Issue 4-Digit Security PIN"])
+            UC_VerifyOTP(["UC-26: Verify PIN & Start Ride"])
+            UC_StreamGPS(["UC-27: Stream Live Driver Telemetry"])
+            UC_DeviationReroute(["UC-28: Detect Deviation & AI Reroute"])
+            UC_VoiceCommands(["UC-29: Hands-Free Voice Assistant"])
+        end
+
+        %% Subsystem 7: Emergency SOS Response
+        subgraph Sub_Emergency ["🚨 7. Emergency Response & SOS"]
+            UC_TriggerSOS(["UC-30: Trigger Real-Time SOS Alert"])
+            UC_BroadcastTwilio(["UC-31: Broadcast SMS & Automated Voice Call"])
+            UC_EscalatePolice(["UC-32: Escalate to Police / 112"])
+            UC_CancelSOS(["UC-33: Dismiss SOS / False Alarm"])
+            UC_PublicSOS(["UC-34: Trigger Public Emergency SOS"])
+        end
+
+        %% Subsystem 8: Trip Completion & AI Feedback
+        subgraph Sub_Feedback ["⭐ 8. Trip Completion & Sentiment"]
+            UC_CompleteRide(["UC-35: Complete Trip & Settle Fare"])
+            UC_RateDriver(["UC-36: Rate Driver & Submit Review"])
+            UC_AnalyzeSentiment(["UC-37: AI Review Sentiment Analysis"])
+            UC_ClearHistory(["UC-38: Soft-Delete Trip History"])
+        end
+
+        %% Subsystem 9: Admin Command Center
+        subgraph Sub_Admin ["🛡️ 9. Admin Command & Fleet Governance"]
+            UC_LiveFleetMonitor(["UC-39: Live Vehicle & Telemetry Radar"])
+            UC_VerifyDriverKYC(["UC-40: Review & Verify Driver Documents"])
+            UC_ApproveDriver(["UC-41: Approve / Suspend Driver"])
+            UC_BulkFleetToggle(["UC-42: Master Fleet Availability Switch"])
+            UC_TriageSOS(["UC-43: Triage & Resolve Active SOS"])
+            UC_SystemAnalytics(["UC-44: Platform Stats & Safety Audit"])
+        end
+
+    end
+
+    %% ================= ASSOCIATIONS: PASSENGER =================
+    Rider --- UC_Auth
+    Rider --- UC_Profile
+    Rider --- UC_Contacts
+    Rider --- UC_PayPenalty
+    Rider --- UC_SearchGeo
+    Rider --- UC_BookRide
+    Rider --- UC_CancelBooking
+    Rider --- UC_TriggerSOS
+    Rider --- UC_RateDriver
+    Rider --- UC_ClearHistory
+    Rider --- UC_VoiceCommands
+
+    PinkRider --- UC_PinkPolicy
+    SplitRider --- UC_BrowseSplit
+    SplitRider --- UC_JoinSplit
+    Guest --- UC_SearchGeo
+    Guest --- UC_PublicSOS
+    Guest --- UC_Auth
+
+    %% ================= ASSOCIATIONS: DRIVER =================
+    Driver --- UC_Auth
+    Driver --- UC_DriverApply
+    Driver --- UC_UploadDocs
+    Driver --- UC_ToggleOnline
+    Driver --- UC_BrowseRides
+    Driver --- UC_AcceptRide
+    Driver --- UC_VerifyOTP
+    Driver --- UC_ReportViolation
+    Driver --- UC_StreamGPS
+    Driver --- UC_SplitDecide
+    Driver --- UC_SplitOTP
+    Driver --- UC_CompleteRide
+    Driver --- UC_ViewEarnings
+
+    %% ================= ASSOCIATIONS: ADMIN =================
+    Admin --- UC_Auth
+    Admin --- UC_LiveFleetMonitor
+    Admin --- UC_VerifyDriverKYC
+    Admin --- UC_ApproveDriver
+    Admin --- UC_BulkFleetToggle
+    Admin --- UC_TriageSOS
+    Admin --- UC_SystemAnalytics
+
+    %% ================= UML INCLUDES (<<include>>) =================
+    UC_BookRide -.->|&laquo;include&raquo;| UC_CalcRoute
+    UC_CalcRoute -.->|&laquo;include&raquo;| UC_PredSafety
+    UC_PredSafety -.->|&laquo;include&raquo;| UC_PredSurge
+    UC_VerifyOTP -.->|&laquo;include&raquo;| UC_IssueOTP
+    UC_TriggerSOS -.->|&laquo;include&raquo;| UC_BroadcastTwilio
+    UC_RateDriver -.->|&laquo;include&raquo;| UC_AnalyzeSentiment
+    UC_JoinSplit -.->|&laquo;include&raquo;| UC_SplitEcon
+
+    %% ================= UML EXTENDS (<<extend>>) =================
+    UC_PinkPolicy -.->|&laquo;extend&raquo;| UC_BookRide
+    UC_DeviationReroute -.->|&laquo;extend&raquo;| UC_StreamGPS
+    UC_ReportViolation -.->|&laquo;extend&raquo;| UC_AcceptRide
+    UC_EscalatePolice -.->|&laquo;extend&raquo;| UC_TriggerSOS
+    UC_VoiceCommands -.->|&laquo;extend&raquo;| UC_TriggerSOS
+    UC_CancelSOS -.->|&laquo;extend&raquo;| UC_TriggerSOS
+
+    %% ================= EXTERNAL SYSTEM ASSOCIATIONS =================
+    UC_CalcRoute --- Geo_Engine
+    UC_SearchGeo --- Geo_Engine
+    UC_PredSafety --- ML_Safety
+    UC_PredSurge --- ML_Surge
+    UC_UploadDocs --- Cloudinary_API
+    UC_VerifyDriverKYC --- Cloudinary_API
+    UC_BroadcastTwilio --- Twilio_API
+    UC_PublicSOS --- Twilio_API
+    UC_EscalatePolice --- Police
+    UC_VoiceCommands --- Speech_AI
+    UC_DeviationReroute --- ML_Safety
+    UC_StreamGPS --- UC_LiveFleetMonitor
+```
+
+---
+
+## 3. Subsystem Breakdown Diagrams
+
+### 3.1 Subsystem A: Ride Booking, Safety AI & Inclusivity Modes
+
+```mermaid
+flowchart LR
+    Rider(["👤 Passenger / Rider"])
+    PinkRider(["👩 Pink Mode Passenger"])
+    ML_Safety[("🤖 Safety Classifier<br/>(Random Forest)")]
+    ML_Surge[("📈 Dynamic Surge<br/>(Random Forest)")]
+    OSRM[("🗺️ OSRM Engine")]
+
+    subgraph Booking_Subsystem ["Ride Booking & Safety AI Engine"]
+        UC_SelectMode(["UC-09: Select Mode & Enter Route"])
+        UC_PinkPolicy(["UC-10: Check Female Rider Policy"])
+        UC_ComputeRoute(["UC-06: Compute OSRM Route"])
+        UC_EvalSafety(["UC-07: Predict Safety Class<br/>(Stable / Cautious / High Priority)"])
+        UC_ComputeFare(["UC-08: Predict Fare Multiplier<br/>(1.0x - 2.2x Dynamic Surge)"])
+        UC_CreateRide(["UC-09b: Lock Fare & Create Ride"])
+    end
+
+    Rider --> UC_SelectMode
+    PinkRider --> UC_PinkPolicy
+
+    UC_SelectMode -.->|&laquo;include&raquo;| UC_ComputeRoute
+    UC_ComputeRoute --- OSRM
+    UC_ComputeRoute -.->|&laquo;include&raquo;| UC_EvalSafety
+    UC_EvalSafety --- ML_Safety
+    UC_EvalSafety -.->|&laquo;include&raquo;| UC_ComputeFare
+    UC_ComputeFare --- ML_Surge
+    UC_ComputeFare -.->|&laquo;include&raquo;| UC_CreateRide
+
+    UC_PinkPolicy -.->|&laquo;extend&raquo;| UC_SelectMode
+```
+
+---
+
+### 3.2 Subsystem B: In-Transit Verification, Live Telemetry & Dynamic Rerouting
+
+```mermaid
+flowchart LR
+    Rider(["👤 Passenger"])
+    Driver(["🚗 Driver"])
+    Admin(["👮 Admin Command"])
+    ML_Safety[("🤖 Safety Classifier")]
+
+    subgraph Telemetry_Subsystem ["Real-Time Telemetry & Verification"]
+        UC_ShowOTP(["UC-25: Display 4-Digit Security PIN"])
+        UC_InputOTP(["UC-26: Input & Verify PIN to Start"])
+        UC_LiveStream(["UC-27: Stream GPS Telemetry (WebSocket)"])
+        UC_DeviationDetect(["UC-28: Detect Off-Route Deviation"])
+        UC_RerouteAI(["UC-28b: Recalculate Corridor & Re-score Safety"])
+    end
+
+    Rider --> UC_ShowOTP
+    Driver --> UC_InputOTP
+    UC_InputOTP -.->|&laquo;include&raquo;| UC_ShowOTP
+
+    Driver --> UC_LiveStream
+    UC_LiveStream --> Admin
+    UC_LiveStream -.->|&laquo;extend&raquo;| UC_DeviationDetect
+    UC_DeviationDetect -.->|&laquo;include&raquo;| UC_RerouteAI
+    UC_RerouteAI --- ML_Safety
+```
+
+---
+
+### 3.3 Subsystem C: Multi-Modal Emergency SOS & Threat Escalation
+
+```mermaid
+flowchart LR
+    Rider(["👤 Passenger / Rider"])
+    Driver(["🚗 Driver"])
+    Admin(["👮 Safety Admin"])
+    Twilio[("📞 Twilio SMS & Voice")]
+    Police[("🚨 National Police (112)")]
+    SpeechAI[("🎙️ Speech Assistant")]
+
+    subgraph Emergency_Subsystem ["Emergency SOS & Threat Mitigation"]
+        UC_SOSManual(["UC-30a: Tap Emergency SOS Button"])
+        UC_SOSVoice(["UC-30b: Voice Trigger: 'SafeGo Emergency'"])
+        UC_TwilioDispatch(["UC-31: Twilio Automated Calls & SMS"])
+        UC_Escalate112(["UC-32: Escalate Dispatch to Police 112"])
+        UC_AdminTriage(["UC-43: Admin Command Live Triage"])
+        UC_ResolveSOS(["UC-33: Dismiss False Alarm / Mark Resolved"])
+    end
+
+    Rider --> UC_SOSManual
+    Driver --> UC_SOSManual
+    Rider --> UC_SOSVoice
+    UC_SOSVoice --- SpeechAI
+
+    UC_SOSManual -.->|&laquo;include&raquo;| UC_TwilioDispatch
+    UC_SOSVoice -.->|&laquo;include&raquo;| UC_TwilioDispatch
+    UC_TwilioDispatch --- Twilio
+
+    UC_TwilioDispatch --> UC_AdminTriage
+    Admin --> UC_AdminTriage
+    Admin --> UC_Escalate112
+    UC_Escalate112 --- Police
+    Admin --> UC_ResolveSOS
+    Rider --> UC_ResolveSOS
+```
+
+---
+
+### 3.4 Subsystem D: SafeGo Split (Dynamic Co-Riding & Fare Splitting)
+
+```mermaid
+flowchart LR
+    RiderA(["👤 Primary Rider (Rider A)"])
+    RiderB(["👥 Co-Rider (Rider B)"])
+    Driver(["🚗 Assigned Driver"])
+
+    subgraph Split_Subsystem ["SafeGo Split Dynamic Co-Riding"]
+        UC_EnableSplit(["UC-09c: Rider A Enables Split Mode"])
+        UC_DiscoverCorridor(["UC-13: Rider B Searches Matching Active Route"])
+        UC_RequestJoin(["UC-14: Rider B Requests to Join Trip"])
+        UC_DriverApprove(["UC-15a: Driver Evaluates Corridor Addition"])
+        UC_RiderApprove(["UC-15b: Rider A Approves Co-Passenger"])
+        UC_IssueSplitPIN(["UC-16a: System Generates Co-Rider OTP"])
+        UC_VerifySplitPIN(["UC-16b: Driver Verifies Co-Rider Boarding PIN"])
+        UC_ApplySplitSavings(["UC-17: Recalculate Fares, Bonuses & CO₂ Offset"])
+    end
+
+    RiderA --> UC_EnableSplit
+    RiderB --> UC_DiscoverCorridor
+    RiderB --> UC_RequestJoin
+    UC_RequestJoin -.->|&laquo;include&raquo;| UC_DriverApprove
+    UC_RequestJoin -.->|&laquo;include&raquo;| UC_RiderApprove
+    Driver --> UC_DriverApprove
+    RiderA --> UC_RiderApprove
+
+    UC_DriverApprove -.->|&laquo;include&raquo;| UC_IssueSplitPIN
+    UC_IssueSplitPIN -.->|&laquo;include&raquo;| UC_VerifySplitPIN
+    Driver --> UC_VerifySplitPIN
+    UC_VerifySplitPIN -.->|&laquo;include&raquo;| UC_ApplySplitSavings
+```
+
+---
+
+## 4. Comprehensive Actor Catalog
+
+| Actor Name | Type | Description & Responsibilities |
+|---|---|---|
+| **Passenger / Rider** | Primary (Human) | Books rides, selects inclusive ride modes (Normal, Pink, PWD, Elderly, Premium), enters addresses, monitors live trip, provides security PIN to driver, triggers SOS, rates rides. |
+| **Pink Mode Passenger** | Primary (Specialization) | Female riders or accompanied women requiring verified female drivers and enhanced safety protocols. Subject to solo male policy guard. |
+| **PWD Passenger** | Primary (Specialization) | Passengers with physical disabilities requiring wheelchair-accessible vehicles (WAV) and accessible frontend interfaces. |
+| **Elderly Passenger** | Primary (Specialization) | Senior citizens utilizing large-typography UX and automated caregiver check-in notifications. |
+| **Co-Passenger (Split)** | Primary (Specialization) | Secondary rider who joins an ongoing compatible trip along the same corridor for discounted fares and eco-friendly ride-sharing. |
+| **Driver** | Primary (Human) | Applies for onboarding, uploads KYC docs, goes online/offline, accepts rides, verifies passenger 4-digit PIN, navigates routes, reports policy violations, completes trips. |
+| **Admin / Safety Dispatcher** | Primary (Human) | Oversees live vehicle fleet radar, reviews driver KYC submissions, triages and resolves SOS incidents, manages master fleet online switches, audits platform metrics. |
+| **Guest / Public User** | Primary (Human) | Unauthenticated user exploring the app, using Indian cities geocoding, exploring safety guides, or triggering emergency public SOS. |
+| **Scikit-Learn ML Engines** | Secondary (External System) | Embedded AI services: (1) Random Forest Safety Classifier classifying route risk into `Stable`, `Cautious`, or `High Priority`; (2) Random Forest Surge Regressor predicting dynamic multipliers (`1.0x` to `2.2x`). |
+| **Twilio Emergency Gateway** | Secondary (External System) | Telecommunications API responsible for sending automated high-priority emergency SMS alerts and synthetic voice phone calls to emergency contacts, admins, and police. |
+| **Cloudinary Storage Service** | Secondary (External System) | Cloud media storage managing driver driving licenses, vehicle registrations, NBI clearances, and medical certificates. |
+| **Indian Cities Geo Engine & OSRM** | Secondary (External System) | Geocoding service indexing 4,231 Indian cities and calculating OpenStreetMap turn-by-turn routes and polylines. |
+| **National Police / 112 Authorities** | Secondary (External System) | Public emergency services escalated during high-severity threat incidents. |
+| **Browser Speech AI Engine** | Secondary (System Primitive) | Web Speech API speech-to-text engine enabling hands-free voice commands. |
+
+---
+
+## 5. End-to-End Use Case Dictionary & Traceability Matrix
+
+| ID | Use Case Name | Primary Actor | Included Use Cases | Extended By / Extends | Backend API / WebSocket | Frontend Page / Component |
+|---|---|---|---|---|---|---|
+| **UC-01** | Register & Login | Passenger / Driver / Admin | None | None | `POST /api/auth/register`<br/>`POST /api/auth/login` | [AuthPage.tsx](file:///d:/My%20projects/Safe-Go/src/pages/AuthPage.tsx) |
+| **UC-02** | Manage Profile & Accessibility | Passenger | None | None | `GET/PUT /api/users/me` | [Dashboard.tsx](file:///d:/My%20projects/Safe-Go/src/pages/Dashboard.tsx) |
+| **UC-03** | Manage Emergency Contacts | Passenger | None | None | `GET/POST/PUT/DELETE /api/users/me/emergency-contacts` | [Safety.tsx](file:///d:/My%20projects/Safe-Go/src/pages/Safety.tsx) |
+| **UC-04** | Pay Penalty Balance | Passenger | None | None | `POST /api/users/pay-penalty` | [Dashboard.tsx](file:///d:/My%20projects/Safe-Go/src/pages/Dashboard.tsx) |
+| **UC-05** | Search 4.2k+ Indian Cities | Passenger / Guest | None | None | `GET /api/map/locations`<br/>`GET /api/map/geocode` | [BookingPage.tsx](file:///d:/My%20projects/Safe-Go/src/pages/BookingPage.tsx) |
+| **UC-06** | Compute Route & Directions | Passenger | UC-07 (Predict Safety) | Included in UC-09 | `POST /api/map/route` | [BookingPage.tsx](file:///d:/My%20projects/Safe-Go/src/pages/BookingPage.tsx) |
+| **UC-07** | Predict Route Safety Category | System (ML Engine) | UC-08 (Predict Surge) | Included in UC-06 | `SafetyPredictor.predict_safety()` | `predictor.py` |
+| **UC-08** | Predict Dynamic Fare Surge | System (ML Engine) | None | Included in UC-07 | `FareSurgePredictor.predict_surge()` | `fare_predictor.py` |
+| **UC-09** | Book Ride with Mode Selection | Passenger | UC-06 (Compute Route) | Extended by UC-10 | `POST /api/rides/request` | [BookingPage.tsx](file:///d:/My%20projects/Safe-Go/src/pages/BookingPage.tsx) |
+| **UC-10** | Enforce Pink Mode Policy | Pink Mode Passenger | None | Extends UC-09 | `POST /api/rides/request` | [BookingPage.tsx](file:///d:/My%20projects/Safe-Go/src/pages/BookingPage.tsx) |
+| **UC-11** | Schedule Future Ride | Passenger | UC-06 (Compute Route) | None | `POST /api/rides/request` | [BookingPage.tsx](file:///d:/My%20projects/Safe-Go/src/pages/BookingPage.tsx) |
+| **UC-12** | Cancel Active Booking | Passenger | None | None | `PUT /api/rides/{id}/status` | [RideTracking.tsx](file:///d:/My%20projects/Safe-Go/src/pages/RideTracking.tsx) |
+| **UC-13** | Discover Available Split Corridors | Co-Passenger | None | None | `GET /api/rides/split/available` | [BookingPage.tsx](file:///d:/My%20projects/Safe-Go/src/pages/BookingPage.tsx) |
+| **UC-14** | Request Join Split Ride | Co-Passenger | UC-17 (Split Econ) | None | `POST /api/rides/split/request-join` | [BookingPage.tsx](file:///d:/My%20projects/Safe-Go/src/pages/BookingPage.tsx) |
+| **UC-15** | Approve / Decline Split Request | Driver & Primary Rider | None | None | `POST /api/rides/{id}/split/driver-decision`<br/>`POST /api/rides/{id}/split/passenger-decision` | [DriverPortal.tsx](file:///d:/My%20projects/Safe-Go/src/pages/DriverPortal.tsx)<br/>[RideTracking.tsx](file:///d:/My%20projects/Safe-Go/src/pages/RideTracking.tsx) |
+| **UC-16** | Verify Co-Rider Boarding PIN | Driver | None | None | `POST /api/rides/{id}/split/verify-co-otp` | [DriverPortal.tsx](file:///d:/My%20projects/Safe-Go/src/pages/DriverPortal.tsx) |
+| **UC-17** | Calculate Split Savings & CO₂ | System | None | Included in UC-14 | Internal service | `ride_service.py` |
+| **UC-18** | Apply for Driver Onboarding | Driver | None | None | `POST /api/drivers/apply` | [ApplyDriver.tsx](file:///d:/My%20projects/Safe-Go/src/pages/ApplyDriver.tsx) |
+| **UC-19** | Upload KYC & Vehicle Docs | Driver | None | None | `POST /api/drivers/me/documents/upload-by-type` | [DriverPortal.tsx](file:///d:/My%20projects/Safe-Go/src/pages/DriverPortal.tsx) |
+| **UC-20** | Toggle Driver Online Status | Driver | None | None | `PUT /api/drivers/me/online-status` | [DriverPortal.tsx](file:///d:/My%20projects/Safe-Go/src/pages/DriverPortal.tsx) |
+| **UC-21** | View Nearby Ride Requests | Driver | None | None | `GET /api/drivers/me/available-rides` | [DriverPortal.tsx](file:///d:/My%20projects/Safe-Go/src/pages/DriverPortal.tsx) |
+| **UC-22** | Accept / Decline Ride | Driver | None | Extended by UC-23 | `POST /api/drivers/me/rides/{id}/accept`<br/>`POST /api/drivers/me/rides/{id}/cancel` | [DriverPortal.tsx](file:///d:/My%20projects/Safe-Go/src/pages/DriverPortal.tsx) |
+| **UC-23** | Report Policy Violation | Driver | None | Extends UC-22 | `POST /api/drivers/me/rides/{id}/report-violation` | [DriverPortal.tsx](file:///d:/My%20projects/Safe-Go/src/pages/DriverPortal.tsx) |
+| **UC-24** | View Earnings & History | Driver | None | None | `GET /api/drivers/me/earnings`<br/>`GET /api/drivers/me/history` | [DriverPortal.tsx](file:///d:/My%20projects/Safe-Go/src/pages/DriverPortal.tsx) |
+| **UC-25** | Issue 4-Digit Security PIN | System | None | Included in UC-26 | System generation | [RideTracking.tsx](file:///d:/My%20projects/Safe-Go/src/pages/RideTracking.tsx) |
+| **UC-26** | Verify PIN & Start Ride | Driver | UC-25 (Issue PIN) | None | `POST /api/rides/{id}/verify-otp` | [DriverPortal.tsx](file:///d:/My%20projects/Safe-Go/src/pages/DriverPortal.tsx) |
+| **UC-27** | Stream Live Driver Telemetry | Driver | None | Extended by UC-28 | `WS /ws/driver/{id}/location`<br/>`WS /ws/ride/{id}/track` | [RideTracking.tsx](file:///d:/My%20projects/Safe-Go/src/pages/RideTracking.tsx) |
+| **UC-28** | Detect Deviation & AI Reroute | Driver / System | None | Extends UC-27 | `POST /api/map/reroute` | [RideTracking.tsx](file:///d:/My%20projects/Safe-Go/src/pages/RideTracking.tsx) |
+| **UC-29** | Hands-Free Voice Assistant | Passenger | None | Extends UC-30 | `POST /api/voice/sos-trigger`<br/>`GET /api/voice/ride-status` | [FloatingAssistant.tsx](file:///d:/My%20projects/Safe-Go/src/components/FloatingAssistant.tsx) |
+| **UC-30** | Trigger Real-Time SOS Alert | Passenger / Driver | UC-31 (Twilio Dispatch) | Extended by UC-32, UC-33 | `POST /api/safety/sos` | [Safety.tsx](file:///d:/My%20projects/Safe-Go/src/pages/Safety.tsx) |
+| **UC-31** | Broadcast Emergency Calls & SMS | System (Twilio) | None | Included in UC-30 | `notification_service.py` | Twilio Gateway |
+| **UC-32** | Escalate to Police / 112 | Admin / Passenger | None | Extends UC-30 | `POST /api/safety/sos/{id}/dispatch-authorities` | [Safety.tsx](file:///d:/My%20projects/Safe-Go/src/pages/Safety.tsx) |
+| **UC-33** | Dismiss False Alarm / Cancel | Passenger / Admin | None | Extends UC-30 | `POST /api/safety/sos/{id}/cancel` | [Safety.tsx](file:///d:/My%20projects/Safe-Go/src/pages/Safety.tsx) |
+| **UC-34** | Trigger Public Emergency SOS | Guest / Public | UC-31 (Twilio Dispatch) | None | `POST /api/safety/public-sos` | [Safety.tsx](file:///d:/My%20projects/Safe-Go/src/pages/Safety.tsx) |
+| **UC-35** | Complete Trip & Settle Fare | Driver | None | None | `PUT /api/rides/{id}/status` | [DriverPortal.tsx](file:///d:/My%20projects/Safe-Go/src/pages/DriverPortal.tsx) |
+| **UC-36** | Rate Driver & Submit Review | Passenger | UC-37 (Analyze Sentiment)| None | `POST /api/rides/{id}/rate` | [RideTracking.tsx](file:///d:/My%20projects/Safe-Go/src/pages/RideTracking.tsx) |
+| **UC-37** | AI Review Sentiment Analysis | System (NLP) | None | Included in UC-36 | TextBlob polarity classifier | `rides.py` |
+| **UC-38** | Soft-Delete Trip History | Passenger | None | None | `DELETE /api/rides/history` | [Dashboard.tsx](file:///d:/My%20projects/Safe-Go/src/pages/Dashboard.tsx) |
+| **UC-39** | Live Vehicle & Telemetry Radar | Admin | None | None | `WS /ws/admin/live`<br/>`GET /api/admin/rides/live` | [AdminDashboard.tsx](file:///d:/My%20projects/Safe-Go/src/pages/AdminDashboard.tsx) |
+| **UC-40** | Review & Verify Driver Documents | Admin | None | None | `PUT /api/admin/drivers/{id}/documents/{doc_id}` | [AdminDashboard.tsx](file:///d:/My%20projects/Safe-Go/src/pages/AdminDashboard.tsx) |
+| **UC-41** | Approve / Suspend Driver | Admin | None | None | `PUT /api/admin/drivers/{id}/approval` | [AdminDashboard.tsx](file:///d:/My%20projects/Safe-Go/src/pages/AdminDashboard.tsx) |
+| **UC-42** | Master Fleet Availability Switch | Admin | None | None | `PUT /api/admin/drivers/bulk-online-status` | [AdminDashboard.tsx](file:///d:/My%20projects/Safe-Go/src/pages/AdminDashboard.tsx) |
+| **UC-43** | Triage & Resolve Active SOS | Admin | None | None | `PUT /api/admin/sos-alerts/{id}/resolve`<br/>`PUT /api/admin/sos-alerts/resolve-all` | [AdminDashboard.tsx](file:///d:/My%20projects/Safe-Go/src/pages/AdminDashboard.tsx) |
+| **UC-44** | Platform Stats & Safety Audit | Admin | None | None | `GET /api/admin/stats`<br/>`GET /api/admin/analytics/rides-by-mode`<br/>`GET /api/admin/analytics/safety-scores` | [AdminDashboard.tsx](file:///d:/My%20projects/Safe-Go/src/pages/AdminDashboard.tsx) |
+
+---
+
+## 6. Deep-Dive Specifications for Critical Core Use Cases
+
+### 6.1 UC-09 & UC-10: Ride Booking with SafeGo Pink Mode Policy Enforcement
+- **Primary Actor**: Passenger (Pink Mode Rider).
+- **Preconditions**:
+  1. Rider is authenticated with valid JWT token.
+  2. Rider has zero outstanding penalty balance (`penalty_balance == 0`).
+- **Main Flow**:
+  1. Rider selects pickup and destination using the 4.2k Indian Cities dataset auto-complete.
+  2. System invokes `POST /api/map/route`, running OSRM polyline decoding.
+  3. `SafetyPredictor` evaluates spatial Haversine distances to safe hubs, urban zones, and high-risk hotspots, assigning a safety score and rating (`Stable`, `Cautious`, or `High Priority`).
+  4. `FareSurgePredictor` calculates real-time surge multiplier using safety rating + time + distance.
+  5. Rider selects **Pink Mode** (women-only drivers).
+  6. If rider account gender is Male, rider must declare an accompanied female passenger with legal full name (`has_female_passenger_declared = true`, `female_passenger_name = "..."`).
+  7. Backend matches ride exclusively with approved female drivers (`Gender.female`).
+  8. Trip is persisted with `status: searching` and a secure 4-digit PIN is generated.
+- **Alternative / Exception Flows**:
+  - *Fine Block*: If rider has an unpaid fine, system blocks booking with HTTP 403 until paid.
+  - *Solo Male Attempt*: If a male rider attempts booking Pink Mode without accompanied female declaration, system throws HTTP 400 validation error.
+
+### 6.2 UC-25 & UC-26: Passenger 4-Digit Security PIN (OTP) Boarding Verification
+- **Primary Actors**: Passenger & Assigned Driver.
+- **Preconditions**: Driver has accepted ride and arrived at pickup location (`status: driver_arriving`).
+- **Main Flow**:
+  1. Passenger view presents a high-contrast 4-digit PIN (e.g. `[ 4 ] [ 8 ] [ 2 ] [ 9 ]`).
+  2. Passenger boards the car and communicates the PIN verbally to the driver.
+  3. Driver enters the 4-digit PIN in the **Driver Portal Active Trip Console**.
+  4. Console executes `POST /api/rides/{id}/verify-otp`.
+  5. Backend compares submitted code against persisted encrypted PIN.
+  6. On successful match, backend transitions ride status to `in_progress`, updates `is_otp_verified = True`, stamps `started_at`, and broadcasts status change across WebSocket channels.
+- **Exception Flow**:
+  - If driver attempts to force status transition to `in_progress` without verifying OTP, backend strictly aborts with HTTP 400 (`"OTP verification required before starting the ride"`).
+
+### 6.3 UC-27 & UC-28: Real-Time Telemetry & Dynamic AI Route Deviation Rerouting
+- **Primary Actors**: Driver, System ML Classifier, Passenger.
+- **Main Flow**:
+  1. Driver client establishes persistent WebSocket connection (`WS /ws/driver/{id}/location`).
+  2. Driver GPS coordinates are pushed every 3 seconds to the server.
+  3. Server logs location to `RideLocationHistory` and broadcasts payload to Passenger tracking socket (`WS /ws/ride/{id}/track`) and Admin live map (`WS /ws/admin/live`).
+  4. Server calculates live distance from driver position to scheduled destination corridor.
+  5. If deviation exceeds permissible threshold (`is_off_route = True`):
+     - Server triggers dynamic reroute `reroute_active_trip(...)`.
+     - OSRM computes new navigational polyline from driver's current position to destination.
+     - `SafetyPredictor` re-scores the new corridor's risk category.
+     - WebSocket broadcasts updated polyline, revised ETA, and new safety risk category to rider and admin.
+
+### 6.4 UC-30 & UC-31: Multi-Modal Emergency SOS Multi-Channel Dispatch
+- **Primary Actors**: Passenger, Admin Dispatcher, Twilio Emergency Service.
+- **Preconditions**: Active trip or emergency state.
+- **Trigger**: Rider taps SOS button or speaks hands-free trigger *"SafeGo Emergency"*.
+- **Main Flow**:
+  1. Client sends `POST /api/safety/sos` with current GPS coordinates, severity level, and active ride ID.
+  2. Backend performs 15-second deduplication and idempotency check to prevent duplicate panic bursts.
+  3. Backend inserts `SOSAlert` record with `status: active`.
+  4. Server dispatches parallel emergency messages via Twilio:
+     - SMS containing live Google Maps location to passenger's primary emergency contact.
+     - Automated synthesized voice call alerting contact to an active emergency.
+     - Urgent SMS to SafeGo Central Admin and Safety Dispatcher hotline.
+     - SMS broadcast to all registered secondary emergency contacts in user profile.
+  5. Admin Command Center live dashboard immediately flashes critical red banner and sounds alarm.
+  6. Admin can one-click escalate the incident to Police / 112 (`POST /api/safety/sos/{id}/dispatch-authorities`).
+
+### 6.5 UC-23: Driver Policy Violation Enforcement & Passenger Fine
+- **Primary Actors**: Driver & Passenger.
+- **Trigger**: Driver arrives at pickup in Pink Mode and discovers a solo male passenger with no accompanied female.
+- **Main Flow**:
+  1. Driver selects **Report Policy Violation** in Driver Portal.
+  2. Driver chooses violation type (`solo_male_in_pink_mode`).
+  3. Server cancels the ride (`status: cancelled`, reason: `"Policy Violation: Solo Male Booking"`).
+  4. Server charges penalty fine (₹750) directly to passenger's account (`passenger.penalty_balance += 750`).
+  5. Server credits driver inconvenience compensation (₹200) to driver's balance (`driver.today_earnings += 200`).
+  6. Server generates an emergency incident alert for Admin Command Center.
+  7. Passenger account is blocked from booking any future rides until fine is settled via `POST /api/users/pay-penalty`.
