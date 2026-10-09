@@ -10,12 +10,13 @@ import {
   ArrowLeft, Star, MessageCircle, Shield, Loader2, CheckCircle2,
   MapPin, Navigation, Car, AlertCircle, Locate, Send, X, Users, Zap, Activity,
   ShieldAlert, Phone, Siren, Radio, Copy, ShieldCheck, Lock, Search, Target,
-  Leaf, Sparkles, Percent, Timer, UserCheck, Unlock
+  Leaf, Sparkles, Percent, Timer, UserCheck, Unlock, User, Heart, Accessibility
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { getApiUrl } from "@/lib/api";
 import { FinePaymentModal } from "@/components/FinePaymentModal";
+import { BookingForModal, type BookingRecipientDetails } from "@/components/BookingForModal";
 import { searchClientLocations, findClientCoords } from "@/lib/geoData";
 
 const API_URL = getApiUrl();
@@ -1467,6 +1468,89 @@ const BookingPage = () => {
     return p ? Number(p) : 0;
   });
   const [isFinePaymentModalOpen, setIsFinePaymentModalOpen] = useState<boolean>(false);
+
+  // ─── Booking Recipient ("Myself" or "Others") States ───
+  const [bookingFor, setBookingFor] = useState<"myself" | "others">(() => {
+    return (localStorage.getItem("safego_booking_for") as "myself" | "others") || "myself";
+  });
+  const [recipientGender, setRecipientGender] = useState<"she" | "he" | "other">(() => {
+    return (localStorage.getItem("safego_booking_recipient_gender") as "she" | "he" | "other") || "she";
+  });
+  const [recipientAge, setRecipientAge] = useState<string>(() => {
+    return localStorage.getItem("safego_booking_recipient_age") || "24";
+  });
+  const [recipientPreferenceMode, setRecipientPreferenceMode] = useState<RideMode>(() => {
+    return (localStorage.getItem("safego_booking_recipient_preference_mode") as RideMode) || (mode.id as RideMode) || "normal";
+  });
+  const [recipientName, setRecipientName] = useState<string>(() => {
+    return localStorage.getItem("safego_booking_recipient_name") || "";
+  });
+  const [recipientPhone, setRecipientPhone] = useState<string>(() => {
+    return localStorage.getItem("safego_booking_recipient_phone") || "";
+  });
+  const [isBookingForModalOpen, setIsBookingForModalOpen] = useState(false);
+
+  const isOthersFemaleBooking = bookingFor === "others" && recipientGender === "she";
+  const isPinkRestrictedSoloMale = mode.id === "pink" && userGender === "male" && !isOthersFemaleBooking;
+
+  useEffect(() => {
+    const handleBookingForChanged = (e: any) => {
+      const d = e.detail;
+      if (d) {
+        if (d.bookingFor) setBookingFor(d.bookingFor);
+        if (d.gender) setRecipientGender(d.gender);
+        if (d.age) setRecipientAge(String(d.age));
+        if (d.preferenceMode) setRecipientPreferenceMode(d.preferenceMode);
+        if (d.riderName !== undefined) setRecipientName(d.riderName);
+        if (d.riderPhone !== undefined) setRecipientPhone(d.riderPhone);
+      }
+    };
+    window.addEventListener("safego_booking_for_changed", handleBookingForChanged);
+    return () => {
+      window.removeEventListener("safego_booking_for_changed", handleBookingForChanged);
+    };
+  }, []);
+
+  const handleUpdateBookingFor = (newBookingFor: "myself" | "others") => {
+    setBookingFor(newBookingFor);
+    localStorage.setItem("safego_booking_for", newBookingFor);
+    if (newBookingFor === "others" && recipientGender === "she" && mode.id === "pink") {
+      setFemaleCompanionName(recipientName.trim() || "Female Passenger");
+      setIsAccompaniedDeclared(true);
+    }
+  };
+
+  const handleUpdateRecipientGender = (newGender: "she" | "he" | "other") => {
+    setRecipientGender(newGender);
+    localStorage.setItem("safego_booking_recipient_gender", newGender);
+    if (newGender === "she" && mode.id !== "pink" && mode.id === "normal") {
+      navigate("/book/pink");
+      setRecipientPreferenceMode("pink");
+    } else if (newGender === "he" && mode.id === "pink") {
+      navigate("/book/normal");
+      setRecipientPreferenceMode("normal");
+      toast.info("Switched to Normal Mode (Pink Mode is exclusively for women passengers).", { duration: 3000 });
+    }
+  };
+
+  const handleUpdateRecipientAge = (newAge: string) => {
+    setRecipientAge(newAge);
+    localStorage.setItem("safego_booking_recipient_age", newAge);
+    const parsed = parseInt(newAge, 10);
+    if (!isNaN(parsed) && parsed >= 60 && mode.id === "normal") {
+      navigate("/book/elderly");
+      setRecipientPreferenceMode("elderly");
+      toast.info("Senior citizen detected. Switched to Elderly Mode for specialized boarding assistance.", { duration: 3500 });
+    }
+  };
+
+  const handleUpdateRecipientPreferenceMode = (newMode: RideMode) => {
+    setRecipientPreferenceMode(newMode);
+    localStorage.setItem("safego_booking_recipient_preference_mode", newMode);
+    if (newMode !== mode.id) {
+      navigate(`/book/${newMode}`);
+    }
+  };
 
   useEffect(() => {
     const handlePenaltyCleared = () => {
@@ -3223,7 +3307,7 @@ const BookingPage = () => {
     }
 
     // 1. Pink Mode Policy Checks
-    if (mode.id === "pink" && userGender === "male") {
+    if (isPinkRestrictedSoloMale) {
       if (passengers === 1) {
         toast.error("Solo male booking is strictly restricted in Pink Mode! Please switch to Normal Mode.", {
           duration: 5000,
@@ -3283,7 +3367,17 @@ const BookingPage = () => {
         destination_latitude: destinationCoords?.lat || (mapCenter?.lat || 22.3023) + 0.05,
         destination_longitude: destinationCoords?.lng || (mapCenter?.lng || 73.3762) + 0.05,
         passenger_count: passengers,
-        passenger_details: (passengerDetails || []).filter(d => d && d.trim() !== ""),
+        passenger_details: (() => {
+          const baseList = (passengerDetails || []).filter(d => d && d.trim() !== "");
+          if (bookingFor === "others") {
+            const summary = `Rider: ${recipientName ? recipientName : (recipientGender === "she" ? "Female Passenger" : recipientGender === "he" ? "Male Passenger" : "Passenger")} (${recipientGender.toUpperCase()}, Age: ${recipientAge || "N/A"}, Mode: ${recipientPreferenceMode || mode.id})`;
+            if (!baseList.includes(summary)) {
+              baseList.unshift(summary);
+            }
+          }
+          return baseList;
+        })(),
+        booking_for: bookingFor,
         emergency_contact_name: emergencyContactName,
         emergency_contact_phone: emergencyContactPhone,
         driver_id: driverObj?.driver_id && driverObj.driver_id.length === 24 ? driverObj.driver_id : null,
@@ -3291,10 +3385,22 @@ const BookingPage = () => {
         is_split_allowed: isSplitRide
       };
 
+      if (bookingFor === "others") {
+        payload.rider_gender = recipientGender;
+        payload.rider_age = recipientAge ? parseInt(recipientAge, 10) : undefined;
+        payload.rider_name = recipientName;
+        payload.rider_phone = recipientPhone;
+      }
+
       if (mode.id === "pink") {
-        payload.has_female_passenger_declared = userGender === "male" ? isAccompaniedDeclared : true;
-        if (userGender === "male") {
-          payload.female_passenger_name = femaleCompanionName.trim();
+        if (bookingFor === "others" && recipientGender === "she") {
+          payload.has_female_passenger_declared = true;
+          payload.female_passenger_name = recipientName.trim() || "Female Passenger";
+        } else {
+          payload.has_female_passenger_declared = userGender === "male" ? isAccompaniedDeclared : true;
+          if (userGender === "male") {
+            payload.female_passenger_name = femaleCompanionName.trim();
+          }
         }
       }
 
@@ -3572,6 +3678,250 @@ const BookingPage = () => {
                     {t('booking.ready_for', 'Ready for a')} <span className="text-primary" style={{ color: mode.accent }}>{t('booking.safe_journey', 'Safe Journey?')}</span>
                   </h1>
                   <p className="mt-2 text-muted-foreground text-sm font-medium">{t('booking.configure_pickup', 'Configure your pickup and destination for a secure ride.')}</p>
+                </div>
+
+                {/* ─── Who are you booking this ride for? (Myself or Others) ─── */}
+                <div className="mt-8 rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-card to-secondary/30 p-6 sm:p-7 premium-shadow relative transition-all">
+                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-border/40">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                        <Users size={16} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-foreground">
+                          {t('booking.who_booking_for', 'Who are you booking this ride for?')}
+                        </h3>
+                        <p className="text-[10px] text-muted-foreground font-medium">
+                          Select whether this trip is for yourself or someone else
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsBookingForModalOpen(true)}
+                      className="px-3 py-1.5 rounded-xl bg-secondary/80 hover:bg-secondary text-[11px] font-bold text-primary flex items-center gap-1.5 transition-all cursor-pointer border border-border/60 shadow-xs"
+                    >
+                      <Sparkles size={12} />
+                      <span>{t('booking.details_modal', 'Open Dialog')}</span>
+                    </button>
+                  </div>
+
+                  {/* Myself vs Others Selection Buttons */}
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateBookingFor("myself")}
+                      className={`p-3.5 sm:p-4 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-center gap-3 ${
+                        bookingFor === "myself"
+                          ? "border-primary bg-primary/5 shadow-sm scale-[1.01]"
+                          : "border-border/70 bg-card hover:bg-secondary/40"
+                      }`}
+                    >
+                      <div
+                        className={`p-2 rounded-xl shrink-0 ${
+                          bookingFor === "myself"
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "bg-secondary text-muted-foreground"
+                        }`}
+                      >
+                        <User size={18} />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="font-black text-xs sm:text-sm text-foreground block truncate">Myself</span>
+                        <span className="text-[10px] text-muted-foreground block truncate">Personal ride</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateBookingFor("others")}
+                      className={`p-3.5 sm:p-4 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-center gap-3 ${
+                        bookingFor === "others"
+                          ? "border-primary bg-primary/5 shadow-sm scale-[1.01]"
+                          : "border-border/70 bg-card hover:bg-secondary/40"
+                      }`}
+                    >
+                      <div
+                        className={`p-2 rounded-xl shrink-0 ${
+                          bookingFor === "others"
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "bg-secondary text-muted-foreground"
+                        }`}
+                      >
+                        <Users size={18} />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="font-black text-xs sm:text-sm text-foreground block truncate">Others</span>
+                        <span className="text-[10px] text-muted-foreground block truncate">Someone else</span>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* IF MYSELF IS SELECTED */}
+                  {bookingFor === "myself" && (
+                    <div className="p-3 rounded-xl bg-secondary/40 border border-border/40 flex items-center gap-2 text-xs text-muted-foreground">
+                      <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+                      <span>
+                        Personal Ride: You are listed as primary traveler with your verified profile presets.
+                      </span>
+                    </div>
+                  )}
+
+                  {/* IF OTHERS IS SELECTED - EXPANDED FORM ASKING DETAILS */}
+                  {bookingFor === "others" && (
+                    <div className="space-y-4 p-4 sm:p-5 rounded-2xl bg-secondary/30 border border-border/70 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div className="flex items-center justify-between pb-1">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                          <Users size={13} className="text-primary" /> Please Specify Their Details
+                        </span>
+                        <span className="text-[10px] font-bold text-muted-foreground">Required for safety dispatch</span>
+                      </div>
+
+                      {/* 1. Whether She / He */}
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1.5 block">
+                          Whether She or He *
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { id: "she", label: "She (Female)", icon: "👩" },
+                            { id: "he", label: "He (Male)", icon: "👨" },
+                            { id: "other", label: "Other", icon: "🧑" },
+                          ].map((g) => (
+                            <button
+                              key={g.id}
+                              type="button"
+                              onClick={() => handleUpdateRecipientGender(g.id as "she" | "he" | "other")}
+                              className={`py-2 px-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                recipientGender === g.id
+                                  ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                                  : "border-border/80 bg-card hover:bg-secondary text-foreground"
+                              }`}
+                            >
+                              <span>{g.icon}</span>
+                              <span className="text-[11px]">{g.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                        {recipientGender === "she" && (
+                          <p className="text-[10px] text-pink-600 dark:text-pink-400 font-bold mt-1 flex items-center gap-1">
+                            <Heart size={10} className="fill-current" />
+                            Pink Mode is available for female travelers.
+                          </p>
+                        )}
+                      </div>
+
+                      {/* 2. Passenger Age */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                            Passenger Age *
+                          </label>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateRecipientAge("24")}
+                              className="text-[9px] font-bold text-muted-foreground hover:text-foreground px-2 py-0.5 rounded-full bg-secondary border border-border/50"
+                            >
+                              Adult (24)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateRecipientAge("68")}
+                              className="text-[9px] font-bold text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20"
+                            >
+                              Senior (60+)
+                            </button>
+                          </div>
+                        </div>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="1"
+                            max="120"
+                            value={recipientAge}
+                            onChange={(e) => handleUpdateRecipientAge(e.target.value)}
+                            placeholder="e.g. 24 or 68"
+                            className="w-full rounded-xl border border-border/80 bg-background px-3.5 py-2.5 text-xs font-bold outline-none focus:border-primary transition-all text-foreground"
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">
+                            years
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* 3. Your Preference Mode */}
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1.5 block">
+                          Your Preference Mode *
+                        </label>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {[
+                            { id: "normal", name: "Normal", icon: Car, color: "hsl(var(--primary))" },
+                            { id: "pink", name: "Pink (Women)", icon: Heart, color: "hsl(var(--pink))", disabled: recipientGender === "he" },
+                            { id: "elderly", name: "Elderly", icon: ShieldCheck, color: "hsl(var(--blue))" },
+                            { id: "pwd", name: "PWD", icon: Accessibility, color: "hsl(var(--purple))" }
+                          ].map((opt) => {
+                            const Icon = opt.icon;
+                            const isSelected = mode.id === opt.id;
+                            const isDisabled = opt.disabled;
+                            return (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                disabled={isDisabled}
+                                onClick={() => handleUpdateRecipientPreferenceMode(opt.id as RideMode)}
+                                className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                                  isSelected
+                                    ? "border-primary bg-card ring-2 ring-primary/20 shadow-xs"
+                                    : isDisabled
+                                    ? "border-border/40 bg-secondary/30 opacity-40 cursor-not-allowed"
+                                    : "border-border/70 bg-card hover:bg-secondary"
+                                }`}
+                              >
+                                <Icon size={14} style={{ color: opt.color }} />
+                                <span className="text-[10px] font-bold text-foreground truncate">{opt.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* 4. Optional Passenger Name & Phone */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-border/40">
+                        <div>
+                          <label className="text-[9px] font-black uppercase tracking-wider text-muted-foreground mb-1 block">
+                            Passenger Full Name (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={recipientName}
+                            onChange={(e) => {
+                              setRecipientName(e.target.value);
+                              localStorage.setItem("safego_booking_recipient_name", e.target.value);
+                            }}
+                            placeholder="e.g. Priya Sharma"
+                            className="w-full rounded-xl border border-border/80 bg-background px-3 py-2 text-xs font-bold outline-none focus:border-primary transition-all text-foreground"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-black uppercase tracking-wider text-muted-foreground mb-1 block">
+                            Passenger Phone (Optional)
+                          </label>
+                          <input
+                            type="tel"
+                            value={recipientPhone}
+                            onChange={(e) => {
+                              setRecipientPhone(e.target.value);
+                              localStorage.setItem("safego_booking_recipient_phone", e.target.value);
+                            }}
+                            placeholder="e.g. +91 98765 43210"
+                            className="w-full rounded-xl border border-border/80 bg-background px-3 py-2 text-xs font-bold outline-none focus:border-primary transition-all text-foreground"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="mt-8 rounded-[2rem] border border-border/40 bg-card p-8 premium-shadow relative transition-all hover:-translate-y-1">
                   <div className="flex items-center gap-2 mb-6">
@@ -3894,7 +4244,20 @@ const BookingPage = () => {
                 {mode.id === "pink" && (
                   <div className="flex flex-col gap-4">
                     {/* 1. MALE PASSENGER ENFORCEMENT PROTOCOLS */}
-                    {userGender === "male" && (
+                    {bookingFor === "others" && recipientGender === "she" && (
+                      <div className="mt-4 p-4 rounded-2xl bg-pink-500/10 border border-pink-500/30 flex items-center gap-3">
+                        <Heart size={20} className="text-pink-600 dark:text-pink-400 fill-current shrink-0" />
+                        <div>
+                          <span className="text-xs font-black uppercase tracking-wider text-pink-600 dark:text-pink-400 block">
+                            Pink Mode Active for Female Passenger
+                          </span>
+                          <p className="text-[11px] text-muted-foreground font-medium">
+                            Booking on behalf of {recipientName || "a female rider"}. Verified female pilots and safety protocols active.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {isPinkRestrictedSoloMale && (
                       <>
                         {passengers === 1 ? (
                           /* SOLO MALE PASSENGER RESTRICTION */
@@ -4488,22 +4851,22 @@ const BookingPage = () => {
                               onClick={() => {
                                 handleAutoSelectNearestCab();
                               }}
-                              disabled={mode.id === "pink" && userGender === "male" && (passengers === 1 || !isAccompaniedDeclared || !femaleCompanionName.trim())}
-                              className={`w-full py-4 px-6 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${mode.id === "pink" && userGender === "male" && passengers === 1
+                              disabled={isPinkRestrictedSoloMale && (passengers === 1 || !isAccompaniedDeclared || !femaleCompanionName.trim())}
+                              className={`w-full py-4 px-6 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${isPinkRestrictedSoloMale && passengers === 1
                                   ? "bg-rose-500/20 text-rose-500 cursor-not-allowed border border-rose-500/30"
-                                  : mode.id === "pink" && userGender === "male" && (!isAccompaniedDeclared || !femaleCompanionName.trim())
+                                  : isPinkRestrictedSoloMale && (!isAccompaniedDeclared || !femaleCompanionName.trim())
                                     ? "bg-pink-500/20 text-pink-600 dark:text-pink-400 cursor-not-allowed border border-pink-500/30"
                                     : operatorCategoryFilter === "split"
                                       ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:brightness-110 active:scale-95 shadow-xl shadow-indigo-500/25"
                                       : "bg-primary text-primary-foreground hover:brightness-110 active:scale-95 shadow-xl shadow-primary/20"
                                 }`}
                             >
-                              {mode.id === "pink" && userGender === "male" && passengers === 1 ? (
+                              {isPinkRestrictedSoloMale && passengers === 1 ? (
                                 <>
                                   <ShieldAlert size={16} />
                                   SOLO MALE BOOKING RESTRICTED IN PINK MODE
                                 </>
-                              ) : mode.id === "pink" && userGender === "male" && (!isAccompaniedDeclared || !femaleCompanionName.trim()) ? (
+                              ) : isPinkRestrictedSoloMale && (!isAccompaniedDeclared || !femaleCompanionName.trim()) ? (
                                 <>
                                   <ShieldCheck size={16} />
                                   COMPLETE ACCOMPANYING FEMALE DECLARATION
@@ -4652,58 +5015,58 @@ const BookingPage = () => {
                                       {t('booking.direct_contact', 'Direct Contact')}
                                     </div>
                                   </button>
-                                  <button
-                                    onClick={
-                                      userPenaltyBalance > 0
-                                        ? () => {
-                                            toast.error(`Ride Booking Locked: Please pay your outstanding fine of ₹${userPenaltyBalance} to unlock bookings.`);
-                                            setIsFinePaymentModalOpen(true);
-                                          }
-                                        : selectedDriver?.is_active_corridor_ride
-                                          ? () => handleRequestJoinCorridorCab(selectedDriver.raw_ride || selectedDriver)
-                                          : (askStatus === "accepted" ? handleConfirmRide : handleAskDriver)
-                                    }
-                                    disabled={userPenaltyBalance > 0 ? false : (askStatus === "asking" || isJoiningSplitCab || (mode.id === "pink" && userGender === "male" && (passengers === 1 || !isAccompaniedDeclared || !femaleCompanionName.trim())))}
-                                    className="flex-1 group relative rounded-2xl py-4 text-xs font-black uppercase tracking-widest text-white transition-all shadow-xl hover:shadow-2xl hover:brightness-110 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden cursor-pointer"
-                                    style={{
-                                      backgroundColor: userPenaltyBalance > 0
-                                        ? "#e11d48"
-                                        : askStatus === "accepted"
-                                          ? "#10b981"
-                                          : askStatus === "rejected"
-                                            ? "#ef4444"
-                                            : selectedDriver.is_split_allowed
-                                              ? "#6366f1"
-                                              : mode.accent
-                                    }}
-                                  >
-                                    <div className="flex items-center justify-center gap-2">
-                                      {userPenaltyBalance > 0 ? (
-                                        <>
-                                          <Lock size={14} />
-                                          PAY FINE (₹{userPenaltyBalance}) TO BOOK
-                                        </>
-                                      ) : mode.id === "pink" && userGender === "male" && passengers === 1 ? (
-                                        <>
-                                          <ShieldAlert size={14} />
-                                          SOLO MALE RESTRICTED
-                                        </>
-                                      ) : mode.id === "pink" && userGender === "male" && (!isAccompaniedDeclared || !femaleCompanionName.trim()) ? (
-                                        <>
-                                          <ShieldCheck size={14} />
-                                          COMPLETE DECLARATION
-                                        </>
-                                      ) : isJoiningSplitCab ? (
-                                        <><Loader2 size={16} className="animate-spin" /> JOINING CORRIDOR CAB...</>
-                                      ) : askStatus === "idle" || askStatus === "rejected" ? (
-                                        <>{selectedDriver.is_active_corridor_ride ? "⚡ REQUEST & JOIN SHARED RIDE (40% OFF)" : selectedDriver.is_split_allowed ? "⚡ REQUEST & JOIN SHARED RIDE" : t('booking.send_request', 'SEND REQUEST')}</>
-                                      ) : askStatus === "asking" ? (
-                                        <><Loader2 size={16} className="animate-spin" /> {selectedDriver?.is_active_corridor_ride ? "APPROVAL PENDING..." : t('booking.pending', 'PENDING...')}</>
-                                      ) : (
-                                        <>{t('booking.secure_booking_now', 'SECURE BOOKING NOW')}</>
-                                      )}
-                                    </div>
-                                  </button>
+                                   <button
+                                     onClick={
+                                       userPenaltyBalance > 0
+                                         ? () => {
+                                             toast.error(`Ride Booking Locked: Please pay your outstanding fine of ₹${userPenaltyBalance} to unlock bookings.`);
+                                             setIsFinePaymentModalOpen(true);
+                                           }
+                                         : selectedDriver?.is_active_corridor_ride
+                                           ? () => handleRequestJoinCorridorCab(selectedDriver.raw_ride || selectedDriver)
+                                           : (askStatus === "accepted" ? handleConfirmRide : handleAskDriver)
+                                     }
+                                     disabled={userPenaltyBalance > 0 ? false : (askStatus === "asking" || isJoiningSplitCab || (isPinkRestrictedSoloMale && (passengers === 1 || !isAccompaniedDeclared || !femaleCompanionName.trim())))}
+                                     className="flex-1 group relative rounded-2xl py-4 text-xs font-black uppercase tracking-widest text-white transition-all shadow-xl hover:shadow-2xl hover:brightness-110 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden cursor-pointer"
+                                     style={{
+                                       backgroundColor: userPenaltyBalance > 0
+                                         ? "#e11d48"
+                                         : askStatus === "accepted"
+                                           ? "#10b981"
+                                           : askStatus === "rejected"
+                                             ? "#ef4444"
+                                             : selectedDriver.is_split_allowed
+                                               ? "#6366f1"
+                                               : mode.accent
+                                     }}
+                                   >
+                                     <div className="flex items-center justify-center gap-2">
+                                       {userPenaltyBalance > 0 ? (
+                                         <>
+                                           <Lock size={14} />
+                                           PAY FINE (₹{userPenaltyBalance}) TO BOOK
+                                         </>
+                                       ) : isPinkRestrictedSoloMale && passengers === 1 ? (
+                                         <>
+                                           <ShieldAlert size={14} />
+                                           SOLO MALE RESTRICTED
+                                         </>
+                                       ) : isPinkRestrictedSoloMale && (!isAccompaniedDeclared || !femaleCompanionName.trim()) ? (
+                                         <>
+                                           <ShieldCheck size={14} />
+                                           COMPLETE DECLARATION
+                                         </>
+                                       ) : isJoiningSplitCab ? (
+                                         <><Loader2 size={16} className="animate-spin" /> JOINING CORRIDOR CAB...</>
+                                       ) : askStatus === "idle" || askStatus === "rejected" ? (
+                                         <>{selectedDriver.is_active_corridor_ride ? "⚡ REQUEST & JOIN SHARED RIDE (40% OFF)" : selectedDriver.is_split_allowed ? "⚡ REQUEST & JOIN SHARED RIDE" : t('booking.send_request', 'SEND REQUEST')}</>
+                                       ) : askStatus === "asking" ? (
+                                         <><Loader2 size={16} className="animate-spin" /> {selectedDriver?.is_active_corridor_ride ? "APPROVAL PENDING..." : t('booking.pending', 'PENDING...')}</>
+                                       ) : (
+                                         <>{t('booking.secure_booking_now', 'SECURE BOOKING NOW')}</>
+                                       )}
+                                     </div>
+                                   </button>
                                 </div>
                                 {askStatus === "asking" && selectedDriver?.is_active_corridor_ride && (
                                   <div className="mt-2.5 flex items-center justify-between px-2 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
@@ -5688,6 +6051,31 @@ const BookingPage = () => {
         }}
         onBookRide={() => {
           setIsFinePaymentModalOpen(false);
+        }}
+      />
+
+      {/* Booking Recipient Details Modal (Myself or Others) */}
+      <BookingForModal
+        isOpen={isBookingForModalOpen}
+        onClose={() => setIsBookingForModalOpen(false)}
+        initialDetails={{
+          bookingFor,
+          gender: recipientGender,
+          age: recipientAge ? parseInt(recipientAge, 10) : undefined,
+          preferenceMode: (recipientPreferenceMode || mode.id) as RideMode,
+          riderName: recipientName,
+          riderPhone: recipientPhone
+        }}
+        onProceed={(details) => {
+          setBookingFor(details.bookingFor);
+          if (details.gender) setRecipientGender(details.gender);
+          if (details.age) setRecipientAge(String(details.age));
+          if (details.preferenceMode) setRecipientPreferenceMode(details.preferenceMode);
+          if (details.riderName !== undefined) setRecipientName(details.riderName);
+          if (details.riderPhone !== undefined) setRecipientPhone(details.riderPhone);
+          if (details.preferenceMode && details.preferenceMode !== mode.id) {
+            navigate(`/book/${details.preferenceMode}`);
+          }
         }}
       />
     </div>

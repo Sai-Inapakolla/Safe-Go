@@ -6,7 +6,8 @@ import { SafetyScoreBar } from "@/components/SafetyScoreBar";
 import { modes } from "@/config/modeConfig";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { BookingForModal } from "@/components/BookingForModal";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import {
   Shield, Bell, MapPin, CheckCircle, ArrowRight, Star,
@@ -1068,6 +1069,8 @@ const SingleFeatureSlider = () => {
 };
 
 const Home = () => {
+  const navigate = useNavigate();
+  const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const { t } = useTranslation();
   const [activeMode, setActiveMode] = useState("all");
   const [isDownloading, setIsDownloading] = useState(false);
@@ -1078,6 +1081,7 @@ const Home = () => {
   const [showCurtainBg, setShowCurtainBg] = useState(false);
 
   useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(
       ([entry]) => {
         setShowCurtainBg(entry.isIntersecting);
@@ -1180,13 +1184,14 @@ const Home = () => {
 
             {/* Mobile & Desktop CTA Action Buttons */}
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3.5">
-              <Link
-                to="/book"
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-2xl bg-primary text-primary-foreground font-extrabold text-sm uppercase tracking-wider shadow-lg shadow-primary/25 hover:brightness-110 active:scale-95 transition-all"
+              <button
+                type="button"
+                onClick={() => setIsBookingModalOpen(true)}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-2xl bg-primary text-primary-foreground font-extrabold text-sm uppercase tracking-wider shadow-lg shadow-primary/25 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
               >
                 <span>Book a Safe Ride</span>
                 <ArrowRight size={16} />
-              </Link>
+              </button>
               <Link
                 to="/drive-with-us"
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-card border border-border/80 text-foreground font-bold text-sm uppercase tracking-wider hover:bg-muted active:scale-95 transition-all"
@@ -1481,6 +1486,14 @@ const Home = () => {
       <div className="relative z-10 bg-background">
         <Footer />
       </div>
+
+      <BookingForModal
+        isOpen={isBookingModalOpen}
+        onClose={() => setIsBookingModalOpen(false)}
+        onProceed={(details) => {
+          navigate(`/book/${details.preferenceMode || "normal"}`);
+        }}
+      />
     </div>
   );
 };

@@ -1,7 +1,12 @@
-import { Link } from "react-router-dom";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { SafeGoLogo } from "./SafeGoLogo";
+import { BookingForModal } from "./BookingForModal";
 
 export const Footer = () => {
+  const navigate = useNavigate();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
   return (
     <footer className="border-t border-border bg-background">
       <div className="mx-auto w-full px-6 pt-16 pb-8 sm:px-10 lg:px-16">
@@ -14,7 +19,13 @@ export const Footer = () => {
             <h4 className="font-display text-sm font-bold">Product</h4>
             <div className="mt-3 flex flex-col gap-2">
               <Link to="/home" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Home</Link>
-              <Link to="/book" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Book a Ride</Link>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(true)}
+                className="text-left text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              >
+                Book a Ride
+              </button>
             </div>
           </div>
           <div>
@@ -42,6 +53,14 @@ export const Footer = () => {
           </div>
         </div>
       </div>
+
+      <BookingForModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onProceed={(details) => {
+          navigate(`/book/${details.preferenceMode || "normal"}`);
+        }}
+      />
     </footer>
   );
 };
